@@ -1,0 +1,47 @@
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { AppShell } from "@/components/layout/AppShell";
+
+const inter = Inter({ subsets: ["latin"], display: "swap" });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#0d9488",
+};
+
+export const metadata: Metadata = {
+  title: "Noxderma — Offline-First Enterprise Pharmaceutical ERP & CRM",
+  description:
+    "Enterprise pharmaceutical distribution, FEFO batch inventory, offline sales invoicing, 3-way credit ledgers, and marketing management system.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/brand/icon-192.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Noxderma ERP",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+      </head>
+      <body className={inter.className}>
+        <AppShell>{children}</AppShell>
+      </body>
+    </html>
+  );
+}

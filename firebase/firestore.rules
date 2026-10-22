@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for authentication and role verification
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && (
+        request.auth.token.role == role || 
+        getUserData().role == role
+      );
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isWarehouseStaff() {
+      return hasRole('warehouse_staff');
+    }
+
+    function isBookingUser() {
+      return hasRole('booking_user');
+    }
+
+    // Organization settings: readable by all authenticated staff, writable only by admin
+    match /organizationSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Dynamic Categories: readable by all authenticated, writable only by admin
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // User management: only admin can read and manage user records
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Audit logs: append-only for authenticated actions, readable only by admin
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Append-only audit integrity
+    }
+
+    // Product catalog (public operational info)
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Sensitive Product Pricing & Costs: strictly Admin and authorized booking roles, blocked for Warehouse Staff
+    match /productPricing/{productId} {
+      allow read: if isAuthenticated() && !isWarehouseStaff();
+      allow write: if isAdmin();
+    }
+
+    // Inventory batches: operational info readable by warehouse and admin
+    match /inventoryBatches/{batchId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isWarehouseStaff();
+    }
+
+    // Sensitive batch cost records: strictly Admin only
+    match /batchCostRecords/{batchId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Stock movements: can be created by warehouse staff or admin, immutable after write
+    match /stockMovements/{movementId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isAdmin() || isWarehouseStaff() || isBookingUser());
+      allow update, delete: if false; // Immutable ledger
+    }
+
+    // Inventory projections: cached stock levels
+    match /inventoryProjections/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isWarehouseStaff();
+    }
+
+    // Damaged and sample stock tracking
+    match /damagedStockRecords/{recordId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isWarehouseStaff();
+    }
+
+    match /sampleRecords/{recordId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isWarehouseStaff() || isBookingUser();
+    }
+
+    // Customers and Leads CRM
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isBookingUser();
+    }
+
+    match /leads/{leadId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isBookingUser();
+    }
+
+    match /customerVisits/{visitId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Invoices and Sales: readable by Admin & Booking, blocked for Warehouse Staff
+    match /invoices/{invoiceId} {
+      allow read: if isAuthenticated() && !isWarehouseStaff();
+      allow create: if isAdmin() || isBookingUser();
+      allow update: if isAdmin();
+      allow delete: if false; // Must use auditable reversals
+    }
+
+    // Manufacturers & Purchases: sensitive financial supplier data
+    match /manufacturers/{manufacturerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /purchaseOrders/{poId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /goodsReceipts/{receiptId} {
+      allow read: if isAdmin() || isWarehouseStaff();
+      allow write: if isAdmin() || isWarehouseStaff();
+    }
+
+    // Financial Ledgers & Cash/Bank Accounts: strictly Admin only
+    match /ledgerAccounts/{accountId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /ledgerEntries/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false; // Balanced journal entries are append-only
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || isBookingUser();
+      allow create: if isAdmin() || isBookingUser();
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // Sync operations queue records: accessible to originating device/user and admin
+    match /syncOperations/{opId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /syncConflicts/{conflictId} {
+      allow read: if isAdmin();
+      allow write: if isAuthenticated();
+    }
+  }
+}

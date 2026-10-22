@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60" width="240" height="60" fill="none">
+  <defs>
+    <linearGradient id="nxdInvGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+  </defs>
+  <rect x="6" y="8" width="44" height="44" rx="10" fill="url(#nxdInvGrad)" />
+  <path d="M28 17 V39 M17 28 H39" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" />
+  <circle cx="37" cy="19" r="4" fill="#0d9488" />
+  <text x="60" y="34" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="800" fill="#0f172a">NOX<tspan fill="#0d9488">DERMA</tspan></text>
+  <text x="61" y="47" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="700" fill="#0d9488" letter-spacing="1">DISTRIBUTION NETWORK</text>
+</svg>
