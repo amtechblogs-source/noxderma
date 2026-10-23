@@ -50,27 +50,27 @@ export function OfflineBanner() {
             <>
               <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 animate-pulse" />
               <span>
-                <strong>Offline Mode Active:</strong> You are disconnected. Invoices and records are saved locally in durable storage and will sync automatically when reconnected.
+                <strong>Internet Band Hai (Offline):</strong> Fikar na karein, aap k bills computer me mehfooz hain. Internet aate hi server pe save ho jayein gy.
               </span>
             </>
           ) : pendingCount > 0 ? (
             <>
               <RefreshCw className={`w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
               <span>
-                <strong>Online:</strong> You have <strong>{pendingCount}</strong> offline transaction{pendingCount > 1 ? "s" : ""} waiting to sync with the central database.
+                <strong>Internet Chalu Hai:</strong> Aap k <strong>{pendingCount}</strong> bills/entries server pe upload hone k muntazir hain.
               </span>
             </>
           ) : (
             <>
               <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>All offline transactions synchronized successfully.</span>
+              <span>Sab data server pe kamyabi se save ho chuka hai (All Synced).</span>
             </>
           )}
 
           {lastSyncResult && lastSyncResult.conflictCount > 0 && (
             <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-semibold ml-2">
               <AlertTriangle className="w-3.5 h-3.5" />
-              {lastSyncResult.conflictCount} conflict(s) require admin review.
+              {lastSyncResult.conflictCount} item(s) need owner checking.
             </span>
           )}
         </div>
@@ -82,7 +82,7 @@ export function OfflineBanner() {
             className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Syncing..." : "Sync Now"}
+            {isSyncing ? "Uploading Data..." : "Upload to Server Now"}
           </button>
         )}
       </div>

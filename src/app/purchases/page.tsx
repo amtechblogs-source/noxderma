@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useCategory } from "@/context/CategoryContext";
 import type {
   Product,
   InventoryBatch,
@@ -50,6 +51,7 @@ interface PurchaseOrder {
 }
 
 export default function PurchasesPage() {
+  const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,95 +65,52 @@ export default function PurchasesPage() {
   const [receivingBatchNumber, setReceivingBatchNumber] = useState("");
   const [manufacturingDate, setManufacturingDate] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
-  const [receivedQty, setReceivedQty] = useState(100);
-  const [baseInvoiceCost, setBaseInvoiceCost] = useState(380);
-  const [freightCharges, setFreightCharges] = useState(2500);
-  const [customsAndTaxes, setCustomsAndTaxes] = useState(1500);
-  const [packagingCosts, setPackagingCosts] = useState(500);
+  const [receivedQty, setReceivedQty] = useState(1);
+  const [baseInvoiceCost, setBaseInvoiceCost] = useState(0);
+  const [freightCharges, setFreightCharges] = useState(0);
+  const [customsAndTaxes, setCustomsAndTaxes] = useState(0);
+  const [packagingCosts, setPackagingCosts] = useState(0);
 
   // New PO Modal
   const [isCreatingPO, setIsCreatingPO] = useState(false);
-  const [newMfrName, setNewMfrName] = useState("Bayer Healthcare PK");
+  const [mfrMode, setMfrMode] = useState<"saved" | "manual">("saved");
+  const [newMfrName, setNewMfrName] = useState("");
+  const [prodMode, setProdMode] = useState<"saved" | "manual">("saved");
   const [newSelectedProdId, setNewSelectedProdId] = useState("");
-  const [newPOQty, setNewPOQty] = useState(200);
-  const [newPOPrice, setNewPOPrice] = useState(420);
+  const [manualProdName, setManualProdName] = useState("");
+  const [manualPackSize, setManualPackSize] = useState("");
+  const [newPOQty, setNewPOQty] = useState(1);
+  const [newPOPrice, setNewPOPrice] = useState(0);
 
   const loadData = async () => {
     try {
       const [prodList] = await Promise.all([offlineDb.products.toArray()]);
       setProducts(prodList);
 
-      // Preload standard POs if empty in local state
+      try {
+        const dbPOs = await (offlineDb as any).purchaseOrders?.toArray();
+        if (dbPOs && dbPOs.length > 0) {
+          setPurchases(dbPOs as PurchaseOrder[]);
+          return;
+        }
+      } catch {
+        // fallback
+      }
+
       const savedPOs = localStorage.getItem("noxderma_purchase_orders");
       if (savedPOs) {
-        setPurchases(JSON.parse(savedPOs));
+        try {
+          const parsed = JSON.parse(savedPOs);
+          if (Array.isArray(parsed)) {
+            setPurchases(parsed);
+          } else {
+            setPurchases([]);
+          }
+        } catch {
+          setPurchases([]);
+        }
       } else {
-        const initialPOs: PurchaseOrder[] = [
-          {
-            id: "po_101",
-            poNumber: "PO-2026-089",
-            manufacturerId: "mfr_bayer_pk",
-            manufacturerName: "Bayer Healthcare PK",
-            orderDate: "2026-10-15",
-            expectedDeliveryDate: "2026-10-25",
-            status: "received",
-            grnReference: "GRN-2026-042",
-            receivedDate: "2026-10-21",
-            items: [
-              {
-                productId: "prod_amox_500",
-                productName: "NoxAmox 500mg Capsules",
-                packSize: "Pack of 30 Capsules",
-                quantity: 200,
-                unitPrice: 380,
-                lineTotal: 76000,
-              },
-            ],
-            totalAmount: 76000,
-          },
-          {
-            id: "po_102",
-            poNumber: "PO-2026-092",
-            manufacturerId: "mfr_gsk_pk",
-            manufacturerName: "GlaxoSmithKline PK",
-            orderDate: "2026-10-18",
-            expectedDeliveryDate: "2026-10-28",
-            status: "ordered",
-            items: [
-              {
-                productId: "prod_dermaclear_cream",
-                productName: "DermaClear Soothing Cream 50g",
-                packSize: "50g Tube",
-                quantity: 150,
-                unitPrice: 280,
-                lineTotal: 42000,
-              },
-            ],
-            totalAmount: 42000,
-          },
-          {
-            id: "po_103",
-            poNumber: "PO-2026-095",
-            manufacturerId: "mfr_nox_laboratories",
-            manufacturerName: "Nox Laboratories PK",
-            orderDate: "2026-10-20",
-            expectedDeliveryDate: "2026-10-30",
-            status: "ordered",
-            items: [
-              {
-                productId: "prod_nox_d3",
-                productName: "Nox-D3 200,000 IU Injections",
-                packSize: "Box of 5 Ampoules",
-                quantity: 300,
-                unitPrice: 520,
-                lineTotal: 156000,
-              },
-            ],
-            totalAmount: 156000,
-          },
-        ];
-        setPurchases(initialPOs);
-        localStorage.setItem("noxderma_purchase_orders", JSON.stringify(initialPOs));
+        setPurchases([]);
       }
     } finally {
       setLoading(false);
@@ -162,9 +121,19 @@ export default function PurchasesPage() {
     loadData();
   }, []);
 
-  const savePOsToStorage = (updatedList: PurchaseOrder[]) => {
+  const savePOsToStorage = async (updatedList: PurchaseOrder[]) => {
     setPurchases(updatedList);
     localStorage.setItem("noxderma_purchase_orders", JSON.stringify(updatedList));
+    try {
+      if ((offlineDb as any).purchaseOrders) {
+        await (offlineDb as any).purchaseOrders.clear();
+        if (updatedList.length > 0) {
+          await (offlineDb as any).purchaseOrders.bulkPut(updatedList);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to sync purchase orders to offlineDb:", err);
+    }
   };
 
   // Landed Cost Calculation
@@ -252,31 +221,62 @@ export default function PurchasesPage() {
 
     setIsReceivingGRN(false);
     alert(
-      `GRN ${grnNumber} processed successfully! Batch ${receivingBatchNumber} added to inventory with landed cost of ${formatPKR(
+      `Stock received successfully! Batch ${receivingBatchNumber} added to stock with total cost of ${formatPKR(
         landedCostPerUnit
-      )}.`
+      )} per pack.`
     );
   };
 
+  // Category isolation
+  const activeCategoryObj =
+    selectedCategoryId === "all" ? null : categories.find((c) => c.id === selectedCategoryId);
+
+  const displayProducts =
+    selectedCategoryId === "all"
+      ? products
+      : products.filter((p) => p.categoryId === selectedCategoryId);
+
+  const categoryProductIds = new Set(displayProducts.map((p) => p.id));
+
+  const displayPurchases =
+    selectedCategoryId === "all"
+      ? purchases
+      : purchases.filter((po) => po.items?.some((i) => categoryProductIds.has(i.productId)));
+
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = products.find((p) => p.id === newSelectedProdId) || products[0];
-    if (!prod) return;
+
+    let prodId = `prod_${Date.now()}`;
+    let prodName = manualProdName.trim() || "Pharmaceutical Product";
+    let prodPack = manualPackSize.trim() || "Pack of 30";
+    let mfrId = "mfr_custom";
+
+    if (prodMode === "saved") {
+      const prod = displayProducts.find((p) => p.id === newSelectedProdId) || displayProducts[0] || products[0];
+      if (prod) {
+        prodId = prod.id;
+        prodName = prod.name;
+        prodPack = prod.packSize;
+        mfrId = prod.manufacturerId;
+      }
+    }
+
+    const finalMfrName = newMfrName.trim() || "Pharmaceutical Manufacturer";
 
     const poNum = `PO-2026-${(purchases.length + 90).toString().padStart(3, "0")}`;
     const newPO: PurchaseOrder = {
       id: `po_${Date.now()}`,
       poNumber: poNum,
-      manufacturerId: prod.manufacturerId,
-      manufacturerName: newMfrName,
+      manufacturerId: mfrId,
+      manufacturerName: finalMfrName,
       orderDate: new Date().toISOString().slice(0, 10),
       expectedDeliveryDate: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
       status: "ordered",
       items: [
         {
-          productId: prod.id,
-          productName: prod.name,
-          packSize: prod.packSize,
+          productId: prodId,
+          productName: prodName,
+          packSize: prodPack,
           quantity: Number(newPOQty),
           unitPrice: Number(newPOPrice),
           lineTotal: Number(newPOQty) * Number(newPOPrice),
@@ -289,7 +289,7 @@ export default function PurchasesPage() {
     setIsCreatingPO(false);
   };
 
-  const filtered = purchases.filter((po) => {
+  const filtered = displayPurchases.filter((po) => {
     const matchesSearch =
       po.poNumber.toLowerCase().includes(search.toLowerCase()) ||
       po.manufacturerName.toLowerCase().includes(search.toLowerCase()) ||
@@ -298,7 +298,7 @@ export default function PurchasesPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalPurchasesAmount = purchases.reduce((sum, p) => sum + p.totalAmount, 0);
+  const totalPurchasesAmount = displayPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
 
   return (
     <div className="space-y-6">
@@ -307,12 +307,12 @@ export default function PurchasesPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Procurement & Inward Stock
+              Buy Stock from Companies
             </span>
-            <span className="text-xs text-slate-400">Landed Cost Accounting</span>
+            <span className="text-xs text-slate-400">Purchase Price + Delivery/Freight</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Purchases & Goods Receipts (GRN)
+            Buy Stock (Purchases & Received Stock)
           </h1>
         </div>
 
@@ -320,43 +320,61 @@ export default function PurchasesPage() {
           onClick={() => setIsCreatingPO(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> Issue Purchase Order
+          <Plus className="w-4 h-4" /> + Order Stock from Company
         </button>
       </div>
+
+      {/* Active Category Filter Alert */}
+      {selectedCategoryId !== "all" && (
+        <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs md:text-sm">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-600 animate-pulse" />
+            <span>
+              Purchases isolated for category: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedCategoryId("all")}
+            className="text-xs font-semibold text-teal-700 dark:text-teal-300 underline hover:text-teal-900"
+          >
+            Show All Categories
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Purchase Volume
+            Total Stock Bought
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(totalPurchasesAmount)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {purchases.length} Purchase Orders Recorded
+            {purchases.length} Purchase Orders
           </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider block mb-1">
-            Pending Delivery Inward
+            Orders Waiting for Delivery
           </span>
           <span className="text-2xl font-black text-amber-600">
             {purchases.filter((p) => p.status === "ordered").length} Orders
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Awaiting GRN & Batch Allocation</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Waiting to Receive Stock in Godown</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
-            Completed Receipts (GRN)
+            Stock Received in Godown
           </span>
           <span className="text-2xl font-black text-emerald-600">
             {purchases.filter((p) => p.status === "received").length} Orders
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            FEFO Batches Active in Warehouse
+            Batches in Godown Ready to Sell
           </span>
         </div>
       </div>
@@ -367,7 +385,7 @@ export default function PurchasesPage() {
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search PO number, manufacturer or GRN..."
+            placeholder="Search order no, company name, or receipt no..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -388,7 +406,7 @@ export default function PurchasesPage() {
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
               }`}
             >
-              {st}
+              {st === "all" ? "All Orders" : st === "ordered" ? "Ordered (Waiting)" : st === "received" ? "Received in Godown" : "Draft"}
             </button>
           ))}
         </div>
@@ -400,12 +418,12 @@ export default function PurchasesPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="p-2.5">PO Number</th>
-                <th className="p-2.5">Manufacturer</th>
-                <th className="p-2.5">Product & Quantity</th>
+                <th className="p-2.5">Order No.</th>
+                <th className="p-2.5">Company Name</th>
+                <th className="p-2.5">Medicine & Quantity</th>
                 <th className="p-2.5">Order Date</th>
-                <th className="p-2.5 text-right">PO Total</th>
-                <th className="p-2.5">GRN Ref</th>
+                <th className="p-2.5 text-right">Total Amount</th>
+                <th className="p-2.5">Receipt No.</th>
                 <th className="p-2.5 text-center">Status</th>
                 <th className="p-2.5 text-right">Action</th>
               </tr>
@@ -444,7 +462,7 @@ export default function PurchasesPage() {
                             : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                         }`}
                       >
-                        {po.status.toUpperCase()}
+                        {po.status === "received" ? "IN GODOWN" : po.status === "ordered" ? "ORDERED" : po.status.toUpperCase()}
                       </span>
                     </td>
                     <td className="p-2.5 text-right">
@@ -453,11 +471,11 @@ export default function PurchasesPage() {
                           onClick={() => handleOpenGRN(po)}
                           className="px-2.5 py-1 rounded bg-teal-600 hover:bg-teal-700 text-white font-bold text-[10px] shadow-sm flex items-center gap-1 ml-auto"
                         >
-                          <Calculator className="w-3 h-3" /> Receive (GRN)
+                          <Calculator className="w-3 h-3" /> Receive Stock
                         </button>
                       ) : (
                         <span className="text-[11px] text-emerald-600 font-semibold">
-                          ✓ Stock Received
+                          ✓ In Godown
                         </span>
                       )}
                     </td>
@@ -476,10 +494,10 @@ export default function PurchasesPage() {
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-teal-600" /> Landed Cost & Goods Receipt (GRN)
+                  <Calculator className="w-5 h-5 text-teal-600" /> Receive Stock in Godown (Add Delivery / Freight)
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Allocating freight, customs and packaging directly into batch purchase cost
+                  Add delivery/freight, taxes, and packing to find your real total cost per pack
                 </p>
               </div>
               <button
@@ -494,11 +512,11 @@ export default function PurchasesPage() {
               {/* Reference Header */}
               <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 grid grid-cols-2 gap-2">
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Purchase Order:</span>
+                  <span className="text-slate-400 block text-[10px]">Order No:</span>
                   <span className="font-bold font-mono text-teal-600">{selectedPO.poNumber}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Manufacturer:</span>
+                  <span className="text-slate-400 block text-[10px]">Company:</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {selectedPO.manufacturerName}
                   </span>
@@ -508,12 +526,12 @@ export default function PurchasesPage() {
               {/* Batch & Expiry Allocation */}
               <div className="space-y-2">
                 <h4 className="font-bold text-slate-700 dark:text-slate-300">
-                  1. FEFO Batch Identification
+                  1. Batch Number & Expiry Date
                 </h4>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Batch # *
+                      Batch No. *
                     </label>
                     <input
                       type="text"
@@ -525,7 +543,7 @@ export default function PurchasesPage() {
                   </div>
                   <div>
                     <label className="font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                      Mfg Date
+                      Making Date (Mfg)
                     </label>
                     <input
                       type="date"
@@ -553,7 +571,7 @@ export default function PurchasesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Received Quantity (Packs) *
+                    Quantity Received in Godown (Packs) *
                   </label>
                   <input
                     type="number"
@@ -566,7 +584,7 @@ export default function PurchasesPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Base Invoice Cost / Pack (PKR) *
+                    Company Bill Price / Pack (PKR) *
                   </label>
                   <input
                     type="number"
@@ -582,11 +600,11 @@ export default function PurchasesPage() {
               {/* Landed Cost Allocation Engine */}
               <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <h4 className="font-bold text-slate-700 dark:text-slate-300">
-                  2. Incurred Freight & Import Allocation
+                  2. Extra Costs (Freight, Delivery & Taxes)
                 </h4>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Freight (PKR)</label>
+                    <label className="text-[11px] text-slate-500 block mb-1">Delivery / Freight (PKR)</label>
                     <input
                       type="number"
                       value={freightCharges}
@@ -595,7 +613,7 @@ export default function PurchasesPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Customs/Taxes (PKR)</label>
+                    <label className="text-[11px] text-slate-500 block mb-1">Taxes / Toll (PKR)</label>
                     <input
                       type="number"
                       value={customsAndTaxes}
@@ -604,7 +622,7 @@ export default function PurchasesPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Packaging (PKR)</label>
+                    <label className="text-[11px] text-slate-500 block mb-1">Packaging / Packing (PKR)</label>
                     <input
                       type="number"
                       value={packagingCosts}
@@ -619,7 +637,7 @@ export default function PurchasesPage() {
               <div className="p-3.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 space-y-1.5">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-teal-900 dark:text-teal-200 font-semibold">
-                    Additional Landed Cost / Pack:
+                    Extra Delivery Cost per Pack:
                   </span>
                   <span className="font-mono font-bold text-teal-900 dark:text-teal-200">
                     +{formatPKR(additionalCostPerUnit)}
@@ -627,14 +645,14 @@ export default function PurchasesPage() {
                 </div>
                 <div className="flex justify-between items-center text-sm pt-1 border-t border-teal-200 dark:border-teal-800">
                   <span className="text-teal-950 dark:text-teal-100 font-extrabold">
-                    Final Landed Unit Cost:
+                    Total Cost per Pack (Purchase + Delivery):
                   </span>
                   <span className="font-mono font-black text-teal-700 dark:text-teal-300 text-base">
                     {formatPKR(landedCostPerUnit)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-[11px] text-teal-700 dark:text-teal-400">
-                  <span>Total Inward Batch Valuation:</span>
+                  <span>Total Cost of this Stock:</span>
                   <span className="font-mono font-bold">{formatPKR(totalLandedBatchValuation)}</span>
                 </div>
               </div>
@@ -651,7 +669,7 @@ export default function PurchasesPage() {
                   type="submit"
                   className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Confirm & Post GRN to Stock
+                  Confirm & Add to Stock
                 </button>
               </div>
             </form>
@@ -665,7 +683,7 @@ export default function PurchasesPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
-                Issue Purchase Order
+                Order Stock from Company
               </h2>
               <button
                 onClick={() => setIsCreatingPO(false)}
@@ -676,44 +694,141 @@ export default function PurchasesPage() {
             </div>
 
             <form onSubmit={handleCreatePO} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Manufacturer Name *
-                </label>
-                <select
-                  value={newMfrName}
-                  onChange={(e) => setNewMfrName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                >
-                  <option value="Bayer Healthcare PK">Bayer Healthcare PK</option>
-                  <option value="GlaxoSmithKline PK">GlaxoSmithKline PK</option>
-                  <option value="Nox Laboratories PK">Nox Laboratories PK</option>
-                  <option value="Getz Pharma Pakistan">Getz Pharma Pakistan</option>
-                </select>
+              {/* Company / Manufacturer Selection */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">
+                    Company / Manufacturer *
+                  </label>
+                  <div className="inline-flex rounded border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-100 dark:bg-slate-800 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setMfrMode("saved")}
+                      className={`px-2 py-0.5 rounded font-bold ${
+                        mfrMode === "saved"
+                          ? "bg-teal-600 text-white"
+                          : "text-slate-600 dark:text-slate-300"
+                      }`}
+                    >
+                      Choose Saved
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMfrMode("manual")}
+                      className={`px-2 py-0.5 rounded font-bold ${
+                        mfrMode === "manual"
+                          ? "bg-teal-600 text-white"
+                          : "text-slate-600 dark:text-slate-300"
+                      }`}
+                    >
+                      Type Custom
+                    </button>
+                  </div>
+                </div>
+
+                {mfrMode === "saved" ? (
+                  <select
+                    value={newMfrName}
+                    onChange={(e) => setNewMfrName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="Bayer Healthcare PK">Bayer Healthcare PK</option>
+                    <option value="GlaxoSmithKline PK">GlaxoSmithKline PK</option>
+                    <option value="Nox Laboratories PK">Nox Laboratories PK</option>
+                    <option value="Getz Pharma Pakistan">Getz Pharma Pakistan</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Ferozsons Laboratories, Bosch Pharma"
+                    value={newMfrName}
+                    onChange={(e) => setNewMfrName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  />
+                )}
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Select Product *
-                </label>
-                <select
-                  value={newSelectedProdId}
-                  onChange={(e) => setNewSelectedProdId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                >
-                  <option value="">-- Choose Product --</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.sku})
-                    </option>
-                  ))}
-                </select>
+              {/* Medicine / Product Selection */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">
+                    Select Medicine *
+                  </label>
+                  <div className="inline-flex rounded border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-100 dark:bg-slate-800 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setProdMode("saved")}
+                      className={`px-2 py-0.5 rounded font-bold ${
+                        prodMode === "saved"
+                          ? "bg-teal-600 text-white"
+                          : "text-slate-600 dark:text-slate-300"
+                      }`}
+                    >
+                      Catalog List
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProdMode("manual")}
+                      className={`px-2 py-0.5 rounded font-bold ${
+                        prodMode === "manual"
+                          ? "bg-teal-600 text-white"
+                          : "text-slate-600 dark:text-slate-300"
+                      }`}
+                    >
+                      Custom Medicine
+                    </button>
+                  </div>
+                </div>
+
+                {prodMode === "saved" ? (
+                  <select
+                    value={newSelectedProdId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setNewSelectedProdId(id);
+                      const p = displayProducts.find((item) => item.id === id);
+                      if (p) {
+                        offlineDb.productPricing.get(id).then((pr) => {
+                          if (pr?.purchaseCostPerPack) setNewPOPrice(pr.purchaseCostPerPack);
+                        });
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="">-- Choose Medicine --</option>
+                    {displayProducts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.sku})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Medicine Name (e.g. NoxPan 40mg)"
+                      value={manualProdName}
+                      onChange={(e) => setManualProdName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Pack Size (e.g. 20 Tablets)"
+                      value={manualPackSize}
+                      onChange={(e) => setManualPackSize(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Order Quantity (Packs)
+                    Quantity to Order (Packs)
                   </label>
                   <input
                     type="number"
@@ -725,7 +840,7 @@ export default function PurchasesPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Estimated Cost / Pack (PKR)
+                    Estimated Price / Pack (PKR)
                   </label>
                   <input
                     type="number"
@@ -738,7 +853,7 @@ export default function PurchasesPage() {
               </div>
 
               <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-xs flex justify-between font-bold">
-                <span>Total PO Valuation:</span>
+                <span>Total Order Amount:</span>
                 <span className="font-mono text-teal-600">{formatPKR(newPOQty * newPOPrice)}</span>
               </div>
 
@@ -754,7 +869,7 @@ export default function PurchasesPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Issue PO
+                  Save Purchase Order
                 </button>
               </div>
             </form>

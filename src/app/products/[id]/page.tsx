@@ -25,6 +25,7 @@ import {
   Eye,
   EyeOff,
   Percent,
+  Edit2,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -59,9 +60,99 @@ export default function ProductDetailPage({ params }: PageProps) {
   const [newQuantity, setNewQuantity] = useState(50);
   const [newStatus, setNewStatus] = useState<InventoryBatch["status"]>("active");
 
+  // Edit Product Modal State
+  const [isEditingProduct, setIsEditingProduct] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [editName, setEditName] = useState("");
+  const [editGenericName, setEditGenericName] = useState("");
+  const [editBrand, setEditBrand] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editSku, setEditSku] = useState("");
+  const [editBarcode, setEditBarcode] = useState("");
+  const [editPackSize, setEditPackSize] = useState("");
+  const [editUnitsPerPack, setEditUnitsPerPack] = useState(30);
+  const [editUnitOfMeasure, setEditUnitOfMeasure] = useState<Product["unitOfMeasure"]>("pack");
+  const [editReorderThreshold, setEditReorderThreshold] = useState(15);
+  const [editDescription, setEditDescription] = useState("");
+  const [editPurchaseCost, setEditPurchaseCost] = useState(0);
+  const [editTradePrice, setEditTradePrice] = useState(0);
+  const [editMrp, setEditMrp] = useState(0);
+  const [isSavingProductEdit, setIsSavingProductEdit] = useState(false);
+
+  const openEditProductModal = () => {
+    if (!product) return;
+    setEditName(product.name);
+    setEditGenericName(product.genericName || "");
+    setEditBrand(product.brand);
+    setEditCategoryId(product.categoryId);
+    setEditSku(product.sku);
+    setEditBarcode(product.barcode || "");
+    setEditPackSize(product.packSize);
+    setEditUnitsPerPack(product.unitsPerPack || 1);
+    setEditUnitOfMeasure(product.unitOfMeasure || "pack");
+    setEditReorderThreshold(product.reorderThreshold || 10);
+    setEditDescription(product.description || "");
+    setEditPurchaseCost(pricing?.purchaseCostPerPack || 0);
+    setEditTradePrice(pricing?.tradePricePerPack || 0);
+    setEditMrp(pricing?.mrpPerPack || 0);
+    setIsEditingProduct(true);
+  };
+
+  const handleSaveProductEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product || !editName.trim() || !editSku.trim()) return;
+
+    setIsSavingProductEdit(true);
+    const now = new Date().toISOString();
+    const chosenCat = categories.find((c) => c.id === editCategoryId);
+
+    const updatedProduct: Product = {
+      ...product,
+      name: editName.trim(),
+      genericName: editGenericName.trim() || undefined,
+      brand: editBrand.trim(),
+      categoryId: editCategoryId,
+      categoryName: chosenCat?.name || product.categoryName,
+      sku: editSku.trim().toUpperCase(),
+      barcode: editBarcode.trim() || undefined,
+      packSize: editPackSize.trim(),
+      unitsPerPack: Number(editUnitsPerPack) || 1,
+      unitOfMeasure: editUnitOfMeasure,
+      reorderThreshold: Number(editReorderThreshold) || 10,
+      description: editDescription.trim() || undefined,
+      updatedAt: now,
+    };
+
+    const updatedPricing: ProductPricing = {
+      productId: product.id,
+      purchaseCostPerPack: Number(editPurchaseCost) || 0,
+      tradePricePerPack: Number(editTradePrice) || 0,
+      mrpPerPack: Number(editMrp) || 0,
+      taxPercentage: 0,
+      discountMaxPercentage: 15,
+      updatedAt: now,
+    };
+
+    try {
+      await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
+        await offlineDb.products.put(updatedProduct);
+        await offlineDb.productPricing.put(updatedPricing);
+      });
+      setProduct(updatedProduct);
+      setPricing(updatedPricing);
+      setIsEditingProduct(false);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to save product:", err);
+      alert("Error saving product changes.");
+    } finally {
+      setIsSavingProductEdit(false);
+    }
+  };
+
   const loadData = async () => {
     try {
-      const [prod, price, bList, mList] = await Promise.all([
+      const [prod, price, bList, mList, catList] = await Promise.all([
         offlineDb.products.get(productId),
         offlineDb.productPricing.get(productId),
         offlineDb.inventoryBatches.where("productId").equals(productId).toArray(),
@@ -70,46 +161,18 @@ export default function ProductDetailPage({ params }: PageProps) {
           .equals(productId)
           .reverse()
           .sortBy("timestamp"),
+        offlineDb.categories.toArray(),
       ]);
+      setCategories(catList);
 
       if (prod) {
         setProduct(prod);
         setSelectedImage(prod.images?.[0]?.url || null);
+        setPricing(price || null);
       } else {
-        // Fallback or seed sample if not in DB
-        const fallback: Product = {
-          id: productId,
-          sku: `SKU-${productId.toUpperCase()}`,
-          name: productId.replace(/_/g, " ").toUpperCase(),
-          brand: "Noxderma Pharma",
-          manufacturerId: "mfr_nox_laboratories",
-          manufacturerName: "Nox Laboratories PK",
-          categoryId: "cat_pharmacy",
-          categoryName: "Pharmaceuticals",
-          packSize: "Pack of 30 Units",
-          unitOfMeasure: "pack",
-          unitsPerPack: 30,
-          reorderThreshold: 20,
-          requiresBatchTracking: true,
-          status: "active",
-          images: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        setProduct(fallback);
+        setProduct(null);
+        setPricing(null);
       }
-
-      setPricing(
-        price || {
-          productId,
-          purchaseCostPerPack: 450,
-          tradePricePerPack: 750,
-          mrpPerPack: 900,
-          taxPercentage: 0,
-          discountMaxPercentage: 15,
-          updatedAt: new Date().toISOString(),
-        }
-      );
 
       // Sort batches by FEFO (earliest expiry first)
       const sortedBatches = (bList || []).sort(
@@ -237,17 +300,23 @@ export default function ProductDetailPage({ params }: PageProps) {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={openEditProductModal}
+            className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
+          >
+            <Edit2 className="w-3.5 h-3.5 text-teal-600" /> Edit Medicine
+          </button>
           <Link
             href={`/marketing/whatsapp?sku=${product.sku}&name=${encodeURIComponent(product.name)}`}
             className="px-3.5 py-2 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
           >
-            <Share2 className="w-3.5 h-3.5" /> WhatsApp Promo
+            <Share2 className="w-3.5 h-3.5" /> Share on WhatsApp
           </Link>
           <button
             onClick={() => setIsAddingBatch(true)}
             className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
           >
-            <Plus className="w-4 h-4" /> Intake New Batch
+            <Plus className="w-4 h-4" /> + Add New Batch
           </button>
         </div>
       </div>
@@ -269,7 +338,7 @@ export default function ProductDetailPage({ params }: PageProps) {
               ) : (
                 <div className="text-center text-slate-400">
                   <PackageCheck className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <span className="text-xs">No product images attached</span>
+                  <span className="text-xs">No photo added</span>
                 </div>
               )}
             </div>
@@ -301,37 +370,37 @@ export default function ProductDetailPage({ params }: PageProps) {
             {/* Product Specifications */}
             <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Generic Formula:</span>
+                <span className="text-slate-500">Formula:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200 text-right">
                   {product.genericName || "Standard Formulation"}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Brand Line:</span>
+                <span className="text-slate-500">Brand:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
                   {product.brand}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Manufacturer:</span>
+                <span className="text-slate-500">Company / Manufacturer:</span>
                 <span className="font-semibold text-teal-600 dark:text-teal-400">
                   {product.manufacturerName}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Pack Presentation:</span>
+                <span className="text-slate-500">Pack Details:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
                   {product.packSize} ({product.unitsPerPack} {product.unitOfMeasure}s)
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Barcode / EAN:</span>
+                <span className="text-slate-500">Barcode:</span>
                 <span className="font-mono text-slate-700 dark:text-slate-300">
                   {product.barcode || "N/A"}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Reorder Alert:</span>
+                <span className="text-slate-500">Low Stock Warning:</span>
                 <span className="font-bold text-amber-600">
                   {product.reorderThreshold} packs
                 </span>
@@ -351,39 +420,39 @@ export default function ProductDetailPage({ params }: PageProps) {
               <span className="text-2xl font-black text-slate-900 dark:text-slate-100">
                 {formatNumber(totalStock)}
               </span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Physical packs in warehouse</span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">Total boxes in godown</span>
             </div>
 
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block mb-1">
-                Available (FEFO)
+                Ready to Sell
               </span>
               <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                 {formatNumber(availableStock)}
               </span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Ready for invoice dispatch</span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">Can be billed right now</span>
             </div>
 
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider block mb-1">
-                Near Expiry (&lt;90d)
+                Expiring Soon (&lt;3 Months)
               </span>
               <span className="text-2xl font-black text-amber-600">
                 {nearExpiryBatches.reduce((acc, b) => acc + b.remainingQuantity, 0)}
               </span>
               <span className="text-[10px] text-slate-500 block mt-0.5">
-                {nearExpiryBatches.length} batch(es) flagged
+                {nearExpiryBatches.length} batch(es) - sell fast
               </span>
             </div>
 
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-1">
-                Quarantined
+                Broken / Blocked
               </span>
               <span className="text-2xl font-black text-rose-600">
                 {formatNumber(blockedStock)}
               </span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Damaged or hold</span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">Damaged or stopped</span>
             </div>
           </div>
 
@@ -394,7 +463,7 @@ export default function ProductDetailPage({ params }: PageProps) {
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-teal-600" />
                   <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                    Commercial Pricing Schedule & Margins
+                    Medicine Rates & Profit Margin (Kamai)
                   </h3>
                 </div>
                 <button
@@ -402,34 +471,34 @@ export default function ProductDetailPage({ params }: PageProps) {
                   className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1 font-semibold"
                 >
                   {showCostPrices ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  {showCostPrices ? "Hide Costs" : "Show Costs"}
+                  {showCostPrices ? "Hide Buying Cost" : "Show Buying Cost"}
                 </button>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
-                  <span className="text-slate-500 block">Purchase Cost:</span>
+                  <span className="text-slate-500 block">Buying Rate (Kharid):</span>
                   <span className="font-bold text-sm text-slate-800 dark:text-slate-200 font-mono">
                     {showCostPrices ? formatPKR(pricing.purchaseCostPerPack) : "••••••"}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
-                  <span className="text-slate-500 block">Trade Price (TP):</span>
+                  <span className="text-slate-500 block">Sale Rate (To Stores):</span>
                   <span className="font-bold text-sm text-teal-600 dark:text-teal-400 font-mono">
                     {formatPKR(pricing.tradePricePerPack)}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
-                  <span className="text-slate-500 block">Maximum Retail (MRP):</span>
+                  <span className="text-slate-500 block">Customer Print Price (MRP):</span>
                   <span className="font-bold text-sm text-slate-900 dark:text-slate-100 font-mono">
                     {formatPKR(pricing.mrpPerPack)}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
-                  <span className="text-slate-500 block">Gross Markup:</span>
+                  <span className="text-slate-500 block">Profit Margin (% Munafa):</span>
                   <span className="font-bold text-sm text-emerald-600 font-mono">
                     {showCostPrices
                       ? `${Math.round(
@@ -450,17 +519,17 @@ export default function ProductDetailPage({ params }: PageProps) {
               <div className="flex items-center gap-2">
                 <Barcode className="w-4 h-4 text-teal-600" />
                 <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                  Physical Batch Allocations (FEFO Ranked)
+                  Medicine Batches (Oldest Expiry First)
                 </h3>
               </div>
               <span className="text-xs text-slate-400 font-medium">
-                {batches.length} batch(es) registered
+                {batches.length} batch(es)
               </span>
             </div>
 
             {batches.length === 0 ? (
               <div className="p-6 text-center text-slate-400 bg-slate-50 dark:bg-slate-800/30 rounded-lg">
-                <p className="text-xs">No batches recorded for this product yet.</p>
+                <p className="text-xs">No batches recorded for this medicine yet.</p>
                 <button
                   onClick={() => setIsAddingBatch(true)}
                   className="mt-2 text-xs font-bold text-teal-600 hover:underline"
@@ -475,9 +544,9 @@ export default function ProductDetailPage({ params }: PageProps) {
                     <tr>
                       <th className="p-2.5">Batch #</th>
                       <th className="p-2.5">Expiry Date</th>
-                      <th className="p-2.5 text-right">Received</th>
-                      <th className="p-2.5 text-right">Remaining</th>
-                      <th className="p-2.5 text-center">Status</th>
+                      <th className="p-2.5 text-right">Total Bought</th>
+                      <th className="p-2.5 text-right">Stock in Hand</th>
+                      <th className="p-2.5 text-center">Condition</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -516,19 +585,19 @@ export default function ProductDetailPage({ params }: PageProps) {
                           <td className="p-2.5 text-center">
                             {b.status === "quarantine" ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300">
-                                Quarantine
+                                Broken / Blocked
                               </span>
                             ) : isExpired ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300">
-                                Expired
+                                Expired (Do Not Sell)
                               </span>
                             ) : isNear ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300">
-                                Near Expiry
+                                Expiring Soon
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
-                                Active
+                                Good to Sell
                               </span>
                             )}
                           </td>
@@ -546,7 +615,7 @@ export default function ProductDetailPage({ params }: PageProps) {
             <div className="flex items-center gap-2">
               <ArrowLeftRight className="w-4 h-4 text-teal-600" />
               <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                Recent Stock Movements
+                Recent Stock In & Out History
               </h3>
             </div>
 
@@ -571,7 +640,7 @@ export default function ProductDetailPage({ params }: PageProps) {
                             {isPositive ? `+${m.quantityChange}` : m.quantityChange} packs
                           </span>
                           <span className="text-slate-400 text-[11px]">
-                            ({m.type.replace(/_/g, " ")})
+                            ({m.type === "sales_deduction" ? "Sold in Bill" : m.type.replace(/_/g, " ")})
                           </span>
                           {m.batchNumber && (
                             <span className="font-mono text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 rounded">
@@ -601,7 +670,7 @@ export default function ProductDetailPage({ params }: PageProps) {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
-                Record New Batch Intake
+                Add New Medicine Batch
               </h2>
               <button
                 onClick={() => setIsAddingBatch(false)}
@@ -629,7 +698,7 @@ export default function ProductDetailPage({ params }: PageProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Mfg Date
+                    Made Date (Optional)
                   </label>
                   <input
                     type="date"
@@ -655,7 +724,7 @@ export default function ProductDetailPage({ params }: PageProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Received Quantity (Packs) *
+                    Quantity Received (Packs / Boxes) *
                   </label>
                   <input
                     type="number"
@@ -668,15 +737,15 @@ export default function ProductDetailPage({ params }: PageProps) {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Status
+                    Stock Condition
                   </label>
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
                   >
-                    <option value="active">Active (Available)</option>
-                    <option value="quarantine">Quarantine (Blocked)</option>
+                    <option value="active">Good Stock (Ready to Sell)</option>
+                    <option value="quarantine">Broken / Blocked (Do Not Sell)</option>
                   </select>
                 </div>
               </div>
@@ -694,6 +763,196 @@ export default function ProductDetailPage({ params }: PageProps) {
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
                   Save Batch
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT PRODUCT MODAL */}
+      {isEditingProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-5 my-8 text-xs animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100">
+                    Edit Medicine Details
+                  </h3>
+                  <p className="text-slate-400 text-[11px]">
+                    Update medicine name, packing, item code, rates, and category
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsEditingProduct(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block font-bold mb-1">Medicine Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Formula / Generic Name</label>
+                  <input
+                    type="text"
+                    value={editGenericName}
+                    onChange={(e) => setEditGenericName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Category</label>
+                  <select
+                    value={editCategoryId}
+                    onChange={(e) => setEditCategoryId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Item Code (SKU) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editSku}
+                    onChange={(e) => setEditSku(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Barcode</label>
+                  <input
+                    type="text"
+                    value={editBarcode}
+                    onChange={(e) => setEditBarcode(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Brand / Company</label>
+                  <input
+                    type="text"
+                    value={editBrand}
+                    onChange={(e) => setEditBrand(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Pack Details (e.g. Pack of 30 Tablets)</label>
+                  <input
+                    type="text"
+                    value={editPackSize}
+                    onChange={(e) => setEditPackSize(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Items per Pack</label>
+                  <input
+                    type="number"
+                    value={editUnitsPerPack}
+                    onChange={(e) => setEditUnitsPerPack(Number(e.target.value) || 1)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Low-Stock Alert Level</label>
+                  <input
+                    type="number"
+                    value={editReorderThreshold}
+                    onChange={(e) => setEditReorderThreshold(Number(e.target.value) || 10)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Pricing Section */}
+              <div className="p-4 rounded-xl border border-teal-500/20 bg-teal-50/20 dark:bg-slate-800/40 space-y-3">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5" />
+                  Medicine Rates (Prices in PKR)
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1">Buying Cost (Kharid Rate)</label>
+                    <input
+                      type="number"
+                      value={editPurchaseCost}
+                      onChange={(e) => setEditPurchaseCost(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-teal-600 dark:text-teal-400">
+                      Sale Rate to Medical Stores
+                    </label>
+                    <input
+                      type="number"
+                      value={editTradePrice}
+                      onChange={(e) => setEditTradePrice(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold mb-1 text-slate-500">
+                      Customer Print Price (MRP)
+                    </label>
+                    <input
+                      type="number"
+                      value={editMrp}
+                      onChange={(e) => setEditMrp(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProduct(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProductEdit}
+                  className="px-6 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20 disabled:opacity-50"
+                >
+                  {isSavingProductEdit ? "Saving Changes..." : "Save Changes (Update Karein)"}
                 </button>
               </div>
             </form>

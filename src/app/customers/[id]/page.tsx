@@ -67,24 +67,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
       if (cust) {
         setCustomer(cust);
       } else {
-        // Fallback demo customer if navigating directly
-        const fallback: Customer = {
-          id: customerId,
-          name: customerId.replace(/_/g, " ").toUpperCase(),
-          category: "pharmacy",
-          contactPerson: "Pharmacy Incharge",
-          phone: "+92 300 1234567",
-          whatsappNumber: "923001234567",
-          address: "Commercial Market, Main Boulevard",
-          city: "Lahore",
-          creditLimit: 500000,
-          creditTermsDays: 30,
-          currentOutstandingBalance: 145000,
-          status: "active",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        setCustomer(fallback);
+        setCustomer(null);
       }
 
       setInvoices(
@@ -292,7 +275,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Outstanding Balance
+            Total Udhaar (Baqaya)
           </span>
           <span
             className={`text-2xl font-black font-mono ${
@@ -302,13 +285,13 @@ export default function CustomerDetailPage({ params }: PageProps) {
             {formatPKR(customer.currentOutstandingBalance)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            Credit Terms: {customer.creditTermsDays} Days
+            Allowed Days: {customer.creditTermsDays} Days
           </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Sanctioned Credit Limit
+            Maximum Udhaar Limit
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(customer.creditLimit)}
@@ -329,13 +312,13 @@ export default function CustomerDetailPage({ params }: PageProps) {
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Remaining Available Credit
+            Remaining Udhaar Space
           </span>
           <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
             {formatPKR(Math.max(0, customer.creditLimit - customer.currentOutstandingBalance))}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {creditUtilization}% limit utilized
+            {creditUtilization}% of limit used
           </span>
         </div>
       </div>
@@ -343,11 +326,11 @@ export default function CustomerDetailPage({ params }: PageProps) {
       {/* Tab Navigation */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-2 overflow-x-auto text-xs font-bold">
         {[
-          { id: "overview", label: "Overview & Contacts", icon: Building2 },
-          { id: "invoices", label: `Invoices (${invoices.length})`, icon: Receipt },
-          { id: "payment", label: "Record Payment", icon: DollarSign },
-          { id: "ledger", label: "Ledger Statement", icon: Scale },
-          { id: "visits", label: `Field Visits (${visits.length})`, icon: UserCheck },
+          { id: "overview", label: "Shop Info", icon: Building2 },
+          { id: "invoices", label: `Bills (${invoices.length})`, icon: Receipt },
+          { id: "payment", label: "Receive Payment", icon: DollarSign },
+          { id: "ledger", label: "Khata (History)", icon: Scale },
+          { id: "visits", label: `Visits (${visits.length})`, icon: UserCheck },
           { id: "reminder", label: "WhatsApp Reminder", icon: Send },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -374,11 +357,11 @@ export default function CustomerDetailPage({ params }: PageProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 text-xs">
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-teal-600" /> Commercial Profile
+              <Building2 className="w-4 h-4 text-teal-600" /> Shop & Owner Details
             </h3>
             <div className="space-y-2.5">
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Contact Person:</span>
+                <span className="text-slate-500">Contact Person / Owner:</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
                   {customer.contactPerson}
                 </span>
@@ -390,17 +373,17 @@ export default function CustomerDetailPage({ params }: PageProps) {
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">WhatsApp:</span>
+                <span className="text-slate-500">WhatsApp Number:</span>
                 <span className="font-bold font-mono text-emerald-600">
                   +{customer.whatsappNumber || customer.phone}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">City / Region:</span>
+                <span className="text-slate-500">City / Town:</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{customer.city}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Physical Address:</span>
+                <span className="text-slate-500">Shop Address:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200 text-right">
                   {customer.address}
                 </span>
@@ -410,29 +393,29 @@ export default function CustomerDetailPage({ params }: PageProps) {
 
           <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 text-xs">
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-teal-600" /> Financial Settings
+              <CreditCard className="w-4 h-4 text-teal-600" /> Payment & Udhaar Settings
             </h3>
             <div className="space-y-2.5">
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Credit Limit:</span>
+                <span className="text-slate-500">Maximum Udhaar Allowed:</span>
                 <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
                   {formatPKR(customer.creditLimit)}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Payment Terms:</span>
-                <span className="font-bold text-teal-600">{customer.creditTermsDays} Days Net</span>
+                <span className="text-slate-500">Allowed Payment Days:</span>
+                <span className="font-bold text-teal-600">{customer.creditTermsDays} Days</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Account Status:</span>
+                <span className="text-slate-500">Shop Status:</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
-                  {customer.status.toUpperCase()}
+                  {customer.status === "active" ? "ACTIVE / OPEN" : "INACTIVE"}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Assigned Sales Rep:</span>
+                <span className="text-slate-500">Field Booker / Rep:</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {customer.assignedSalesRepId ? "Zubair Ahmed (Lahore Central)" : "Direct House Account"}
+                  {customer.assignedSalesRepId ? "Zubair Ahmed (Field Staff)" : "Direct Office Account"}
                 </span>
               </div>
             </div>
@@ -445,32 +428,32 @@ export default function CustomerDetailPage({ params }: PageProps) {
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-              Invoices & Billing History
+              Customer Bills History
             </h3>
             <Link
               href={`/sales/invoices/new?customerId=${customer.id}`}
               className="text-xs font-bold text-teal-600 hover:underline"
             >
-              + Create New Invoice
+              + Make New Bill
             </Link>
           </div>
 
           {invoices.length === 0 ? (
             <div className="p-8 text-center text-slate-400">
               <Receipt className="w-10 h-10 mx-auto mb-2 opacity-50" />
-              <p className="text-xs">No invoices created for this customer yet.</p>
+              <p className="text-xs">No bills made for this customer yet.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                   <tr>
-                    <th className="p-2.5">Provisional Ref</th>
-                    <th className="p-2.5">Invoice Date</th>
+                    <th className="p-2.5">Bill No</th>
+                    <th className="p-2.5">Bill Date</th>
                     <th className="p-2.5">Due Date</th>
-                    <th className="p-2.5 text-right">Net Total</th>
+                    <th className="p-2.5 text-right">Total Bill</th>
                     <th className="p-2.5 text-right">Paid</th>
-                    <th className="p-2.5 text-right">Balance</th>
+                    <th className="p-2.5 text-right">Baqaya</th>
                     <th className="p-2.5 text-center">Status</th>
                   </tr>
                 </thead>
@@ -508,7 +491,11 @@ export default function CustomerDetailPage({ params }: PageProps) {
                               : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
                           }`}
                         >
-                          {inv.paymentStatus.toUpperCase()}
+                          {inv.paymentStatus === "paid"
+                            ? "PAID"
+                            : inv.paymentStatus === "partially_paid"
+                            ? "HALF PAID"
+                            : "UNPAID"}
                         </span>
                       </td>
                     </tr>
@@ -524,17 +511,17 @@ export default function CustomerDetailPage({ params }: PageProps) {
       {activeTab === "payment" && (
         <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm max-w-xl mx-auto space-y-4">
           <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-teal-600" /> Record Customer Payment
+            <DollarSign className="w-5 h-5 text-teal-600" /> Receive Customer Payment
           </h3>
           <p className="text-xs text-slate-500">
-            Payment will automatically allocate against open invoices starting from the oldest invoice
-            (FIFO) and reduce the customer&apos;s outstanding balance.
+            Payment will automatically pay off oldest unpaid bills first and reduce the customer&apos;s
+            remaining balance.
           </p>
 
           <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
             <div>
               <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Payment Amount (PKR) *
+                Cash Received (Rs) *
               </label>
               <input
                 type="number"
@@ -550,7 +537,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Payment Method *
+                  Received Via *
                 </label>
                 <select
                   value={payMethod}
@@ -565,7 +552,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Bank Reference / Cheque #
+                  Cheque / Slip #
                 </label>
                 <input
                   type="text"
@@ -579,11 +566,11 @@ export default function CustomerDetailPage({ params }: PageProps) {
 
             <div>
               <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Receipt Notes
+                Payment Note
               </label>
               <textarea
                 rows={2}
-                placeholder="Received by Medical Rep or Deposit Slip details..."
+                placeholder="Cash handed by store manager, or deposit slip details..."
                 value={payNotes}
                 onChange={(e) => setPayNotes(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -595,7 +582,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
               disabled={isRecordingPayment || payAmount <= 0}
               className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-md shadow-teal-600/20 disabled:opacity-50 transition-all"
             >
-              {isRecordingPayment ? "Recording Payment..." : "Record Payment & Issue Receipt"}
+              {isRecordingPayment ? "Saving Payment..." : "Save Payment & Update Khata"}
             </button>
           </form>
         </div>
@@ -607,17 +594,17 @@ export default function CustomerDetailPage({ params }: PageProps) {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                Customer General Ledger Statement
+                Customer Khata Statement
               </h3>
               <p className="text-xs text-slate-400">
-                Chronological statement of invoices, payments and running receivable balance
+                Full history of bills, cash payments received, and remaining balance
               </p>
             </div>
             <button
               onClick={() => window.print()}
               className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              Print Statement
+              Print Khata
             </button>
           </div>
 
@@ -626,11 +613,11 @@ export default function CustomerDetailPage({ params }: PageProps) {
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="p-2.5">Date</th>
-                  <th className="p-2.5">Reference</th>
-                  <th className="p-2.5">Description</th>
-                  <th className="p-2.5 text-right">Debit (PKR)</th>
-                  <th className="p-2.5 text-right">Credit (PKR)</th>
-                  <th className="p-2.5 text-right">Running Balance</th>
+                  <th className="p-2.5">Bill / Receipt #</th>
+                  <th className="p-2.5">Details</th>
+                  <th className="p-2.5 text-right">Bill Amount (+)</th>
+                  <th className="p-2.5 text-right">Cash Received (-)</th>
+                  <th className="p-2.5 text-right">Remaining Balance (Baqaya)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -666,19 +653,19 @@ export default function CustomerDetailPage({ params }: PageProps) {
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-              Field Visits & Medical Rep Intel
+              Field & Store Visits
             </h3>
             <Link
               href={`/crm/visits`}
               className="text-xs font-bold text-teal-600 hover:underline"
             >
-              + Log New Field Visit
+              + Add Visit Note
             </Link>
           </div>
 
           {visits.length === 0 ? (
             <p className="text-xs text-slate-400 py-4 text-center">
-              No field visits logged for this customer yet.
+              No staff visits logged for this customer yet.
             </p>
           ) : (
             <div className="space-y-3">
@@ -696,7 +683,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
                   <p className="text-slate-600 dark:text-slate-400">{v.visitNotes}</p>
                   {v.competitorOffers && (
                     <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                      <strong>Competitor Intel:</strong> {v.competitorOffers}
+                      <strong>Market Note:</strong> {v.competitorOffers}
                     </p>
                   )}
                 </div>
@@ -710,7 +697,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
       {activeTab === "reminder" && (
         <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm max-w-xl mx-auto space-y-4">
           <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Send className="w-5 h-5 text-emerald-600" /> WhatsApp Payment Reminder (Day-31 Queue)
+            <Send className="w-5 h-5 text-emerald-600" /> WhatsApp Payment Reminder
           </h3>
           <p className="text-xs text-slate-500">
             Copy and send this polite reminder directly to the pharmacy owner or click the button to
@@ -720,32 +707,32 @@ export default function CustomerDetailPage({ params }: PageProps) {
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 font-sans text-xs space-y-2 whitespace-pre-line text-slate-800 dark:text-slate-200">
             {`Assalam-o-Alaikum ${customer.name},
 
-We hope this message finds you well.
+We hope you are doing well.
 
-This is a gentle reminder from *Noxderma Pharma* regarding your outstanding account balance of *${formatPKR(
+This is a gentle payment reminder from *Noxderma Pharma* regarding your remaining balance of *${formatPKR(
               customer.currentOutstandingBalance
             )}*.
 
-*Account Details for Direct Bank Transfer:*
+*Bank Account Details:*
 Bank: Meezan Bank Ltd
-Account Title: Noxderma Pharmaceuticals Distribution
+Account Title: Noxderma Pharma
 Account Number: 0281-0104928172
 IBAN: PK68MEZN0002810104928172
 
-Please share the payment deposit slip or screenshot once transferred so we can update your ledger immediately.
+Please share the payment deposit slip or screenshot once paid so we can update your Khata immediately.
 
-Thank you for your valued partnership.
-*Noxderma Finance Team*
-Helpline: +92 42 35889911`}
+Thank you!
+*Noxderma Pharma*
+Phone: +92 300 1234567`}
           </div>
 
           <div className="flex gap-3">
             <button
               onClick={() => {
                 navigator.clipboard.writeText(
-                  `Assalam-o-Alaikum ${customer.name},\n\nWe hope this message finds you well.\n\nThis is a gentle reminder from Noxderma Pharma regarding your outstanding account balance of ${formatPKR(
+                  `Assalam-o-Alaikum ${customer.name},\n\nThis is a gentle payment reminder from Noxderma Pharma regarding your remaining balance of ${formatPKR(
                     customer.currentOutstandingBalance
-                  )}.\n\nAccount Details for Direct Bank Transfer:\nBank: Meezan Bank Ltd\nAccount Title: Noxderma Pharmaceuticals Distribution\nIBAN: PK68MEZN0002810104928172\n\nPlease share the payment slip once transferred so we can update your ledger.\n\nThank you,\nNoxderma Finance Team`
+                  )}.\n\nBank Account Details:\nBank: Meezan Bank Ltd\nAccount Title: Noxderma Pharma\nIBAN: PK68MEZN0002810104928172\n\nPlease share the payment slip once paid so we can update your Khata immediately.\n\nThank you,\nNoxderma Pharma`
                 );
                 alert("Reminder text copied to clipboard!");
               }}
@@ -757,9 +744,9 @@ Helpline: +92 42 35889911`}
               href={`https://wa.me/${
                 customer.whatsappNumber || customer.phone.replace(/[^0-9]/g, "")
               }?text=${encodeURIComponent(
-                `Assalam-o-Alaikum ${customer.name},\n\nThis is a gentle reminder from *Noxderma Pharma* regarding your outstanding balance of *${formatPKR(
+                `Assalam-o-Alaikum ${customer.name},\n\nThis is a gentle payment reminder from *Noxderma Pharma* regarding your remaining balance of *${formatPKR(
                   customer.currentOutstandingBalance
-                )}*.\n\nPlease share the deposit slip once transferred so we can update your ledger.\n\nThank you,\n*Noxderma Finance Team*`
+                )}*.\n\nPlease share the deposit slip once transferred so we can update your Khata immediately.\n\nThank you,\n*Noxderma Pharma*`
               )}`}
               target="_blank"
               rel="noopener noreferrer"

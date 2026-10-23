@@ -75,12 +75,12 @@ export default function SalesInvoicesListPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Billing & Receivables
+              Customer Bills & Udhaar
             </span>
-            <span className="text-xs text-slate-400">Offline-Persistent</span>
+            <span className="text-xs text-slate-400">Saved Offline</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Sales Invoices Directory
+            Customer Bills (Invoices)
           </h1>
         </div>
 
@@ -88,7 +88,7 @@ export default function SalesInvoicesListPage() {
           href="/sales/invoices/new"
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> Create Sales Invoice
+          <Plus className="w-4 h-4" /> + Make New Bill
         </Link>
       </div>
 
@@ -96,37 +96,37 @@ export default function SalesInvoicesListPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Invoiced Volume
+            Total Bills Amount
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(totalNet)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            Across {invoices.length} Registered Invoices
+            {invoices.length} Total Bills Made
           </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
-            Total Recovered Amount
+            Total Cash Received
           </span>
           <span className="text-2xl font-black font-mono text-emerald-600">
             {formatPKR(Math.max(0, totalNet - totalOutstanding))}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {invoices.filter((i) => i.paymentStatus === "paid").length} fully settled
+            {invoices.filter((i) => i.paymentStatus === "paid").length} bills fully paid
           </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-1">
-            Unpaid Receivables
+            Remaining Market Udhaar (Baqaya)
           </span>
           <span className="text-2xl font-black font-mono text-rose-600">
             {formatPKR(totalOutstanding)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {invoices.filter((i) => i.outstandingBalance > 0).length} pending collection
+            {invoices.filter((i) => i.outstandingBalance > 0).length} bills pending payment
           </span>
         </div>
       </div>
@@ -137,7 +137,7 @@ export default function SalesInvoicesListPage() {
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search invoice ref, customer or phone..."
+            placeholder="Search bill number, customer or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -158,12 +158,18 @@ export default function SalesInvoicesListPage() {
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
               }`}
             >
-              {st.replace("_", " ")}
+              {st === "all"
+                ? "All"
+                : st === "unpaid"
+                ? "Unpaid (Udhaar)"
+                : st === "partially_paid"
+                ? "Half Paid"
+                : "Full Paid"}
             </button>
           ))}
 
           <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0 ml-2">
-            Sync:
+            Online Status:
           </span>
           {(["all", "local_only", "synced"] as const).map((sy) => (
             <button
@@ -175,7 +181,7 @@ export default function SalesInvoicesListPage() {
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
               }`}
             >
-              {sy.replace("_", " ")}
+              {sy === "all" ? "All" : sy === "local_only" ? "Saved Offline" : "Synced Online"}
             </button>
           ))}
         </div>
@@ -186,12 +192,12 @@ export default function SalesInvoicesListPage() {
         {filtered.length === 0 ? (
           <div className="p-12 text-center text-slate-400">
             <Receipt className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p className="text-xs">No invoices found matching criteria.</p>
+            <p className="text-xs">No bills found.</p>
             <Link
               href="/sales/invoices/new"
               className="mt-2 text-xs font-bold text-teal-600 hover:underline inline-block"
             >
-              + Create First Invoice
+              + Make First Bill
             </Link>
           </div>
         ) : (
@@ -199,13 +205,13 @@ export default function SalesInvoicesListPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="p-2.5">Provisional Ref</th>
-                  <th className="p-2.5">Customer & City</th>
-                  <th className="p-2.5">Date & Due</th>
-                  <th className="p-2.5 text-right">Net Total</th>
-                  <th className="p-2.5 text-right">Balance Due</th>
-                  <th className="p-2.5 text-center">Payment</th>
-                  <th className="p-2.5 text-center">Sync</th>
+                  <th className="p-2.5">Bill No</th>
+                  <th className="p-2.5">Customer / Store</th>
+                  <th className="p-2.5">Date / Due Date</th>
+                  <th className="p-2.5 text-right">Total Bill</th>
+                  <th className="p-2.5 text-right">Remaining Baqaya</th>
+                  <th className="p-2.5 text-center">Status</th>
+                  <th className="p-2.5 text-center">Cloud Sync</th>
                   <th className="p-2.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -220,7 +226,7 @@ export default function SalesInvoicesListPage() {
                         {inv.provisionalReference || inv.id}
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        {inv.lines?.length || 1} item(s)
+                        {inv.lines?.length || 1} medicine(s)
                       </span>
                     </td>
                     <td className="p-2.5">
@@ -252,7 +258,11 @@ export default function SalesInvoicesListPage() {
                             : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
                         }`}
                       >
-                        {inv.paymentStatus.toUpperCase()}
+                        {inv.paymentStatus === "paid"
+                          ? "PAID"
+                          : inv.paymentStatus === "partially_paid"
+                          ? "HALF PAID"
+                          : "UNPAID"}
                       </span>
                     </td>
                     <td className="p-2.5 text-center">
@@ -263,29 +273,29 @@ export default function SalesInvoicesListPage() {
                             : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
                         }`}
                       >
-                        {inv.syncStatus === "synced" ? "SYNCED" : "OFFLINE"}
+                        {inv.syncStatus === "synced" ? "ONLINE" : "OFFLINE"}
                       </span>
                     </td>
                     <td className="p-2.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => handlePrint(inv)}
-                          title="Print Receipt"
+                          title="Print Bill"
                           className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
                         >
                           <Printer className="w-4 h-4" />
                         </button>
                         <a
                           href={`https://wa.me/${inv.customerPhone?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                            `*NOXDERMA PHARMACEUTICALS - SALES INVOICE*\nInvoice Ref: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nNet Amount: ${formatPKR(
+                            `*NOXDERMA PHARMA - BILL RECEIPT*\nBill No: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nTotal Bill: ${formatPKR(
                               inv.netTotal
-                            )}\nOutstanding Balance: ${formatPKR(
+                            )}\nRemaining Baqaya: ${formatPKR(
                               inv.outstandingBalance
                             )}\nDue Date: ${inv.dueDate || "30 Days"}\n\nThank you for your business!`
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          title="Share on WhatsApp"
+                          title="Send on WhatsApp"
                           className="p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-950 text-emerald-600"
                         >
                           <Share2 className="w-4 h-4" />
@@ -306,14 +316,14 @@ export default function SalesInvoicesListPage() {
           <div className="text-center border-b pb-4 mb-4">
             <h1 className="text-xl font-black">NOXDERMA PHARMACEUTICALS</h1>
             <p className="text-[11px]">Industrial Area, Phase 2, Lahore, Pakistan</p>
-            <p className="text-[11px]">Tax / Drug License: DL-PB-LHR-2026-9901</p>
-            <h2 className="text-sm font-bold mt-2">SALES TAX INVOICE</h2>
+            <p className="text-[11px]">Phone: +92 300 1234567 • info@noxderma.com</p>
+            <h2 className="text-sm font-bold mt-2">SALES BILL / CASH MEMO</h2>
           </div>
 
           <div className="flex justify-between mb-4 text-xs">
             <div>
               <p>
-                <strong>Invoice Ref:</strong> {selectedInvoice.provisionalReference}
+                <strong>Bill No:</strong> {selectedInvoice.provisionalReference}
               </p>
               <p>
                 <strong>Customer:</strong> {selectedInvoice.customerName}
@@ -330,7 +340,7 @@ export default function SalesInvoicesListPage() {
                 <strong>Due Date:</strong> {selectedInvoice.dueDate}
               </p>
               <p>
-                <strong>Sales Rep:</strong> {selectedInvoice.salesRepName || "Dr. Asim"}
+                <strong>Sales Rep:</strong> {selectedInvoice.salesRepName || "Field Staff"}
               </p>
             </div>
           </div>
@@ -338,9 +348,9 @@ export default function SalesInvoicesListPage() {
           <table className="w-full text-left border-collapse mb-4">
             <thead>
               <tr className="border-b">
-                <th className="py-1">Item Description</th>
+                <th className="py-1">Medicine Name</th>
                 <th className="py-1 text-center">Batch</th>
-                <th className="py-1 text-right">Qty</th>
+                <th className="py-1 text-right">Quantity</th>
                 <th className="py-1 text-right">Price</th>
                 <th className="py-1 text-right">Total</th>
               </tr>
@@ -370,19 +380,18 @@ export default function SalesInvoicesListPage() {
               </p>
             )}
             <p className="text-sm">
-              Net Total: <strong>{formatPKR(selectedInvoice.netTotal)}</strong>
+              Total Bill: <strong>{formatPKR(selectedInvoice.netTotal)}</strong>
             </p>
             <p>
-              Paid Amount: <strong>{formatPKR(selectedInvoice.paidAmount)}</strong>
+              Cash Paid: <strong>{formatPKR(selectedInvoice.paidAmount)}</strong>
             </p>
             <p className="text-sm text-rose-600">
-              Balance Due: <strong>{formatPKR(selectedInvoice.outstandingBalance)}</strong>
+              Remaining Udhaar (Baqaya): <strong>{formatPKR(selectedInvoice.outstandingBalance)}</strong>
             </p>
           </div>
 
           <div className="mt-8 border-t pt-4 text-center text-[10px]">
-            <p>Computer generated invoice. No signature required.</p>
-            <p>Goods once sold under standard FEFO batch allocation cannot be returned without warranty inspection.</p>
+            <p>Computer generated bill. Thank you for your business!</p>
           </div>
         </div>
       )}

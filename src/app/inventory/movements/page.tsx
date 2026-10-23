@@ -49,14 +49,14 @@ export default function StockMovementsPage() {
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Dashboard
+            Back to Home
           </Link>
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <ArrowLeftRight className="w-6 h-6 text-teal-600" />
-            Stock Movement History & Physical Audit Ledger
+            Stock In & Out History (Godown Register)
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Immutable log of every physical quantity change: Purchase Receipts, Sales Deductions, Returns, Damage & Samples.
+            Complete record of every box received from company, sold in bills, broken stock, or given as free doctor samples.
           </p>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function StockMovementsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by product, batch, or reference ID..."
+            placeholder="Search medicine, batch, or bill number..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
@@ -76,14 +76,14 @@ export default function StockMovementsPage() {
 
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
           <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
-            <Filter className="w-3.5 h-3.5" /> Type:
+            <Filter className="w-3.5 h-3.5" /> Filter:
           </span>
           {[
-            { id: "all", label: "All Movements" },
-            { id: "sales_deduction", label: "Sales" },
-            { id: "purchase_receipt", label: "Purchases" },
-            { id: "damaged_stock", label: "Damage" },
-            { id: "sample_issue", label: "Samples" },
+            { id: "all", label: "All Records" },
+            { id: "sales_deduction", label: "Sold in Bills (-)" },
+            { id: "purchase_receipt", label: "Bought from Company (+)" },
+            { id: "damaged_stock", label: "Broken / Damaged (-)" },
+            { id: "sample_issue", label: "Free Doctor Samples (-)" },
           ].map((t) => (
             <button
               key={t.id}
@@ -107,13 +107,13 @@ export default function StockMovementsPage() {
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
                 <th className="py-2.5">Date & Time</th>
-                <th className="py-2.5">Product Description</th>
-                <th className="py-2.5">Batch Number</th>
-                <th className="py-2.5">Movement Type</th>
-                <th className="py-2.5 text-right">Qty Change</th>
-                <th className="py-2.5 text-right">Remaining Bal</th>
-                <th className="py-2.5">Transaction Ref</th>
-                <th className="py-2.5">User</th>
+                <th className="py-2.5">Medicine Name</th>
+                <th className="py-2.5">Batch #</th>
+                <th className="py-2.5">Type</th>
+                <th className="py-2.5 text-right">Quantity Changed</th>
+                <th className="py-2.5 text-right">Stock Left in Godown</th>
+                <th className="py-2.5">Bill / Ref #</th>
+                <th className="py-2.5">Done By (Staff)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -137,7 +137,13 @@ export default function StockMovementsPage() {
                             : "bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300"
                         }`}
                       >
-                        {m.type.replace("_", " ").toUpperCase()}
+                        {m.type === "sales_deduction"
+                          ? "SOLD IN BILL"
+                          : m.type === "purchase_receipt"
+                          ? "STOCK BOUGHT"
+                          : m.type === "damaged_stock"
+                          ? "BROKEN STOCK"
+                          : "DOCTOR SAMPLE"}
                       </span>
                     </td>
                     <td
@@ -157,7 +163,7 @@ export default function StockMovementsPage() {
               ) : (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-400">
-                    No movements found for the selected criteria.
+                    No stock records found.
                   </td>
                 </tr>
               )}

@@ -17,6 +17,7 @@ import {
   Building2,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
+import { offlineDb } from "@/lib/offline/db";
 
 interface RepTarget {
   id: string;
@@ -38,74 +39,55 @@ export default function SalesTargetsPage() {
   const [isSettingTarget, setIsSettingTarget] = useState(false);
 
   // Form State
-  const [repName, setRepName] = useState("Zubair Ahmed");
-  const [territory, setTerritory] = useState("Lahore Central & Sheikhupura");
-  const [quota, setQuota] = useState(1500000);
-  const [targetVisits, setTargetVisits] = useState(120);
+  const [repName, setRepName] = useState("");
+  const [territory, setTerritory] = useState("");
+  const [quota, setQuota] = useState(0);
+  const [targetVisits, setTargetVisits] = useState(0);
 
   useEffect(() => {
-    const saved = localStorage.getItem("noxderma_rep_targets");
-    if (saved) {
-      setTargets(JSON.parse(saved));
-    } else {
-      const initial: RepTarget[] = [
-        {
-          id: "rep_01",
-          repName: "Zubair Ahmed",
-          territory: "Lahore Central & Sheikhupura",
-          month: "October 2026",
-          monthlyQuotaPkr: 1500000,
-          achievedSalesPkr: 1320000,
-          visitedPharmaciesCount: 94,
-          targetVisitsCount: 110,
-          commissionRatePercent: 2.5,
-          status: "on_track",
-        },
-        {
-          id: "rep_02",
-          repName: "Farhan Ali",
-          territory: "Karachi South & Clifton",
-          month: "October 2026",
-          monthlyQuotaPkr: 2000000,
-          achievedSalesPkr: 2180000,
-          visitedPharmaciesCount: 135,
-          targetVisitsCount: 120,
-          commissionRatePercent: 3.0,
-          status: "ahead",
-        },
-        {
-          id: "rep_03",
-          repName: "Bilal Hussain",
-          territory: "Rawalpindi & Islamabad",
-          month: "October 2026",
-          monthlyQuotaPkr: 1200000,
-          achievedSalesPkr: 890000,
-          visitedPharmaciesCount: 78,
-          targetVisitsCount: 100,
-          commissionRatePercent: 2.5,
-          status: "behind",
-        },
-        {
-          id: "rep_04",
-          repName: "Kamran Siddiqui",
-          territory: "Faisalabad & Jhang",
-          month: "October 2026",
-          monthlyQuotaPkr: 1000000,
-          achievedSalesPkr: 980000,
-          visitedPharmaciesCount: 88,
-          targetVisitsCount: 90,
-          commissionRatePercent: 2.5,
-          status: "on_track",
-        },
-      ];
-      setTargets(initial);
-      localStorage.setItem("noxderma_rep_targets", JSON.stringify(initial));
+    async function loadTargets() {
+      try {
+        const dbTargets = await (offlineDb as any).employeeTargets?.toArray();
+        if (dbTargets && dbTargets.length > 0) {
+          setTargets(dbTargets as RepTarget[]);
+          return;
+        }
+      } catch {
+        // fallback
+      }
+
+      const saved = localStorage.getItem("noxderma_rep_targets");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setTargets(parsed);
+          } else {
+            setTargets([]);
+          }
+        } catch {
+          setTargets([]);
+        }
+      } else {
+        setTargets([]);
+      }
     }
+    loadTargets();
   }, []);
 
-  const saveTargets = (updated: RepTarget[]) => {
+  const saveTargets = async (updated: RepTarget[]) => {
     setTargets(updated);
     localStorage.setItem("noxderma_rep_targets", JSON.stringify(updated));
+    try {
+      if ((offlineDb as any).employeeTargets) {
+        await (offlineDb as any).employeeTargets.clear();
+        if (updated.length > 0) {
+          await (offlineDb as any).employeeTargets.bulkPut(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to sync employeeTargets to offlineDb:", err);
+    }
   };
 
   const handleSetTarget = (e: React.FormEvent) => {
@@ -145,12 +127,12 @@ export default function SalesTargetsPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Field Force Management
+              Field Staff
             </span>
-            <span className="text-xs text-slate-400">Monthly Quotas & Incentives</span>
+            <span className="text-xs text-slate-400">Monthly Targets & Commission</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Sales Targets & Medical Rep Performance
+            Sales Staff Monthly Targets & Performance
           </h1>
         </div>
 
@@ -158,7 +140,7 @@ export default function SalesTargetsPage() {
           onClick={() => setIsSettingTarget(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
         >
-          <Plus className="w-4 h-4" /> Set Monthly Target
+          <Plus className="w-4 h-4" /> + Set Monthly Target
         </button>
       </div>
 
@@ -166,29 +148,29 @@ export default function SalesTargetsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Monthly Quota ({selectedMonth})
+            Total Sales Target ({selectedMonth})
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(totalQuota)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Across {targets.length} Territories</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">For all {targets.length} areas</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
-            Achieved Bookings & Invoices
+            Total Sales Done So Far
           </span>
           <span className="text-2xl font-black font-mono text-emerald-600">
             {formatPKR(totalAchieved)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {overallAchievementPercent}% team attainment
+            {overallAchievementPercent}% target completed
           </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider block mb-1">
-            Accrued Field Commission
+            Staff Commission Earned
           </span>
           <span className="text-2xl font-black font-mono text-teal-600 dark:text-teal-400">
             {formatPKR(
@@ -198,7 +180,7 @@ export default function SalesTargetsPage() {
               )
             )}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Incentives earned this month</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Commission for staff this month</span>
         </div>
       </div>
 
@@ -208,12 +190,12 @@ export default function SalesTargetsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="p-2.5">Medical Rep & Territory</th>
-                <th className="p-2.5 text-right">Monthly Target</th>
-                <th className="p-2.5 text-right">Achieved Sales</th>
-                <th className="p-2.5 text-center">Progress Meter</th>
-                <th className="p-2.5 text-right">Field Visits</th>
-                <th className="p-2.5 text-right">Accrued Commission</th>
+                <th className="p-2.5">Staff Name & Area</th>
+                <th className="p-2.5 text-right">Target (Hadaf)</th>
+                <th className="p-2.5 text-right">Sales Done</th>
+                <th className="p-2.5 text-center">Progress</th>
+                <th className="p-2.5 text-right">Visits Done / Goal</th>
+                <th className="p-2.5 text-right">Commission</th>
                 <th className="p-2.5 text-center">Status</th>
               </tr>
             </thead>
@@ -268,7 +250,7 @@ export default function SalesTargetsPage() {
                             : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
                         }`}
                       >
-                        {t.status.replace("_", " ").toUpperCase()}
+                        {t.status === "ahead" ? "TARGET COMPLETED" : t.status === "on_track" ? "ON TRACK" : "BEHIND TARGET"}
                       </span>
                     </td>
                   </tr>
@@ -285,7 +267,7 @@ export default function SalesTargetsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Target className="w-5 h-5 text-teal-600" /> Assign Sales Target
+                <Target className="w-5 h-5 text-teal-600" /> Set Sales Target for Staff
               </h2>
               <button
                 onClick={() => setIsSettingTarget(false)}
@@ -298,7 +280,7 @@ export default function SalesTargetsPage() {
             <form onSubmit={handleSetTarget} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Medical Representative *
+                  Staff Member Name *
                 </label>
                 <input
                   type="text"
@@ -311,7 +293,7 @@ export default function SalesTargetsPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Territory
+                  Area / City (Ilaqa)
                 </label>
                 <input
                   type="text"
@@ -325,7 +307,7 @@ export default function SalesTargetsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Target Quota (PKR) *
+                    Sales Target Amount (PKR) *
                   </label>
                   <input
                     type="number"
@@ -338,7 +320,7 @@ export default function SalesTargetsPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Monthly Visits Goal
+                    Total Shop Visits Goal
                   </label>
                   <input
                     type="number"
@@ -363,7 +345,7 @@ export default function SalesTargetsPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Assign Target
+                  Save Target
                 </button>
               </div>
             </form>

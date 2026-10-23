@@ -36,10 +36,10 @@ export default function ManufacturerLedgersPage() {
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
 
   // Form State
-  const [mfrName, setMfrName] = useState("Bayer Healthcare PK");
-  const [amount, setAmount] = useState(50000);
-  const [paymentRef, setPaymentRef] = useState("CHQ-448810");
-  const [notes, setNotes] = useState("Payment against PO-2026-089");
+  const [mfrName, setMfrName] = useState("");
+  const [amount, setAmount] = useState(0);
+  const [paymentRef, setPaymentRef] = useState("");
+  const [notes, setNotes] = useState("");
 
   const [entries, setEntries] = useState<ManufacturerPayableEntry[]>([]);
 
@@ -48,58 +48,7 @@ export default function ManufacturerLedgersPage() {
     if (saved) {
       setEntries(JSON.parse(saved));
     } else {
-      const initial: ManufacturerPayableEntry[] = [
-        {
-          id: "mfr_ledg_01",
-          manufacturerId: "mfr_bayer_pk",
-          manufacturerName: "Bayer Healthcare PK",
-          date: "2026-10-15",
-          referenceNumber: "PO-2026-089",
-          referenceType: "purchase_invoice",
-          description: "Inward Goods Receipt (200 packs NoxAmox 500mg)",
-          debit: 0,
-          credit: 76000,
-          runningBalance: 76000,
-        },
-        {
-          id: "mfr_ledg_02",
-          manufacturerId: "mfr_bayer_pk",
-          manufacturerName: "Bayer Healthcare PK",
-          date: "2026-10-18",
-          referenceNumber: "PV-2026-031",
-          referenceType: "payment_voucher",
-          description: "Bank Transfer via Meezan Bank (Ref: 99120)",
-          debit: 50000,
-          credit: 0,
-          runningBalance: 26000,
-        },
-        {
-          id: "mfr_ledg_03",
-          manufacturerId: "mfr_gsk_pk",
-          manufacturerName: "GlaxoSmithKline PK",
-          date: "2026-10-18",
-          referenceNumber: "PO-2026-092",
-          referenceType: "purchase_invoice",
-          description: "Goods Receipt (150 tubes DermaClear Cream)",
-          debit: 0,
-          credit: 42000,
-          runningBalance: 42000,
-        },
-        {
-          id: "mfr_ledg_04",
-          manufacturerId: "mfr_nox_laboratories",
-          manufacturerName: "Nox Laboratories PK",
-          date: "2026-10-20",
-          referenceNumber: "PO-2026-095",
-          referenceType: "purchase_invoice",
-          description: "Inward Stock (300 packs Nox-D3)",
-          debit: 0,
-          credit: 156000,
-          runningBalance: 156000,
-        },
-      ];
-      setEntries(initial);
-      localStorage.setItem("noxderma_mfr_ledger", JSON.stringify(initial));
+      setEntries([]);
     }
   }, []);
 
@@ -159,12 +108,12 @@ export default function ManufacturerLedgersPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Accounts Payable
+              Company Khata & Payments
             </span>
-            <span className="text-xs text-slate-400">Auditable Supplier Ledgers</span>
+            <span className="text-xs text-slate-400">Medicine Companies History</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Manufacturer Payables Ledger
+            Company Khata (Money We Owe Companies)
           </h1>
         </div>
 
@@ -173,13 +122,13 @@ export default function ManufacturerLedgersPage() {
             onClick={() => window.print()}
             className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300"
           >
-            <Printer className="w-3.5 h-3.5" /> Print Statement
+            <Printer className="w-3.5 h-3.5" /> Print Khata Statement
           </button>
           <button
             onClick={() => setIsRecordingPayment(true)}
             className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
           >
-            <Plus className="w-4 h-4" /> Issue Payment Voucher
+            <Plus className="w-4 h-4" /> + Add Payment to Company
           </button>
         </div>
       </div>
@@ -188,32 +137,32 @@ export default function ManufacturerLedgersPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Outstanding Payables
+            Total Money We Owe Companies
           </span>
           <span className="text-2xl font-black font-mono text-rose-600">
             {formatPKR(totalPayable)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Owed to pharmaceutical manufacturers</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Total remaining balance to pay</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider block mb-1">
-            Total Purchase Volume
+            Total Stock Bought (+)
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(entries.reduce((sum, e) => sum + e.credit, 0))}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Historical Inward Orders</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">All medicine purchases</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
-            Total Disbursed Payments
+            Total Payments Paid (-)
           </span>
           <span className="text-2xl font-black font-mono text-emerald-600">
             {formatPKR(entries.reduce((sum, e) => sum + e.debit, 0))}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Direct Supplier Settlements</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Cash & bank payments made</span>
         </div>
       </div>
 
@@ -223,7 +172,7 @@ export default function ManufacturerLedgersPage() {
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search reference, description or manufacturer..."
+            placeholder="Search purchase no, company or details..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -232,7 +181,7 @@ export default function ManufacturerLedgersPage() {
 
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
           <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
-            <Filter className="w-3.5 h-3.5" /> Manufacturer:
+            <Filter className="w-3.5 h-3.5" /> Select Company:
           </span>
           {["all", "Bayer", "GSK", "Nox Laboratories"].map((m) => (
             <button
@@ -244,7 +193,7 @@ export default function ManufacturerLedgersPage() {
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
               }`}
             >
-              {m === "all" ? "All Suppliers" : m}
+              {m === "all" ? "All Companies" : m}
             </button>
           ))}
         </div>
@@ -257,12 +206,12 @@ export default function ManufacturerLedgersPage() {
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="p-2.5">Date</th>
-                <th className="p-2.5">Reference #</th>
-                <th className="p-2.5">Manufacturer</th>
-                <th className="p-2.5">Transaction Description</th>
-                <th className="p-2.5 text-right">Debit (Payment)</th>
-                <th className="p-2.5 text-right">Credit (Purchase)</th>
-                <th className="p-2.5 text-right">Payable Balance</th>
+                <th className="p-2.5">Purchase / Cheque #</th>
+                <th className="p-2.5">Medicine Company</th>
+                <th className="p-2.5">Details</th>
+                <th className="p-2.5 text-right">Payment Paid (-)</th>
+                <th className="p-2.5 text-right">Stock Bought (+)</th>
+                <th className="p-2.5 text-right">Remaining Balance to Pay</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -301,7 +250,7 @@ export default function ManufacturerLedgersPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-teal-600" /> Record Supplier Payment Voucher
+                <DollarSign className="w-5 h-5 text-teal-600" /> Record Payment to Company
               </h2>
               <button
                 onClick={() => setIsRecordingPayment(false)}
@@ -314,7 +263,7 @@ export default function ManufacturerLedgersPage() {
             <form onSubmit={handleRecordPayment} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Manufacturer *
+                  Medicine Company *
                 </label>
                 <select
                   value={mfrName}
@@ -330,7 +279,7 @@ export default function ManufacturerLedgersPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Payment Amount (PKR) *
+                  Amount Paid (Rs) *
                 </label>
                 <input
                   type="number"
@@ -344,7 +293,7 @@ export default function ManufacturerLedgersPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Cheque / Bank Transfer Reference
+                  Cheque / Bank Reference Number
                 </label>
                 <input
                   type="text"
@@ -357,7 +306,7 @@ export default function ManufacturerLedgersPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Payment Description
+                  Payment Note / Details
                 </label>
                 <textarea
                   rows={2}
@@ -379,7 +328,7 @@ export default function ManufacturerLedgersPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Record Voucher
+                  Save Payment
                 </button>
               </div>
             </form>

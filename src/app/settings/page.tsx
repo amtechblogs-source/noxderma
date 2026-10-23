@@ -71,21 +71,21 @@ export default function BusinessSettingsPage() {
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Dashboard
+            Back to Home
           </Link>
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Settings className="w-6 h-6 text-teal-600" />
-            Central Business Configuration & Branding
+            Business Name, Address & Bill Settings
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Centrally configured legal identity, invoice numbering, credit terms, and clinical policies.
+            Yahan apni company ka naam, phone number, address aur bill k rules set karein.
           </p>
         </div>
 
         {isSaved && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-xs font-bold border border-teal-200 dark:border-teal-800 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-teal-600" />
-            Settings Saved
+            Settings Saved (Save Ho Gai)
           </span>
         )}
       </div>
@@ -95,13 +95,13 @@ export default function BusinessSettingsPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Building2 className="w-4 h-4 text-teal-600" />
-            1. Legal & Brand Identity
+            1. Company Name & Contact Details
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                Legal Entity Name
+                Company Full Registered Name
               </label>
               <input
                 type="text"
@@ -113,7 +113,7 @@ export default function BusinessSettingsPage() {
 
             <div>
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                Display Brand Name
+                Company Brand Name (Prints on Bills)
               </label>
               <input
                 type="text"
@@ -126,7 +126,7 @@ export default function BusinessSettingsPage() {
             <div className="md:col-span-2">
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                Registered Address (Appears on Invoices & Certificates)
+                Office / Godown Address (Prints on Bills)
               </label>
               <input
                 type="text"
@@ -139,7 +139,7 @@ export default function BusinessSettingsPage() {
             <div>
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <Phone className="w-3.5 h-3.5 text-slate-400" />
-                UAN Contact Phone
+                Office Phone Number
               </label>
               <input
                 type="text"
@@ -165,7 +165,7 @@ export default function BusinessSettingsPage() {
             <div>
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5 text-slate-400" />
-                Contact Email
+                Email Address
               </label>
               <input
                 type="email"
@@ -178,7 +178,7 @@ export default function BusinessSettingsPage() {
             <div>
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5 text-slate-400" />
-                Official Website
+                Website (Optional)
               </label>
               <input
                 type="url"
@@ -194,12 +194,12 @@ export default function BusinessSettingsPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-teal-600" />
-            2. Currency & Timezone Policies
+            2. Currency & Udhaar Days
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="block font-semibold mb-1">Base Currency</label>
+              <label className="block font-semibold mb-1">Currency</label>
               <input
                 type="text"
                 disabled
@@ -210,18 +210,18 @@ export default function BusinessSettingsPage() {
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Operating Timezone</label>
+              <label className="block font-semibold mb-1">City Timezone</label>
               <input
                 type="text"
                 disabled
                 value={settings.timezone}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 font-bold text-slate-500 cursor-not-allowed"
               />
-              <span className="text-[10px] text-slate-400 mt-1 block">Default: Asia/Karachi (PKT)</span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Default: Pakistan Standard Time</span>
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Default Credit Terms</label>
+              <label className="block font-semibold mb-1">Standard Udhaar Days (Credit Days)</label>
               <input
                 type="number"
                 value={settings.defaultCreditTermsDays}
@@ -231,7 +231,7 @@ export default function BusinessSettingsPage() {
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
               />
               <span className="text-[10px] text-teal-600 mt-1 block">
-                Triggers overdue payment reminder on Day 31
+                Itne din baad customer ko udhaar wapis karne ka alert show ho ga
               </span>
             </div>
           </div>
@@ -241,12 +241,12 @@ export default function BusinessSettingsPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Receipt className="w-4 h-4 text-teal-600" />
-            3. Invoicing Policy & Settlement Instructions
+            3. Bill Settings & Bank Account Details
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block font-semibold mb-1">Official Invoice Prefix</label>
+              <label className="block font-semibold mb-1">Bill Number Prefix (e.g. BILL or INV)</label>
               <input
                 type="text"
                 value={settings.invoicePrefix}
@@ -254,12 +254,12 @@ export default function BusinessSettingsPage() {
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-bold"
               />
               <span className="text-[10px] text-slate-400 mt-1 block">
-                Generates references like: {settings.invoicePrefix}-2026-00001
+                Bill number aisa bane ga: {settings.invoicePrefix}-2026-00001
               </span>
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Standard Delivery Fee (PKR)</label>
+              <label className="block font-semibold mb-1">Rider / Delivery Charges (PKR)</label>
               <input
                 type="number"
                 value={settings.defaultDeliverySettings.standardCharge}
@@ -277,7 +277,7 @@ export default function BusinessSettingsPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block font-semibold mb-1">Official Bank Account & Settlement Instructions</label>
+              <label className="block font-semibold mb-1">Bank Account Details (Prints on Bill for Payment)</label>
               <textarea
                 rows={2}
                 value={settings.paymentInstructions}
@@ -287,7 +287,7 @@ export default function BusinessSettingsPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block font-semibold mb-1">Printable Invoice Footer Message</label>
+              <label className="block font-semibold mb-1">Bill k Nechay Ka Message (Note / Disclaimer)</label>
               <input
                 type="text"
                 value={settings.invoiceFooter}
@@ -302,12 +302,12 @@ export default function BusinessSettingsPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Clock className="w-4 h-4 text-teal-600" />
-            4. FEFO Expiry & Quarantine Controls
+            4. Low Stock Alert & Expiry Rule
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block font-semibold mb-1">Low-Stock Alert Threshold (Default Units)</label>
+              <label className="block font-semibold mb-1">Low-Stock Alert (Jab itne box bachein to alert show ho)</label>
               <input
                 type="number"
                 value={settings.lowStockThresholdDefault}
@@ -319,7 +319,7 @@ export default function BusinessSettingsPage() {
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Expiry Enforcement Policy</label>
+              <label className="block font-semibold mb-1">Expired Medicine Sale Rule</label>
               <select
                 value={settings.expiryBlockingPolicy}
                 onChange={(e) =>
@@ -330,8 +330,8 @@ export default function BusinessSettingsPage() {
                 }
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
               >
-                <option value="block_sale">Strict Block: Zero sales permitted for expired batches</option>
-                <option value="warn_admin_override">Warning with mandatory Admin override reason</option>
+                <option value="block_sale">Strict Block: Expired medicine ka bill bilkul na bane (Recommended)</option>
+                <option value="warn_admin_override">Warning: Warning de aur owner ki permission se bill bane</option>
               </select>
             </div>
           </div>
@@ -344,7 +344,7 @@ export default function BusinessSettingsPage() {
             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-lg shadow-teal-600/30 transition-all disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            {isSaving ? "Saving..." : "Save Business Configuration"}
+            {isSaving ? "Saving..." : "Save Settings (Mehfooz Karein)"}
           </button>
         </div>
       </form>

@@ -49,11 +49,11 @@ export default function SalesReturnsPage() {
 
   // Form State
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [invoiceRef, setInvoiceRef] = useState("NXD-2026-0042");
+  const [invoiceRef, setInvoiceRef] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [batchNum, setBatchNum] = useState("NX-AMX-B1");
-  const [qty, setQty] = useState(10);
-  const [unitCredit, setUnitCredit] = useState(650);
+  const [batchNum, setBatchNum] = useState("");
+  const [qty, setQty] = useState(1);
+  const [unitCredit, setUnitCredit] = useState(0);
   const [reason, setReason] = useState<SalesReturn["returnReason"]>("near_expiry");
   const [disposition, setDisposition] = useState<SalesReturn["disposition"]>("quarantine_batch");
 
@@ -66,32 +66,30 @@ export default function SalesReturnsPage() {
       setCustomers(custList);
       setProducts(prodList);
 
+      try {
+        const dbReturns = await (offlineDb as any).salesReturns?.toArray();
+        if (dbReturns && dbReturns.length > 0) {
+          setReturns(dbReturns as SalesReturn[]);
+          return;
+        }
+      } catch {
+        // fallback
+      }
+
       const saved = localStorage.getItem("noxderma_sales_returns");
       if (saved) {
-        setReturns(JSON.parse(saved));
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setReturns(parsed);
+          } else {
+            setReturns([]);
+          }
+        } catch {
+          setReturns([]);
+        }
       } else {
-        const initialReturns: SalesReturn[] = [
-          {
-            id: "ret_01",
-            returnNoteNumber: "CN-2026-008",
-            invoiceReference: "OFF-DEV01-20261015-001",
-            customerId: "cust_al_shifa_lahore",
-            customerName: "Al-Shifa Medicos & Pharmacy",
-            productId: "prod_amox_500",
-            productName: "NoxAmox 500mg Capsules",
-            batchNumber: "NX-AMX-B1",
-            returnQuantity: 5,
-            unitCreditPrice: 650,
-            totalCreditAmount: 3250,
-            returnReason: "near_expiry",
-            disposition: "quarantine_batch",
-            status: "approved",
-            returnDate: "2026-10-20",
-            recordedByName: "Dr. Asim (Admin)",
-          },
-        ];
-        setReturns(initialReturns);
-        localStorage.setItem("noxderma_sales_returns", JSON.stringify(initialReturns));
+        setReturns([]);
       }
     } finally {
       setLoading(false);
@@ -102,9 +100,19 @@ export default function SalesReturnsPage() {
     loadData();
   }, []);
 
-  const saveReturns = (updated: SalesReturn[]) => {
+  const saveReturns = async (updated: SalesReturn[]) => {
     setReturns(updated);
     localStorage.setItem("noxderma_sales_returns", JSON.stringify(updated));
+    try {
+      if ((offlineDb as any).salesReturns) {
+        await (offlineDb as any).salesReturns.clear();
+        if (updated.length > 0) {
+          await (offlineDb as any).salesReturns.bulkPut(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to sync salesReturns to offlineDb:", err);
+    }
   };
 
   const handleProcessReturn = async (e: React.FormEvent) => {
@@ -164,9 +172,9 @@ export default function SalesReturnsPage() {
     saveReturns([newReturn, ...returns]);
     setIsProcessing(false);
     alert(
-      `Credit Note ${cnNumber} for ${formatPKR(
+      `Return slip ${cnNumber} for ${formatPKR(
         totalCredit
-      )} issued to ${cust.name}. Stock returned to ${disposition}.`
+      )} created for ${cust.name}. Remaining udhaar decreased by this amount.`
     );
   };
 
@@ -188,12 +196,12 @@ export default function SalesReturnsPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Reverse Supply Chain
+              Customer Returns
             </span>
-            <span className="text-xs text-slate-400">Credit Notes & QA Inspection</span>
+            <span className="text-xs text-slate-400">Medicine Returns & Balance Deduction</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Sales Returns & Customer Credit Notes
+            Customer Medicine Returns (Wapis Stock)
           </h1>
         </div>
 
@@ -201,7 +209,7 @@ export default function SalesReturnsPage() {
           onClick={() => setIsProcessing(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> Issue Credit Note
+          <Plus className="w-4 h-4" /> + Record Customer Return
         </button>
       </div>
 
@@ -209,32 +217,32 @@ export default function SalesReturnsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Return Notes Issued
+            Total Returns Recorded
           </span>
           <span className="text-2xl font-black text-slate-900 dark:text-slate-100">
-            {returns.length} Notes
+            {returns.length} Returns
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Formal Customer Credit Adjustments</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Returns from Medical Stores</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-1">
-            Total Value Credited
+            Total Return Amount (Deducted from Udhaar)
           </span>
           <span className="text-2xl font-black font-mono text-rose-600">
             {formatPKR(totalCreditIssued)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Deducted from Customer Ledgers</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Subtracted from Customer Khata</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider block mb-1">
-            Quarantine Disposition
+            Broken / Near Expiry Returns
           </span>
           <span className="text-2xl font-black text-amber-600">
             {returns.filter((r) => r.disposition === "quarantine_batch").length} Batches
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Awaiting QA clearance or supplier return</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Kept aside (do not sell)</span>
         </div>
       </div>
 
@@ -244,7 +252,7 @@ export default function SalesReturnsPage() {
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search CN number, pharmacy, product or batch..."
+            placeholder="Search return no, shop name, medicine or batch..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -258,12 +266,12 @@ export default function SalesReturnsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="p-2.5">Credit Note #</th>
-                <th className="p-2.5">Customer & Inv Ref</th>
-                <th className="p-2.5">Product & Batch</th>
+                <th className="p-2.5">Return Slip #</th>
+                <th className="p-2.5">Medical Store & Bill No.</th>
+                <th className="p-2.5">Medicine & Batch</th>
                 <th className="p-2.5">Reason</th>
-                <th className="p-2.5">Stock Routing</th>
-                <th className="p-2.5 text-right">Credit Amount</th>
+                <th className="p-2.5">Where Stock is Kept</th>
+                <th className="p-2.5 text-right">Amount Deducted (-)</th>
                 <th className="p-2.5 text-center">Status</th>
               </tr>
             </thead>
@@ -292,7 +300,13 @@ export default function SalesReturnsPage() {
                     </span>
                   </td>
                   <td className="p-2.5 capitalize text-slate-600 dark:text-slate-400">
-                    {ret.returnReason.replace("_", " ")}
+                    {ret.returnReason === "near_expiry"
+                      ? "Near Expiry"
+                      : ret.returnReason === "transit_damage"
+                      ? "Broken / Damaged"
+                      : ret.returnReason === "pharmacy_overstock"
+                      ? "Shop Overstock"
+                      : ret.returnReason.replace("_", " ")}
                   </td>
                   <td className="p-2.5">
                     <span
@@ -304,7 +318,11 @@ export default function SalesReturnsPage() {
                           : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                       }`}
                     >
-                      {ret.disposition.replace("_", " ").toUpperCase()}
+                      {ret.disposition === "quarantine_batch"
+                        ? "LOCKED / NEAR EXPIRY"
+                        : ret.disposition === "scrap_writeoff"
+                        ? "BROKEN / DESTROYED"
+                        : "ADDED BACK TO STOCK"}
                     </span>
                   </td>
                   <td className="p-2.5 text-right font-mono font-bold text-rose-600">
@@ -328,7 +346,7 @@ export default function SalesReturnsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-teal-600" /> Issue Customer Credit Note
+                <RotateCcw className="w-5 h-5 text-teal-600" /> Record Medicine Return from Customer
               </h2>
               <button
                 onClick={() => setIsProcessing(false)}
@@ -341,7 +359,7 @@ export default function SalesReturnsPage() {
             <form onSubmit={handleProcessReturn} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Customer / Pharmacy *
+                  Medical Store / Pharmacy *
                 </label>
                 <select
                   required
@@ -349,10 +367,10 @@ export default function SalesReturnsPage() {
                   onChange={(e) => setSelectedCustomerId(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
                 >
-                  <option value="">-- Choose Customer --</option>
+                  <option value="">-- Choose Shop / Customer --</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} (Bal: {formatPKR(c.currentOutstandingBalance)})
+                      {c.name} (Udhaar: {formatPKR(c.currentOutstandingBalance)})
                     </option>
                   ))}
                 </select>
@@ -360,7 +378,7 @@ export default function SalesReturnsPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Invoice Reference
+                  Original Bill No. (Optional)
                 </label>
                 <input
                   type="text"
@@ -373,7 +391,7 @@ export default function SalesReturnsPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Returned Product *
+                  Returned Medicine *
                 </label>
                 <select
                   required
@@ -381,7 +399,7 @@ export default function SalesReturnsPage() {
                   onChange={(e) => setSelectedProductId(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
                 >
-                  <option value="">-- Choose Product --</option>
+                  <option value="">-- Choose Medicine --</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -393,7 +411,7 @@ export default function SalesReturnsPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Batch #
+                    Batch No.
                   </label>
                   <input
                     type="text"
@@ -405,7 +423,7 @@ export default function SalesReturnsPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Return Qty
+                    Return Qty (Packs)
                   </label>
                   <input
                     type="number"
@@ -418,7 +436,7 @@ export default function SalesReturnsPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Credit / Pack
+                    Price / Pack
                   </label>
                   <input
                     type="number"
@@ -434,7 +452,7 @@ export default function SalesReturnsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Return Reason
+                    Why is it Returned?
                   </label>
                   <select
                     value={reason}
@@ -442,30 +460,30 @@ export default function SalesReturnsPage() {
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                   >
                     <option value="near_expiry">Near Expiry</option>
-                    <option value="transit_damage">Transit Damage</option>
-                    <option value="pharmacy_overstock">Pharmacy Overstock</option>
-                    <option value="wrong_supply">Wrong Item Supplied</option>
+                    <option value="transit_damage">Broken / Damaged</option>
+                    <option value="pharmacy_overstock">Shop Overstock / Slow Moving</option>
+                    <option value="wrong_supply">Wrong Medicine Supplied</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Stock Disposition
+                    What to do with Returned Stock?
                   </label>
                   <select
                     value={disposition}
                     onChange={(e) => setDisposition(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                   >
-                    <option value="quarantine_batch">Quarantine Batch (Hold)</option>
-                    <option value="scrap_writeoff">Scrap / Write-off</option>
-                    <option value="restocked">Restock to Active Stock</option>
+                    <option value="quarantine_batch">Lock in Godown (Do Not Sell)</option>
+                    <option value="scrap_writeoff">Broken / Throw Away</option>
+                    <option value="restocked">Add Back to Sellable Stock</option>
                   </select>
                 </div>
               </div>
 
               <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs flex justify-between font-bold">
-                <span className="text-rose-900 dark:text-rose-200">Total Credit Note Amount:</span>
+                <span className="text-rose-900 dark:text-rose-200">Total Return Value (Deducted from Udhaar):</span>
                 <span className="font-mono text-rose-600 dark:text-rose-400">
                   {formatPKR(qty * unitCredit)}
                 </span>
@@ -483,7 +501,7 @@ export default function SalesReturnsPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Post Credit Note
+                  Save Return & Deduct Udhaar
                 </button>
               </div>
             </form>

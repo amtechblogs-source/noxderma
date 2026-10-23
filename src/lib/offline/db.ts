@@ -58,6 +58,14 @@ export class NoxdermaDexieDB extends Dexie {
   pendingImages!: Table<PendingImageRecord, string>;
   auditLogs!: Table<LocalAuditLog, string>;
   syncConflicts!: Table<SyncConflict, string>;
+  manufacturers!: Table<any, string>;
+  purchaseOrders!: Table<any, string>;
+  salesBookings!: Table<any, string>;
+  onlineOrders!: Table<any, string>;
+  salesReturns!: Table<any, string>;
+  marketingCampaigns!: Table<any, string>;
+  employeeTargets!: Table<any, string>;
+  users!: Table<any, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -79,6 +87,17 @@ export class NoxdermaDexieDB extends Dexie {
       pendingImages: "id, productId, status, createdAt",
       auditLogs: "id, userId, timestamp, action",
       syncConflicts: "id, operationId, entityType, resolutionStatus, createdAt",
+    });
+
+    this.version(2).stores({
+      manufacturers: "id, name, status",
+      purchaseOrders: "id, poNumber, manufacturerId, status, orderDate",
+      salesBookings: "id, bookingRef, customerId, status, bookingDate",
+      onlineOrders: "id, orderNumber, customerPhone, courier, status, orderDate",
+      salesReturns: "id, returnNoteNumber, customerId, status, returnDate",
+      marketingCampaigns: "id, status, targetAudience, startDate",
+      employeeTargets: "id, repName, month",
+      users: "id, email, role, active",
     });
   }
 }

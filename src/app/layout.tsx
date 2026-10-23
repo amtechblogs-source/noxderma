@@ -13,9 +13,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Noxderma — Offline-First Enterprise Pharmaceutical ERP & CRM",
+  title: "Noxderma — Medicine Distribution, Billing & Khata Software",
   description:
-    "Enterprise pharmaceutical distribution, FEFO batch inventory, offline sales invoicing, 3-way credit ledgers, and marketing management system.",
+    "Medicine sales billing, godown stock, customer khata and offline order booking system.",
   manifest: "/manifest.json",
   icons: {
     icon: "/favicon.ico",
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Noxderma ERP",
+    title: "Noxderma",
   },
 };
 

@@ -44,8 +44,8 @@ export interface StockMovement {
   type: StockMovementType;
   quantityChange: number; // positive for addition, negative for reduction
   balanceAfter: number;
-  referenceId: string; // Invoice ID, GRN ID, Damage ID
-  referenceType: "invoice" | "goods_receipt" | "sample" | "damage" | "adjustment";
+  referenceId: string; // Invoice ID, GRN ID, Damage ID, Booking ID, Online Order ID
+  referenceType: "invoice" | "goods_receipt" | "sample" | "damage" | "adjustment" | "booking" | "online_order";
   userId: string;
   userName: string;
   reason?: string;

@@ -19,11 +19,13 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
-import type { Product, ProductPricing } from "@/types";
+import type { Product, ProductPricing, BusinessSettings } from "@/types";
 
 export default function WhatsAppMarketingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [pricingMap, setPricingMap] = useState<Record<string, number>>({});
+  const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [campaignType, setCampaignType] = useState<
     "bulk_discount" | "near_expiry_clearance" | "new_launch" | "bonus_scheme"
   >("bulk_discount");
@@ -35,14 +37,26 @@ export default function WhatsAppMarketingPage() {
   const [copied, setCopied] = useState<boolean>(false);
 
   useEffect(() => {
-    const loadProducts = async () => {
-      const prodList = await offlineDb.products.toArray();
+    const loadData = async () => {
+      const [prodList, prices, bizSettings] = await Promise.all([
+        offlineDb.products.toArray(),
+        offlineDb.productPricing.toArray(),
+        offlineDb.settings.get("primary"),
+      ]);
       setProducts(prodList);
       if (prodList.length > 0) {
         setSelectedProductId(prodList[0].id);
       }
+      const pMap: Record<string, number> = {};
+      prices.forEach((pr) => {
+        pMap[pr.productId] = pr.tradePricePerPack;
+      });
+      setPricingMap(pMap);
+      if (bizSettings) {
+        setSettings(bizSettings);
+      }
     };
-    loadProducts();
+    loadData();
   }, []);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) || products[0];
@@ -54,42 +68,45 @@ export default function WhatsAppMarketingPage() {
   // Build transformed ImageKit preview URL
   const imageKitTransformedUrl = `${primaryImage}?tr=w-600,h-600,cm-pad_resize,bg-F8FAFC`;
 
-  // Calculated Pricing
-  const regularTradePrice = 650;
+  // Calculated Pricing from real catalog
+  const regularTradePrice = selectedProduct ? (pricingMap[selectedProduct.id] || 0) : 0;
   const discountedPrice = Math.round(regularTradePrice * (1 - discountPercent / 100));
+
+  const phone = settings?.whatsappNumber || settings?.contactPhone || "";
+  const company = settings?.brandName || settings?.legalName || "Noxderma Pharmaceuticals";
+  const web = settings?.website || "";
 
   // WhatsApp formatted text
   const whatsappMessage = selectedProduct
-    ? `🌟 *SPECIAL TRADE PROMOTION — NOXDERMA PHARMA* 🌟
+    ? `🌟 *SPECIAL MEDICINE OFFER — ${company.toUpperCase()}* 🌟
     
-Dear Doctor / Pharmacy Partner,
+Assalam-o-Alaikum / Hello,
 
-We are pleased to announce an exclusive limited-time commercial offer on:
+Special discount offer on:
 
-📦 *Product:* ${selectedProduct.name}
-💊 *Generic:* ${selectedProduct.genericName || "Pharmaceutical Grade Formulation"}
-🏷️ *Pack Formulation:* ${selectedProduct.packSize}
-🏭 *Manufacturer:* ${selectedProduct.manufacturerName}
+📦 *Medicine:* ${selectedProduct.name}
+💊 *Formula:* ${selectedProduct.genericName || "Pharmaceutical Grade Formulation"}
+🏷️ *Pack:* ${selectedProduct.packSize}
+🏭 *Company:* ${selectedProduct.manufacturerName}
 
-💰 *Standard Trade Price (TP):* ${formatPKR(regularTradePrice)}
-🔥 *Special Offer Price:* ${formatPKR(discountedPrice)} (${discountPercent}% OFF)
+💰 *Normal Rate:* ${formatPKR(regularTradePrice)}
+🔥 *Special Offer Rate:* ${formatPKR(discountedPrice)} (${discountPercent}% OFF)
 🎁 *Scheme:* ${
         campaignType === "bonus_scheme"
           ? bonusSchemeText
           : campaignType === "near_expiry_clearance"
-          ? "Special Near-Expiry Clearance Discount"
-          : "Volume Tier Discount"
+          ? "Special Clearance Discount"
+          : "Volume Discount"
       }
 
-⏰ *Offer Validity:* Valid till ${validUntil} (or till stock lasts).
-✅ *Batch Quality:* DRAP / GMP Certified • Genuine Cold-chain guaranteed.
+⏰ *Offer Last Date:* ${validUntil} (or till stock lasts).
+✅ *Quality:* 100% Genuine, Fresh & Certified Stock.
 
-*To place your direct order or inquire:*
-📞 Call/WhatsApp: +92 300 1234567 / +92 42 35889911
-🌐 Web App: https://noxderma.web.app/
+*To order now, contact us:*
+${phone ? `📞 Call/WhatsApp: ${phone}` : "📞 Call/WhatsApp: Contact sales office"}
+${web ? `🌐 Web: ${web}` : ""}
 
-*Noxderma Pharmaceuticals Distribution*
-Excellence in Healthcare & Clinical Formulations`
+*${company}*`
     : "";
 
   const handleCopy = () => {
@@ -105,12 +122,12 @@ Excellence in Healthcare & Clinical Formulations`
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-              Commercial Marketing
+              WhatsApp Offers
             </span>
-            <span className="text-xs text-slate-400">ImageKit Media Transforms</span>
+            <span className="text-xs text-slate-400">Photos & Deals</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            WhatsApp Promotional Card Generator
+            Send Offers on WhatsApp (Message Maker)
           </h1>
         </div>
 
@@ -119,14 +136,14 @@ Excellence in Healthcare & Clinical Formulations`
             href="/marketing"
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> All Campaigns
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to Promotions
           </Link>
           <button
             onClick={handleCopy}
             className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all"
           >
             {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copied to Clipboard!" : "Copy WhatsApp Message"}
+            {copied ? "Copied!" : "Copy WhatsApp Message"}
           </button>
         </div>
       </div>
@@ -136,12 +153,12 @@ Excellence in Healthcare & Clinical Formulations`
         {/* Left Column: Promotion Setup */}
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 text-xs">
           <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-teal-600" /> 1. Configure Promotion Campaign
+            <Sparkles className="w-4 h-4 text-teal-600" /> 1. Choose Medicine & Discount
           </h3>
 
           <div>
             <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Select Product from Catalog *
+              Select Medicine *
             </label>
             <select
               value={selectedProductId}
@@ -159,17 +176,17 @@ Excellence in Healthcare & Clinical Formulations`
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Campaign Theme
+                Type of Offer
               </label>
               <select
                 value={campaignType}
                 onChange={(e) => setCampaignType(e.target.value as any)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
               >
-                <option value="bulk_discount">Bulk Volume Discount</option>
-                <option value="bonus_scheme">Bonus Pack Scheme (e.g. 10+1)</option>
-                <option value="near_expiry_clearance">Near Expiry Clearance</option>
-                <option value="new_launch">New Product Launch</option>
+                <option value="bulk_discount">Special Discount %</option>
+                <option value="bonus_scheme">Free Bonus Scheme (e.g. 10+1)</option>
+                <option value="near_expiry_clearance">Clearance Sale (Near Expiry)</option>
+                <option value="new_launch">New Medicine Launch</option>
               </select>
             </div>
 
@@ -191,12 +208,13 @@ Excellence in Healthcare & Clinical Formulations`
           {campaignType === "bonus_scheme" && (
             <div>
               <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Bonus Pack Description
+                Bonus Scheme Details (Free Items)
               </label>
               <input
                 type="text"
                 value={bonusSchemeText}
                 onChange={(e) => setBonusSchemeText(e.target.value)}
+                placeholder="e.g. Buy 10 Packs, Get 1 Free"
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
               />
             </div>
@@ -204,7 +222,7 @@ Excellence in Healthcare & Clinical Formulations`
 
           <div>
             <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Valid Until Date
+              Offer Last Date
             </label>
             <input
               type="date"
@@ -217,13 +235,13 @@ Excellence in Healthcare & Clinical Formulations`
           {/* Pricing Preview Pill */}
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Regular Trade Price:</span>
+              <span className="text-slate-500">Regular Price (Aam Rate):</span>
               <span className="line-through text-slate-400 font-mono">
                 {formatPKR(regularTradePrice)}
               </span>
             </div>
             <div className="flex justify-between items-center text-sm font-bold">
-              <span className="text-slate-900 dark:text-slate-100">Special Promo Trade Price:</span>
+              <span className="text-slate-900 dark:text-slate-100">Special Offer Rate:</span>
               <span className="text-emerald-600 font-mono text-base font-extrabold">
                 {formatPKR(discountedPrice)}
               </span>
@@ -237,10 +255,7 @@ Excellence in Healthcare & Clinical Formulations`
           <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
               <span className="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <Share2 className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp Visual Media Card
-              </span>
-              <span className="text-[10px] text-teal-600 font-mono font-bold">
-                ImageKit: {selectedProduct?.images?.[0]?.provider || "ik.imagekit.io"}
+                <Share2 className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp Offer Picture
               </span>
             </div>
 
@@ -279,13 +294,13 @@ Excellence in Healthcare & Clinical Formulations`
 
               <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-[10px] text-slate-400 block">Offer Price / Pack:</span>
+                  <span className="text-[10px] text-slate-400 block">Offer Rate:</span>
                   <span className="text-base font-black text-emerald-600 font-mono">
                     {formatPKR(discountedPrice)}
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block">Valid Until:</span>
+                  <span className="text-[10px] text-slate-400 block">Offer Last Date:</span>
                   <span className="font-semibold text-slate-700 dark:text-slate-300">{validUntil}</span>
                 </div>
               </div>
@@ -301,7 +316,7 @@ Excellence in Healthcare & Clinical Formulations`
                 onClick={handleCopy}
                 className="flex-1 py-2 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1.5"
               >
-                <Copy className="w-3.5 h-3.5" /> Copy Text
+                <Copy className="w-3.5 h-3.5" /> Copy Message
               </button>
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`}
@@ -309,7 +324,7 @@ Excellence in Healthcare & Clinical Formulations`
                 rel="noopener noreferrer"
                 className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
               >
-                <Share2 className="w-3.5 h-3.5" /> Share to WhatsApp
+                <Share2 className="w-3.5 h-3.5" /> Send to WhatsApp
               </a>
             </div>
           </div>

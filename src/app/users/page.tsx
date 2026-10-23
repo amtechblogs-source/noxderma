@@ -17,6 +17,7 @@ import {
   Clock,
 } from "lucide-react";
 import type { UserProfile, UserRole } from "@/types";
+import { offlineDb } from "@/lib/offline/db";
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -28,50 +29,65 @@ export default function UserManagementPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("booking_user");
-  const [phone, setPhone] = useState("+92 300 ");
+  const [phone, setPhone] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("noxderma_users");
-    if (saved) {
-      setUsers(JSON.parse(saved));
-    } else {
-      const initialUsers: UserProfile[] = [
-        {
-          id: "usr_admin",
-          email: "admin@noxderma.com",
-          displayName: "Dr. Asim (Chief Executive)",
-          role: "admin",
-          active: true,
-          createdAt: "2026-09-01T08:00:00Z",
-          lastLoginAt: new Date().toISOString(),
-        },
-        {
-          id: "usr_rep_zubair",
-          email: "zubair@noxderma.com",
-          displayName: "Zubair Ahmed",
-          role: "booking_user",
-          active: true,
-          createdAt: "2026-09-10T08:00:00Z",
-          lastLoginAt: new Date(Date.now() - 3600000).toISOString(),
-        },
-        {
-          id: "usr_wh_rashid",
-          email: "rashid@noxderma.com",
-          displayName: "Rashid Minhas",
-          role: "warehouse_staff",
-          active: true,
-          createdAt: "2026-09-12T08:00:00Z",
-          lastLoginAt: new Date(Date.now() - 7200000).toISOString(),
-        },
-      ];
-      setUsers(initialUsers);
-      localStorage.setItem("noxderma_users", JSON.stringify(initialUsers));
+    async function loadUsers() {
+      const defaultAdminUser: UserProfile = {
+        id: "usr_admin",
+        email: "admin@noxderma.com",
+        displayName: "System Administrator",
+        role: "admin",
+        active: true,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      };
+
+      try {
+        const dbUsers = await (offlineDb as any).users?.toArray();
+        if (dbUsers && dbUsers.length > 0) {
+          setUsers(dbUsers as UserProfile[]);
+          return;
+        }
+      } catch {
+        // fallback
+      }
+
+      const saved = localStorage.getItem("noxderma_users");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setUsers(parsed);
+            return;
+          }
+        } catch {
+          // fallback
+        }
+      }
+
+      setUsers([defaultAdminUser]);
+      localStorage.setItem("noxderma_users", JSON.stringify([defaultAdminUser]));
+      try {
+        await (offlineDb as any).users?.put(defaultAdminUser);
+      } catch {}
     }
+    loadUsers();
   }, []);
 
-  const saveUsers = (updated: UserProfile[]) => {
+  const saveUsers = async (updated: UserProfile[]) => {
     setUsers(updated);
     localStorage.setItem("noxderma_users", JSON.stringify(updated));
+    try {
+      if ((offlineDb as any).users) {
+        await (offlineDb as any).users.clear();
+        if (updated.length > 0) {
+          await (offlineDb as any).users.bulkPut(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to sync users to offlineDb:", err);
+    }
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -108,12 +124,12 @@ export default function UserManagementPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Access Governance
+              Staff Accounts
             </span>
-            <span className="text-xs text-slate-400">Strict RBAC & Audit Trails</span>
+            <span className="text-xs text-slate-400">Logins & Security</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            User Management & Role Permissions
+            Staff Accounts & Login Permissions
           </h1>
         </div>
 
@@ -121,7 +137,7 @@ export default function UserManagementPage() {
           onClick={() => setIsAddingUser(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
         >
-          <Plus className="w-4 h-4" /> Add Team Member
+          <Plus className="w-4 h-4" /> + Add New Staff User
         </button>
       </div>
 
@@ -129,11 +145,10 @@ export default function UserManagementPage() {
       <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-3">
         <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <span className="font-extrabold block">Strict Role Segregation Enforced</span>
+          <span className="font-extrabold block">Important Security Rules for Staff</span>
           <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-            <strong>Warehouse Staff</strong> are permanently restricted from viewing purchase costs,
-            wholesale profit margins, and financial ledgers. <strong>Booking Agents</strong> can create
-            provisional offline orders but cannot overwrite past batch historical prices or financial records.
+            <strong>Godown Staff</strong> cannot see your secret buying costs or profit numbers.
+            <strong>Order Staff</strong> can only take orders from shops and make bills — they cannot change company accounts or old bills.
           </p>
         </div>
       </div>
@@ -144,11 +159,11 @@ export default function UserManagementPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="p-2.5">User Name & ID</th>
-                <th className="p-2.5">Email Address</th>
-                <th className="p-2.5">Assigned System Role</th>
-                <th className="p-2.5">Permission Summary</th>
-                <th className="p-2.5">Last Login</th>
+                <th className="p-2.5">Staff Name</th>
+                <th className="p-2.5">Login Email</th>
+                <th className="p-2.5">Job Role</th>
+                <th className="p-2.5">What They Can Do</th>
+                <th className="p-2.5">Last Used</th>
                 <th className="p-2.5 text-center">Status</th>
               </tr>
             </thead>
@@ -177,15 +192,19 @@ export default function UserManagementPage() {
                           : "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
                       }`}
                     >
-                      {user.role.replace("_", " ").toUpperCase()}
+                      {user.role === "admin"
+                        ? "ADMIN / OWNER"
+                        : user.role === "warehouse_staff"
+                        ? "GODOWN STAFF"
+                        : "ORDER BOOKER"}
                     </span>
                   </td>
                   <td className="p-2.5 text-[11px] text-slate-500">
                     {user.role === "admin"
-                      ? "Full System & Financial Access"
+                      ? "Full control of software, profits, and bank accounts"
                       : user.role === "warehouse_staff"
-                      ? "FEFO Batches & Dispatch (No Costs/Prices)"
-                      : "Catalog, Field Visits & Offline Billing"}
+                      ? "Can receive stock and dispatch boxes (cannot see profit/costs)"
+                      : "Can visit shops, take orders, and make bills in market"}
                   </td>
                   <td className="p-2.5 text-slate-400 font-mono text-[10px]">
                     {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : "Never"}
@@ -208,7 +227,7 @@ export default function UserManagementPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <UserCog className="w-5 h-5 text-teal-600" /> Add Team Member
+                <UserCog className="w-5 h-5 text-teal-600" /> Create Login for Staff
               </h2>
               <button
                 onClick={() => setIsAddingUser(false)}
@@ -221,7 +240,7 @@ export default function UserManagementPage() {
             <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Full Name *
+                  Staff Member Name *
                 </label>
                 <input
                   type="text"
@@ -235,12 +254,12 @@ export default function UserManagementPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Email Address *
+                  Login Email Address *
                 </label>
                 <input
                   type="email"
                   required
-                  placeholder="name@noxderma.com"
+                  placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -249,16 +268,16 @@ export default function UserManagementPage() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Select Role & Security Level *
+                  Select Role & Permissions *
                 </label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as any)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
                 >
-                  <option value="booking_user">Booking User (Field Rep)</option>
-                  <option value="warehouse_staff">Warehouse Staff (Restricted Costs)</option>
-                  <option value="admin">Administrator (Full Control)</option>
+                  <option value="booking_user">Order Booker (Sales Staff in Market)</option>
+                  <option value="warehouse_staff">Godown Staff (Stock In/Out - Costs Hidden)</option>
+                  <option value="admin">Owner / Administrator (Full Control)</option>
                 </select>
               </div>
 
@@ -274,7 +293,7 @@ export default function UserManagementPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Save User
+                  Create Account
                 </button>
               </div>
             </form>

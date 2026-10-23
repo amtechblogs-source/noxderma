@@ -53,10 +53,10 @@ export default function NotificationsCenterPage() {
             generated.push({
               id: `alert_credit_${cust.id}`,
               type: "credit_overdue",
-              title: `Day-31 Credit Follow-Up: ${cust.name}`,
-              description: `Outstanding balance of ${formatPKR(
+              title: `Payment Reminder (Udhaar): ${cust.name}`,
+              description: `Remaining balance (Baqaya) of ${formatPKR(
                 cust.currentOutstandingBalance
-              )} has reached 30+ days. WhatsApp reminder queued.`,
+              )} is due. Please send WhatsApp reminder.`,
               timestamp: new Date().toISOString(),
               actionUrl: `/customers/${cust.id}`,
               actionLabel: "Send WhatsApp Reminder",
@@ -72,11 +72,11 @@ export default function NotificationsCenterPage() {
             generated.push({
               id: `alert_exp_${b.id}`,
               type: "near_expiry",
-              title: `FEFO Near-Expiry Flag: Batch ${b.batchNumber}`,
-              description: `${b.productName} has ${b.remainingQuantity} packs expiring on ${b.expiryDate}. Recommend promotion clearance.`,
+              title: `Expiry Warning: Batch ${b.batchNumber} Expiring Soon`,
+              description: `${b.productName} k ${b.remainingQuantity} boxes ki expiry ${b.expiryDate} ko hai. Discount offer de kar jaldi sell karein.`,
               timestamp: new Date().toISOString(),
               actionUrl: `/marketing/whatsapp`,
-              actionLabel: "Generate Promo Clearance Card",
+              actionLabel: "Create WhatsApp Offer",
               severity: expMs <= nowMs ? "high" : "medium",
             });
           }
@@ -98,17 +98,17 @@ export default function NotificationsCenterPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Operational Automation
+              Alerts & Warnings
             </span>
-            <span className="text-xs text-slate-400">Day-31 Reminders & Expiry Triggers</span>
+            <span className="text-xs text-slate-400">Udhaar Reminders & Expiry Warnings</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Notifications & System Reminders
+            Important Alerts (Expiry & Udhaar Reminders)
           </h1>
         </div>
 
         <span className="text-xs font-bold text-slate-500 font-mono">
-          {alerts.length} Active System Alerts
+          {alerts.length} Active Warnings
         </span>
       </div>
 
@@ -118,10 +118,10 @@ export default function NotificationsCenterPage() {
           <div className="p-12 text-center text-slate-400 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900">
             <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-emerald-500 opacity-80" />
             <h3 className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">
-              All Clear! No Critical Alerts
+              Sab Theek Hai! (No Warnings)
             </h3>
             <p className="text-xs text-slate-400 mt-1">
-              All batches are within safe shelf life and accounts are operating within standard credit limits.
+              Tamam medicine stock safe hai aur kisi medical store ka udhaar limit se bahar nahi hai.
             </p>
           </div>
         ) : (

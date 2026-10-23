@@ -24,14 +24,17 @@ import { offlineDb } from "@/lib/offline/db";
 import { generateCollisionSafeInvoiceReference, getDeviceId } from "@/lib/offline/device";
 import { enqueueOperation } from "@/lib/offline/outbox";
 import { syncManager } from "@/lib/offline/sync";
-import type { Customer, InventoryBatch, Invoice, InvoiceLine, CustomerCategory } from "@/types";
+import { useCategory } from "@/context/CategoryContext";
+import type { Customer, InventoryBatch, Invoice, InvoiceLine, CustomerCategory, Product } from "@/types";
 
 export function OfflineInvoiceCreator() {
   const router = useRouter();
+  const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
 
   // State
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [customCustomerName, setCustomCustomerName] = useState<string>("");
   const [customCustomerCategory, setCustomCustomerCategory] = useState<CustomerCategory>("pharmacy");
@@ -55,7 +58,7 @@ export function OfflineInvoiceCreator() {
 
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank_transfer" | "credit">("credit");
   const [paidAmount, setPaidAmount] = useState<number>(0);
-  const [deliveryCharge, setDeliveryCharge] = useState<number>(250);
+  const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
   const [invoiceDiscount, setInvoiceDiscount] = useState<number>(0);
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -64,68 +67,50 @@ export function OfflineInvoiceCreator() {
   // Load available local records
   useEffect(() => {
     async function loadMasterData() {
-      const [custList, batchList] = await Promise.all([
+      const [custList, batchList, prodList] = await Promise.all([
         offlineDb.customers.toArray(),
         offlineDb.inventoryBatches.where("remainingQuantity").above(0).toArray(),
+        offlineDb.products.toArray(),
       ]);
 
-      if (custList.length === 0) {
-        // Preload default local customers
-        const defaultCustomers: Customer[] = [
-          {
-            id: "cust_al_shifa",
-            name: "Al-Shifa Medicos & Clinic",
-            category: "pharmacy",
-            contactPerson: "Dr. Kamran",
-            phone: "+92 321 9876543",
-            whatsappNumber: "+92 321 9876543",
-            address: "Main Korangi Road, Sector 4",
-            city: "Karachi",
-            creditLimit: 250000,
-            creditTermsDays: 30,
-            currentOutstandingBalance: 45000,
-            status: "active",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: "cust_khi_dist",
-            name: "Sindh Healthcare Distributors",
-            category: "distributor",
-            contactPerson: "Nadeem Akhtar",
-            phone: "+92 300 4567890",
-            whatsappNumber: "+92 300 4567890",
-            address: "Wholesale Medicine Market, Denso Hall",
-            city: "Karachi",
-            creditLimit: 1000000,
-            creditTermsDays: 30,
-            currentOutstandingBalance: 120000,
-            status: "active",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ];
-        await offlineDb.customers.bulkPut(defaultCustomers);
-        setCustomers(defaultCustomers);
-      } else {
-        setCustomers(custList);
-      }
-
+      setCustomers(custList);
       setBatches(batchList);
+      setProducts(prodList);
     }
 
     loadMasterData();
   }, []);
 
+  // Category isolation
+  const categoryProductIds = new Set(
+    selectedCategoryId === "all"
+      ? products.map((p) => p.id)
+      : products.filter((p) => p.categoryId === selectedCategoryId).map((p) => p.id)
+  );
+
+  const availableBatches =
+    selectedCategoryId === "all"
+      ? batches
+      : batches.filter((b) => categoryProductIds.has(b.productId));
+
+  const activeCategoryObj =
+    selectedCategoryId === "all" ? null : categories.find((c) => c.id === selectedCategoryId);
+
   // Add line item
   const handleAddLine = () => {
-    if (batches.length === 0) {
-      alert("No batches available in inventory. Please seed or add stock first.");
+    if (availableBatches.length === 0) {
+      if (selectedCategoryId !== "all") {
+        alert(
+          `No stock batches found for category "${activeCategoryObj?.name || selectedCategoryId}". Please switch category or add inventory stock.`
+        );
+      } else {
+        alert("No batches available in inventory. Please seed or add stock first.");
+      }
       return;
     }
 
     // Default to earliest expiry batch (FEFO)
-    const sorted = [...batches].sort(
+    const sorted = [...availableBatches].sort(
       (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
     );
     const earliest = sorted[0];
@@ -156,7 +141,7 @@ export function OfflineInvoiceCreator() {
     const current = { ...updated[index] };
 
     if (field === "batchId") {
-      const selectedBatch = batches.find((b) => b.id === value);
+      const selectedBatch = availableBatches.find((b) => b.id === value) || batches.find((b) => b.id === value);
       if (selectedBatch) {
         current.batchId = selectedBatch.id;
         current.productId = selectedBatch.productId;
@@ -266,10 +251,17 @@ export function OfflineInvoiceCreator() {
         updatedAt: now.toISOString(),
       };
 
-      // Atomic Dexie transaction: persist invoice, deduct batches, create stock movement, enqueue outbox
+      // Atomic Dexie transaction: persist invoice, deduct batches, create stock movement, update customer balance, record payment, enqueue outbox
       await offlineDb.transaction(
         "rw",
-        [offlineDb.invoices, offlineDb.inventoryBatches, offlineDb.stockMovements, offlineDb.outboxQueue],
+        [
+          offlineDb.invoices,
+          offlineDb.inventoryBatches,
+          offlineDb.stockMovements,
+          offlineDb.customers,
+          offlineDb.payments,
+          offlineDb.outboxQueue,
+        ],
         async () => {
           // 1. Save invoice
           await offlineDb.invoices.add(newInvoice);
@@ -302,7 +294,45 @@ export function OfflineInvoiceCreator() {
             }
           }
 
-          // 3. Add to Outbox Queue for idempotent sync
+          // 3. Update customer outstanding balance if selected existing customer
+          if (selectedCustomerId && outstandingBalance > 0) {
+            const custRecord = await offlineDb.customers.get(selectedCustomerId);
+            if (custRecord) {
+              const updatedBal = (custRecord.currentOutstandingBalance || 0) + outstandingBalance;
+              await offlineDb.customers.update(selectedCustomerId, {
+                currentOutstandingBalance: updatedBal,
+                updatedAt: now.toISOString(),
+              });
+            }
+          }
+
+          // 4. Record payment receipt if cash / bank transfer was collected immediately
+          if (effectivePaid > 0) {
+            const payMethodMapped = paymentMethod === "credit" ? "cash" : paymentMethod;
+            await offlineDb.payments.add({
+              id: `pay_${Date.now()}`,
+              customerId: selectedCustomerId || "cust_guest",
+              customerName: finalCustomerName,
+              amount: effectivePaid,
+              paymentDate: now.toISOString().slice(0, 10),
+              paymentMethod: payMethodMapped,
+              referenceNumber: provisionalRef,
+              allocations: [
+                {
+                  invoiceId: invoiceId,
+                  invoiceReference: provisionalRef,
+                  amountAllocated: effectivePaid,
+                },
+              ],
+              unallocatedAmount: 0,
+              recordedByUserId: "usr_active_rep",
+              notes: `Immediate collection at invoice issuance (${paymentMethod})`,
+              syncStatus: "local_only",
+              createdAt: now.toISOString(),
+            });
+          }
+
+          // 5. Add to Outbox Queue for idempotent sync
           await enqueueOperation(
             "invoice",
             invoiceId,
@@ -363,9 +393,9 @@ export function OfflineInvoiceCreator() {
         <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs no-print flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
           <div>
-            <strong>Offline Transaction Saved Locally:</strong> Ref{" "}
-            <span className="font-mono font-bold">{createdInvoice.provisionalReference}</span>. Queued for
-            central synchronization. Batches deducted and printable immediately.
+            <strong>Bill Saved Offline Successfully!</strong> Bill No:{" "}
+            <span className="font-mono font-bold">{createdInvoice.provisionalReference}</span>. Stock has been
+            deducted immediately. This bill will automatically upload to the cloud once internet connects.
           </div>
         </div>
 
@@ -378,11 +408,11 @@ export function OfflineInvoiceCreator() {
                 NOX<span className="text-teal-600">DERMA</span> PHARMA
               </div>
               <p className="text-xs text-slate-500 mt-0.5">Plot 42, Industrial Sector 7, Karachi</p>
-              <p className="text-xs text-slate-500">UAN: +92 300 1234567 • info@noxderma.com</p>
+              <p className="text-xs text-slate-500">Phone: +92 300 1234567 • info@noxderma.com</p>
             </div>
             <div className="text-right">
               <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                PROVISIONAL SALES INVOICE
+                SALES BILL / CASH MEMO
               </span>
               <p className="font-mono text-sm font-bold text-teal-600 mt-1">
                 {createdInvoice.provisionalReference}
@@ -390,14 +420,14 @@ export function OfflineInvoiceCreator() {
               <p className="text-[11px] text-slate-500">
                 Date: {formatKarachiDate(createdInvoice.invoiceDate, true)}
               </p>
-              <p className="text-[11px] text-slate-500">Due: {formatKarachiDate(createdInvoice.dueDate)} (30 Days)</p>
+              <p className="text-[11px] text-slate-500">Due Date: {formatKarachiDate(createdInvoice.dueDate)} (30 Days)</p>
             </div>
           </div>
 
           {/* Customer Details */}
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Billed To:</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Customer / Pharmacy:</span>
               <p className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5">
                 {createdInvoice.customerName}
               </p>
@@ -405,17 +435,20 @@ export function OfflineInvoiceCreator() {
               <p className="text-slate-500">{createdInvoice.customerPhone}</p>
             </div>
             <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Payment & Terms:</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Payment Details:</span>
               <p className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5 capitalize">
-                Method: {createdInvoice.paymentMethod?.replace("_", " ")}
+                Paid Via: {createdInvoice.paymentMethod === "credit" ? "Udhaar (Credit)" : createdInvoice.paymentMethod?.replace("_", " ")}
               </p>
               <p className="text-slate-500">
-                Status:{" "}
+                Payment Status:{" "}
                 <span className="font-bold text-teal-600 uppercase">
-                  {createdInvoice.paymentStatus.replace("_", " ")}
+                  {createdInvoice.paymentStatus === "paid"
+                    ? "Full Paid"
+                    : createdInvoice.paymentStatus === "partially_paid"
+                    ? "Half / Partial Paid"
+                    : "Unpaid (Udhaar)"}
                 </span>
               </p>
-              <p className="text-slate-500">Device Origin: {createdInvoice.deviceId}</p>
             </div>
           </div>
 
@@ -423,10 +456,10 @@ export function OfflineInvoiceCreator() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                <th className="py-2">Item Description</th>
-                <th className="py-2">Batch / FEFO Expiry</th>
-                <th className="py-2 text-right">Qty</th>
-                <th className="py-2 text-right">Rate</th>
+                <th className="py-2">Medicine Name</th>
+                <th className="py-2">Batch & Expiry</th>
+                <th className="py-2 text-right">Quantity</th>
+                <th className="py-2 text-right">Price</th>
                 <th className="py-2 text-right">Total</th>
               </tr>
             </thead>
@@ -455,29 +488,29 @@ export function OfflineInvoiceCreator() {
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
             <div className="w-64 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-500">
-                <span>Subtotal:</span>
+                <span>Medicines Subtotal:</span>
                 <span>{formatPKR(createdInvoice.subtotal)}</span>
               </div>
               {createdInvoice.invoiceDiscountAmount > 0 && (
                 <div className="flex justify-between text-rose-600">
-                  <span>Discounts Applied:</span>
+                  <span>Discount Given:</span>
                   <span>-{formatPKR(createdInvoice.invoiceDiscountAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-500">
-                <span>Delivery Charge:</span>
+                <span>Delivery Charges:</span>
                 <span>{formatPKR(createdInvoice.deliveryCharge)}</span>
               </div>
               <div className="flex justify-between text-sm font-extrabold text-slate-900 dark:text-slate-100 pt-2 border-t border-slate-200 dark:border-slate-800">
-                <span>Net Total:</span>
+                <span>Total Bill:</span>
                 <span>{formatPKR(createdInvoice.netTotal)}</span>
               </div>
               <div className="flex justify-between text-emerald-600 font-semibold">
-                <span>Paid Amount:</span>
+                <span>Cash Paid Now:</span>
                 <span>{formatPKR(createdInvoice.paidAmount)}</span>
               </div>
               <div className="flex justify-between text-rose-600 font-bold">
-                <span>Balance Due:</span>
+                <span>Remaining Balance (Baqaya):</span>
                 <span>{formatPKR(createdInvoice.outstandingBalance)}</span>
               </div>
             </div>
@@ -486,10 +519,9 @@ export function OfflineInvoiceCreator() {
           {/* Footer Notice */}
           <div className="pt-6 border-t border-slate-100 dark:border-slate-800 text-center text-[10px] text-slate-400">
             <p>
-              This is a computer-generated invoice issued via Noxderma PWA. Goods once sold are subject to
-              pharmacovigilance storage guidelines.
+              Thank you for your business! Please keep this bill for your accounts and warranty records.
             </p>
-            <p className="mt-1">Bank: Meezan Bank • A/C: Noxderma Pharma • IBAN: PK00MEZN0001234567890123</p>
+            <p className="mt-1">Bank: Meezan Bank • Account Title: Noxderma Pharma • IBAN: PK00MEZN0001234567890123</p>
           </div>
         </div>
       </div>
@@ -510,36 +542,55 @@ export function OfflineInvoiceCreator() {
           </Link>
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Receipt className="w-6 h-6 text-teal-600" />
-            Create Offline Sales Invoice
+            Make Customer Bill (Invoice)
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Works 100% offline. Batch FEFO allocation and local transactional persistence guaranteed.
+            Works 100% offline without internet. Oldest expiry medicine batches are chosen first.
           </p>
         </div>
       </div>
+
+      {/* Active Category Filter Alert */}
+      {selectedCategoryId !== "all" && (
+        <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs md:text-sm">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-600 animate-pulse" />
+            <span>
+              Bill restricted to category: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedCategoryId("all")}
+            className="text-xs font-semibold text-teal-700 dark:text-teal-300 underline hover:text-teal-900"
+          >
+            Show All Categories
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleCreateInvoice} className="space-y-6">
         {/* Step 1: Customer Selection */}
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Building className="w-4 h-4 text-teal-600" />
-            1. Select or Enter Customer
+            1. Select Customer / Pharmacy
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                Existing Customer / Pharmacy
+                Choose Saved Customer
               </label>
               <select
                 value={selectedCustomerId}
                 onChange={(e) => setSelectedCustomerId(e.target.value)}
                 className="w-full px-3 py-2 text-xs md:text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
               >
-                <option value="">-- Choose From Local Directory or Enter Below --</option>
+                <option value="">-- Choose From List or Enter New Below --</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.category.toUpperCase()}) — Limit: {formatPKR(c.creditLimit)}
+                    {c.name} ({c.category === "pharmacy" ? "Medical Store" : c.category.toUpperCase()}) — Udhaar Limit: {formatPKR(c.creditLimit)}
                   </option>
                 ))}
               </select>
@@ -548,7 +599,7 @@ export function OfflineInvoiceCreator() {
             {!selectedCustomerId && (
               <div>
                 <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                  New Customer Name
+                  New Customer / Medical Store Name
                 </label>
                 <input
                   type="text"
@@ -567,7 +618,7 @@ export function OfflineInvoiceCreator() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <Barcode className="w-4 h-4 text-teal-600" />
-              2. Product Lines & FEFO Batch Allocation
+              2. Add Medicines to Bill
             </h2>
             <button
               type="button"
@@ -575,13 +626,18 @@ export function OfflineInvoiceCreator() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-100"
             >
               <Plus className="w-3.5 h-3.5" />
-              Add Product Line
+              + Add Medicine
             </button>
           </div>
 
           {lines.length === 0 ? (
             <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-              <p className="text-xs">No items added yet. Click &quot;Add Product Line&quot; to begin.</p>
+              <p className="text-xs">No medicines added yet. Click &quot;+ Add Medicine&quot; to begin.</p>
+              {selectedCategoryId !== "all" && availableBatches.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+                  (Note: No in-stock batches found for category &quot;{activeCategoryObj?.name}&quot;. Switch category or add stock first.)
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -593,16 +649,16 @@ export function OfflineInvoiceCreator() {
                   {/* Batch Selection */}
                   <div className="sm:col-span-5">
                     <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                      Product & Batch (FEFO Sorted)
+                      Medicine & Batch (Oldest Expiry First)
                     </label>
                     <select
                       value={line.batchId}
                       onChange={(e) => handleUpdateLine(idx, "batchId", e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
                     >
-                      {batches.map((b) => (
+                      {availableBatches.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.productName} [Batch: {b.batchNumber} | Exp: {formatKarachiDate(b.expiryDate)} | Avail: {b.remainingQuantity}]
+                          {b.productName} [Batch: {b.batchNumber} | Exp: {formatKarachiDate(b.expiryDate)} | Stock: {b.remainingQuantity}]
                         </option>
                       ))}
                     </select>
@@ -611,7 +667,7 @@ export function OfflineInvoiceCreator() {
                   {/* Quantity */}
                   <div className="sm:col-span-2">
                     <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                      Qty (Max: {line.availableQuantity})
+                      Qty (Available: {line.availableQuantity})
                     </label>
                     <input
                       type="number"
@@ -626,7 +682,7 @@ export function OfflineInvoiceCreator() {
                   {/* Price */}
                   <div className="sm:col-span-2">
                     <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                      Unit Price (PKR)
+                      Price per Box (Rs)
                     </label>
                     <input
                       type="number"
@@ -638,7 +694,7 @@ export function OfflineInvoiceCreator() {
 
                   {/* Line Total */}
                   <div className="sm:col-span-2 text-right">
-                    <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Line Total</span>
+                    <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Total (Rs)</span>
                     <span className="font-extrabold text-teal-600">
                       {formatPKR(line.quantity * line.unitPrice)}
                     </span>
@@ -664,14 +720,14 @@ export function OfflineInvoiceCreator() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-teal-600" />
-            3. Payment Terms & Settlement
+            3. Payment Mode & Due Balance
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                  Payment Method
+                  Payment Mode
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {(["credit", "cash", "bank_transfer"] as const).map((m) => (
@@ -685,21 +741,21 @@ export function OfflineInvoiceCreator() {
                           : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400"
                       }`}
                     >
-                      {m.replace("_", " ")}
+                      {m === "credit" ? "Udhaar (Credit)" : m === "cash" ? "Cash" : "Bank Transfer"}
                     </button>
                   ))}
                 </div>
                 {paymentMethod === "credit" && (
                   <p className="text-[11px] text-teal-600 mt-1 flex items-center gap-1 font-medium">
                     <Clock className="w-3.5 h-3.5" />
-                    Standard 30-Day Credit Term applied automatically.
+                    Udhaar bill selected. 30 days due payment.
                   </p>
                 )}
               </div>
 
               {paymentMethod === "credit" && (
                 <div>
-                  <label className="block font-semibold mb-1">Immediate Partial Deposit (PKR)</label>
+                  <label className="block font-semibold mb-1">Cash Paid Right Now (Rs)</label>
                   <input
                     type="number"
                     value={paidAmount}
@@ -711,12 +767,12 @@ export function OfflineInvoiceCreator() {
               )}
 
               <div>
-                <label className="block font-semibold mb-1">Invoice Delivery Notes</label>
+                <label className="block font-semibold mb-1">Bill / Delivery Note</label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional delivery instructions or reference..."
+                  placeholder="Optional delivery instructions or customer note..."
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                 />
               </div>
@@ -725,23 +781,23 @@ export function OfflineInvoiceCreator() {
             {/* Totals Box */}
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
               <div className="flex justify-between text-slate-500">
-                <span>Gross Subtotal:</span>
+                <span>Medicines Subtotal:</span>
                 <span className="font-semibold">{formatPKR(subtotal)}</span>
               </div>
               <div className="flex justify-between text-slate-500">
-                <span>Standard Delivery:</span>
+                <span>Delivery / Transport:</span>
                 <span className="font-semibold">{formatPKR(deliveryCharge)}</span>
               </div>
               <div className="flex justify-between text-base font-extrabold text-slate-900 dark:text-slate-100 pt-2 border-t border-slate-200 dark:border-slate-700">
-                <span>Net Total:</span>
+                <span>Total Bill Amount:</span>
                 <span className="text-teal-600">{formatPKR(netTotal)}</span>
               </div>
               <div className="flex justify-between text-emerald-600 font-semibold">
-                <span>Paid Now:</span>
+                <span>Cash Paid Now:</span>
                 <span>{formatPKR(effectivePaid)}</span>
               </div>
               <div className="flex justify-between text-rose-600 font-extrabold text-sm">
-                <span>Outstanding Receivable:</span>
+                <span>Remaining Udhaar (Baqaya):</span>
                 <span>{formatPKR(outstandingBalance)}</span>
               </div>
             </div>
@@ -762,7 +818,7 @@ export function OfflineInvoiceCreator() {
             disabled={isSubmitting || lines.length === 0}
             className="px-6 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-lg shadow-teal-600/30 transition-all disabled:opacity-50"
           >
-            {isSubmitting ? "Persisting Locally..." : "Issue & Print Offline Invoice"}
+            {isSubmitting ? "Saving Bill..." : "Save & Print Bill"}
           </button>
         </div>
       </form>

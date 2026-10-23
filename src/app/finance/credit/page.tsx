@@ -21,12 +21,18 @@ import type { Invoice, Customer } from "@/types";
 
 export default function CreditManagementPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [mfrPayables, setMfrPayables] = useState<number>(0);
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadCreditData() {
-      const invList = await offlineDb.invoices.toArray();
+      const [invList, mfrList] = await Promise.all([
+        offlineDb.invoices.toArray(),
+        offlineDb.manufacturers.toArray(),
+      ]);
       setInvoices(invList);
+      const totalMfr = (mfrList || []).reduce((sum, m) => sum + (m.payableBalance || 0), 0);
+      setMfrPayables(totalMfr);
     }
     loadCreditData();
   }, []);
@@ -42,7 +48,7 @@ export default function CreditManagementPage() {
     .filter((inv) => inv.customerCategory === "distributor")
     .reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
 
-  const manufacturerPayables = 312000; // Tracked from Goods Receipts / Purchases
+  const manufacturerPayables = mfrPayables;
 
   // Aging calculation based on actual due dates
   const now = Date.now();
@@ -74,7 +80,7 @@ export default function CreditManagementPage() {
     .reduce((sum, inv) => sum + inv.outstandingBalance, 0);
 
   const handleCopyMessage = (inv: Invoice) => {
-    const text = `Dear ${inv.customerName}, payment reminder for Invoice ${inv.officialReference || inv.provisionalReference}. Amount due: ${formatPKR(inv.outstandingBalance)}. Due date was ${formatKarachiDate(inv.dueDate)}. Thank you, Noxderma Pharma.`;
+    const text = `Assalam-o-Alaikum ${inv.customerName}, this is a gentle payment reminder from Noxderma Pharma for Bill #${inv.officialReference || inv.provisionalReference}. Remaining balance: ${formatPKR(inv.outstandingBalance)}. Due date was ${formatKarachiDate(inv.dueDate)}. Please arrange payment soon. Thank you!`;
     navigator.clipboard.writeText(text);
     setCopiedInvoiceId(inv.id);
     setTimeout(() => setCopiedInvoiceId(null), 3000);
@@ -83,7 +89,7 @@ export default function CreditManagementPage() {
   const handleOpenWhatsApp = (inv: Invoice) => {
     const cleanPhone = (inv.customerPhone || "").replace(/[^0-9]/g, "");
     const text = encodeURIComponent(
-      `Dear ${inv.customerName}, payment reminder for Invoice ${inv.officialReference || inv.provisionalReference}. Outstanding amount: ${formatPKR(inv.outstandingBalance)}. Due date: ${formatKarachiDate(inv.dueDate)}. Please arrange settlement. Bank: Meezan Bank A/C Noxderma Pharma.`
+      `Assalam-o-Alaikum ${inv.customerName}, gentle payment reminder from Noxderma Pharma for Bill #${inv.officialReference || inv.provisionalReference}.\nRemaining Balance: ${formatPKR(inv.outstandingBalance)}\nDue Date: ${formatKarachiDate(inv.dueDate)}\n\nPlease arrange payment at your earliest convenience.\nBank: Meezan Bank • Account Title: Noxderma Pharma\nThank you!`
     );
     window.open(`https://wa.me/${cleanPhone}?text=${text}`, "_blank");
   };
@@ -101,10 +107,10 @@ export default function CreditManagementPage() {
           </Link>
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <CreditCard className="w-6 h-6 text-teal-600" />
-            Three-Way Credit & Aging Management
+            Market Udhaar & Due Payments
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Strict architectural separation of Manufacturer Payables, Distributor Receivables, and Pharmacy Credit.
+            Clear view of what we owe companies, and what pharmacies and distributors owe us.
           </p>
         </div>
       </div>
@@ -115,7 +121,7 @@ export default function CreditManagementPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              A. Manufacturer Payables
+              1. Money We Owe Companies
             </span>
             <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center">
               <Factory className="w-4 h-4" />
@@ -126,7 +132,7 @@ export default function CreditManagementPage() {
               {formatPKR(manufacturerPayables)}
             </span>
             <p className="text-[11px] text-slate-500 mt-1">
-              What Noxderma owes pharmaceutical manufacturers for purchased stock.
+              Amount we have to pay medicine manufacturing companies for stock purchases.
             </p>
           </div>
         </div>
@@ -135,7 +141,7 @@ export default function CreditManagementPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              B. Distributor Receivables
+              2. Money Owed by Distributors
             </span>
             <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-950 text-sky-600 flex items-center justify-center">
               <Truck className="w-4 h-4" />
@@ -146,7 +152,7 @@ export default function CreditManagementPage() {
               {formatPKR(distributorReceivables || 63500)}
             </span>
             <p className="text-[11px] text-slate-500 mt-1">
-              What wholesale distributor networks owe Noxderma on credit lines.
+              Udhaar balance owed to us by wholesale distributors.
             </p>
           </div>
         </div>
@@ -155,7 +161,7 @@ export default function CreditManagementPage() {
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              C. Direct Pharmacy Receivables
+              3. Money Owed by Medical Stores
             </span>
             <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center">
               <Building2 className="w-4 h-4" />
@@ -166,7 +172,7 @@ export default function CreditManagementPage() {
               {formatPKR(pharmacyReceivables || 185000)}
             </span>
             <p className="text-[11px] text-slate-500 mt-1">
-              What individual pharmacies, medical stores, and clinics owe Noxderma.
+              Udhaar balance owed to us by retail medical stores and pharmacies.
             </p>
           </div>
         </div>
@@ -176,13 +182,13 @@ export default function CreditManagementPage() {
       <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
           <Clock className="w-4 h-4 text-teal-600" />
-          Receivable Aging Schedule (30-Day Credit Policy)
+          Payment Due Timeline (Udhaar Aging)
         </h2>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div className="p-3.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40">
             <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
-              Current (Not Yet Due)
+              Fresh Bills (Within Due Date)
             </span>
             <p className="text-lg font-extrabold text-emerald-800 dark:text-emerald-300 mt-1">
               {formatPKR(notDue || 120000)}
@@ -191,7 +197,7 @@ export default function CreditManagementPage() {
 
           <div className="p-3.5 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40">
             <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400">
-              1–30 Days Overdue
+              1 to 30 Days Late
             </span>
             <p className="text-lg font-extrabold text-amber-800 dark:text-amber-300 mt-1">
               {formatPKR(overdue1to30 || 78500)}
@@ -200,7 +206,7 @@ export default function CreditManagementPage() {
 
           <div className="p-3.5 rounded-lg bg-orange-50/50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
             <span className="text-[10px] font-bold uppercase text-orange-700 dark:text-orange-400">
-              31–60 Days Overdue
+              31 to 60 Days Late
             </span>
             <p className="text-lg font-extrabold text-orange-800 dark:text-orange-300 mt-1">
               {formatPKR(overdue31to60 || 35000)}
@@ -209,7 +215,7 @@ export default function CreditManagementPage() {
 
           <div className="p-3.5 rounded-lg bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/40">
             <span className="text-[10px] font-bold uppercase text-rose-700 dark:text-rose-400">
-              &gt;60 Days Overdue
+              Over 2 Months Late
             </span>
             <p className="text-lg font-extrabold text-rose-800 dark:text-rose-300 mt-1">
               {formatPKR(overdueOver60 || 15000)}
@@ -224,10 +230,10 @@ export default function CreditManagementPage() {
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-emerald-600" />
-              Day-31 WhatsApp Payment Reminder Queue
+              WhatsApp Payment Reminders
             </h2>
             <p className="text-xs text-slate-500">
-              Invoices exceeding 30-day terms. 1-click WhatsApp bridge with prefilled invoice balance template.
+              Bills that have passed their due date. Click WhatsApp button to send an instant polite reminder message.
             </p>
           </div>
         </div>
@@ -236,11 +242,11 @@ export default function CreditManagementPage() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                <th className="py-2.5">Invoice Ref</th>
-                <th className="py-2.5">Customer / Pharmacy</th>
+                <th className="py-2.5">Bill No</th>
+                <th className="py-2.5">Customer / Medical Store</th>
                 <th className="py-2.5">Due Date</th>
-                <th className="py-2.5 text-right">Balance Due</th>
-                <th className="py-2.5 text-right">Actions</th>
+                <th className="py-2.5 text-right">Remaining Baqaya</th>
+                <th className="py-2.5 text-right">Send Reminder</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -261,7 +267,7 @@ export default function CreditManagementPage() {
                     <td className="py-3 text-right space-x-2">
                       <button
                         onClick={() => handleCopyMessage(inv)}
-                        title="Copy payment reminder template"
+                        title="Copy message text"
                         className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
                       >
                         {copiedInvoiceId === inv.id ? (
@@ -276,7 +282,7 @@ export default function CreditManagementPage() {
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px]"
                       >
                         <MessageCircle className="w-3 h-3" />
-                        WhatsApp
+                        Send WhatsApp
                       </button>
                     </td>
                   </tr>
@@ -284,7 +290,7 @@ export default function CreditManagementPage() {
               ) : (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">
-                    All customer accounts are currently within credit terms. No overdue payment reminders queued.
+                    Great! All customer accounts are currently on time. No late bills right now.
                   </td>
                 </tr>
               )}

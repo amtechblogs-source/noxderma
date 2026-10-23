@@ -82,14 +82,14 @@ export default function SyncReconciliationPage() {
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Dashboard
+            Back to Home
           </Link>
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Database className="w-6 h-6 text-teal-600" />
-            Offline Outbox Synchronization & Reconciliation
+            Internet Sync & Cloud Backup (Save Data to Server)
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Durable transactional queue. Reconciles local IndexedDB operations with central Cloud Firestore.
+            Jab internet na ho to sara data computer me mehfooz rehta hai. Internet chalty hi yahan se data online server pe save ho jata hai.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export default function SyncReconciliationPage() {
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-md shadow-teal-600/30 transition-all disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
-          {isSyncing ? "Synchronizing Operations..." : "Sync All Now"}
+          {isSyncing ? "Saving Data to Server..." : "Upload / Sync Now (Save All)"}
         </button>
       </div>
 
@@ -110,8 +110,8 @@ export default function SyncReconciliationPage() {
             <Laptop className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-[10px] font-bold uppercase text-slate-400">Device Node ID</span>
-            <p className="font-mono font-bold text-slate-900 dark:text-slate-100">{deviceId || "DEV-PRIMARY"}</p>
+            <span className="text-[10px] font-bold uppercase text-slate-400">This Device / Computer</span>
+            <p className="font-mono font-bold text-slate-900 dark:text-slate-100">{deviceId || "PRIMARY-PC"}</p>
           </div>
         </div>
 
@@ -120,9 +120,9 @@ export default function SyncReconciliationPage() {
             {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
           </div>
           <div>
-            <span className="text-[10px] font-bold uppercase text-slate-400">Network State</span>
+            <span className="text-[10px] font-bold uppercase text-slate-400">Internet Connection</span>
             <p className={`font-bold ${isOnline ? "text-emerald-600" : "text-amber-600"}`}>
-              {isOnline ? "Connected to Central Cloud" : "Offline (Local Queue Enabled)"}
+              {isOnline ? "Connected (Online - Server Active)" : "Offline (Internet Band - Saved in PC)"}
             </p>
           </div>
         </div>
@@ -132,9 +132,9 @@ export default function SyncReconciliationPage() {
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-[10px] font-bold uppercase text-slate-400">Queue Integrity</span>
+            <span className="text-[10px] font-bold uppercase text-slate-400">Waiting to Save Online</span>
             <p className="font-bold text-slate-900 dark:text-slate-100">
-              {pendingOps.length} Pending • {conflicts.length} Conflicts
+              {pendingOps.length} Waiting to Upload • {conflicts.length} Need Review
             </p>
           </div>
         </div>
@@ -145,14 +145,14 @@ export default function SyncReconciliationPage() {
         <div className="p-5 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/40 dark:bg-rose-950/20 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold text-sm">
             <AlertTriangle className="w-4 h-4" />
-            Stock & Sequence Conflicts Requiring Administrator Reconciliation
+            Stock / Bill Conflicts Needing Review
           </div>
           <div className="divide-y divide-rose-200 dark:divide-rose-900/60 text-xs">
             {conflicts.map((conf) => (
               <div key={conf.id} className="py-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                    Operation: {conf.operationId}
+                    Entry: {conf.operationId}
                   </span>
                   <p className="text-rose-600 font-medium mt-0.5">{conf.conflictMessage}</p>
                   <p className="text-[10px] text-slate-500">
@@ -165,13 +165,13 @@ export default function SyncReconciliationPage() {
                       onClick={() => handleResolveConflict(conf.id, "resolved_override")}
                       className="px-2.5 py-1 rounded bg-teal-600 hover:bg-teal-700 text-white font-bold text-[10px] flex items-center gap-1"
                     >
-                      <Check className="w-3 h-3" /> Allow Override
+                      <Check className="w-3 h-3" /> Accept & Keep
                     </button>
                     <button
                       onClick={() => handleResolveConflict(conf.id, "resolved_cancelled")}
                       className="px-2.5 py-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1"
                     >
-                      <X className="w-3 h-3" /> Void Entry
+                      <X className="w-3 h-3" /> Cancel Entry
                     </button>
                   </div>
                 )}
@@ -184,19 +184,19 @@ export default function SyncReconciliationPage() {
       {/* Outbox Operations Queue Table */}
       <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-          Transactional Outbox History
+          History of Saved Bills & Server Sync
         </h2>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                <th className="py-2">Operation ID</th>
-                <th className="py-2">Entity Type</th>
+                <th className="py-2">Entry ID</th>
+                <th className="py-2">Type</th>
                 <th className="py-2">Action</th>
-                <th className="py-2">Timestamp</th>
+                <th className="py-2">Date & Time</th>
                 <th className="py-2">Status</th>
-                <th className="py-2 text-right">Retries</th>
+                <th className="py-2 text-right">Tries</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -219,7 +219,7 @@ export default function SyncReconciliationPage() {
                             : "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
                         }`}
                       >
-                        {op.status.toUpperCase()}
+                        {op.status === "synced" ? "SAVED ON SERVER" : op.status === "pending" ? "WAITING UPLOAD" : op.status.toUpperCase()}
                       </span>
                     </td>
                     <td className="py-2.5 text-right font-mono">{op.retryCount || 0}</td>
@@ -228,7 +228,7 @@ export default function SyncReconciliationPage() {
               ) : (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400">
-                    Queue is empty. No offline operations recorded yet.
+                    Sab data server pe save hai. Kuch baqi nahi. (All synced).
                   </td>
                 </tr>
               )}

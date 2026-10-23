@@ -39,97 +39,25 @@ export default function DistributorsPage() {
   const [contactPerson, setContactPerson] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [city, setCity] = useState("Lahore");
-  const [territory, setTerritory] = useState("Lahore Region (Central)");
-  const [creditLimit, setCreditLimit] = useState(2500000);
-  const [creditTermsDays, setCreditTermsDays] = useState(45);
-  const [marginPercentage, setMarginPercentage] = useState(12);
+  const [city, setCity] = useState("");
+  const [territory, setTerritory] = useState("");
+  const [creditLimit, setCreditLimit] = useState(0);
+  const [creditTermsDays, setCreditTermsDays] = useState(30);
+  const [marginPercentage, setMarginPercentage] = useState(10);
 
   const loadData = async () => {
     try {
       const allCustomers = await offlineDb.customers.toArray();
       const dists = allCustomers.filter((c) => c.category === "distributor");
 
-      if (dists.length === 0) {
-        // Preload standard regional distributor network
-        const sampleDistributors: DistributorDetail[] = [
-          {
-            id: "dist_lahore_central",
-            name: "Shaheen Medical Distributors",
-            businessName: "Shaheen Pharma Wholesale Corp",
-            category: "distributor",
-            contactPerson: "Haji Munir Ahmed",
-            phone: "+92 42 37421100",
-            whatsappNumber: "923004455667",
-            address: "Nishtar Road, Wholesale Medicine Market",
-            city: "Lahore",
-            territory: "Lahore Central & Sheikhupura",
-            creditLimit: 3000000,
-            creditTermsDays: 45,
-            currentOutstandingBalance: 1450000,
-            marginPercentage: 11.5,
-            subDealersCount: 42,
-            status: "active",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: "dist_karachi_south",
-            name: "Sindh Healthcare Logistics",
-            businessName: "Sindh Medicos Syndicate",
-            category: "distributor",
-            contactPerson: "Tariq Mehmood",
-            phone: "+92 21 34567890",
-            whatsappNumber: "923219876543",
-            address: "Katchi Gali #3, Medicine Market",
-            city: "Karachi",
-            territory: "Karachi South & Hyderabad",
-            creditLimit: 5000000,
-            creditTermsDays: 60,
-            currentOutstandingBalance: 2180000,
-            marginPercentage: 12.0,
-            subDealersCount: 68,
-            status: "active",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: "dist_rawalpindi_north",
-            name: "Potohar Pharma Network",
-            businessName: "Potohar Distribution House",
-            category: "distributor",
-            contactPerson: "Malik Naveed",
-            phone: "+92 51 4455667",
-            whatsappNumber: "923335566778",
-            address: "Bohir Bazar, Wholesale Complex",
-            city: "Rawalpindi",
-            territory: "Rawalpindi, Islamabad & KPK South",
-            creditLimit: 2500000,
-            creditTermsDays: 45,
-            currentOutstandingBalance: 980000,
-            marginPercentage: 11.0,
-            subDealersCount: 35,
-            status: "active",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ];
-
-        // Store into Dexie
-        for (const d of sampleDistributors) {
-          await offlineDb.customers.put(d);
-        }
-        setDistributors(sampleDistributors);
-      } else {
-        setDistributors(
-          dists.map((d) => ({
-            ...d,
-            territory: (d as any).territory || `${d.city} Metropolitan`,
-            marginPercentage: (d as any).marginPercentage || 11.5,
-            subDealersCount: (d as any).subDealersCount || 25,
-          }))
-        );
-      }
+      setDistributors(
+        dists.map((d) => ({
+          ...d,
+          territory: (d as any).territory || `${d.city} Metropolitan`,
+          marginPercentage: (d as any).marginPercentage || 10,
+          subDealersCount: (d as any).subDealersCount || 0,
+        }))
+      );
     } finally {
       setLoading(false);
     }
@@ -200,10 +128,10 @@ export default function DistributorsPage() {
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
               Supply Chain
             </span>
-            <span className="text-xs text-slate-400">Wholesale Channel</span>
+            <span className="text-xs text-slate-400">Wholesale Market</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Distributor Network Directory
+            Wholesale Distributors (Dealers)
           </h1>
         </div>
 
@@ -211,7 +139,7 @@ export default function DistributorsPage() {
           onClick={() => setIsAdding(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> Add Distributor
+          <Plus className="w-4 h-4" /> + Add New Distributor
         </button>
       </div>
 
@@ -219,33 +147,33 @@ export default function DistributorsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Active Regional Distributors
+            Total Distributors
           </span>
           <span className="text-2xl font-black text-slate-900 dark:text-slate-100">
             {distributors.length} Partners
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Territory coverage across Pakistan</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Covering major cities</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Total Sanctioned Credit
+            Total Udhaar Limit Given
           </span>
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(totalCredit)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Average 45-60 Days Credit Terms</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Average 45 to 60 Days Time</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider block mb-1">
-            Outstanding Receivables
+            Udhaar to Receive (Baqaya)
           </span>
           <span className="text-2xl font-black font-mono text-teal-600 dark:text-teal-400">
             {formatPKR(totalReceivable)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {Math.round((totalReceivable / (totalCredit || 1)) * 100)}% of limit utilized
+            {Math.round((totalReceivable / (totalCredit || 1)) * 100)}% of limit used
           </span>
         </div>
       </div>
@@ -256,7 +184,7 @@ export default function DistributorsPage() {
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search distributor or territory..."
+            placeholder="Search distributor name, city, or area..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -310,7 +238,7 @@ export default function DistributorsPage() {
 
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 space-y-1.5 text-[11px]">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Contact Person:</span>
+                    <span className="text-slate-500">Owner / Contact:</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">{d.contactPerson}</span>
                   </div>
                   <div className="flex justify-between">
@@ -320,13 +248,13 @@ export default function DistributorsPage() {
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Wholesale Margin:</span>
+                    <span className="text-slate-500">Discount / Margin:</span>
                     <span className="font-bold text-emerald-600">{d.marginPercentage}%</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Credit Terms:</span>
+                    <span className="text-slate-500">Payment Time:</span>
                     <span className="font-bold text-slate-700 dark:text-slate-300">
-                      {d.creditTermsDays} Days Net
+                      {d.creditTermsDays} Days
                     </span>
                   </div>
                 </div>
@@ -334,7 +262,7 @@ export default function DistributorsPage() {
                 {/* Credit Meter */}
                 <div className="space-y-1">
                   <div className="flex justify-between text-[11px]">
-                    <span className="text-slate-500">Outstanding / Limit:</span>
+                    <span className="text-slate-500">Remaining Udhaar / Limit:</span>
                     <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
                       {formatPKR(d.currentOutstandingBalance)} / {formatPKR(d.creditLimit)}
                     </span>
@@ -359,13 +287,13 @@ export default function DistributorsPage() {
                   href={`/customers/${d.id}`}
                   className="font-bold text-teal-600 hover:underline flex items-center gap-1"
                 >
-                  View Profile & Ledgers <ArrowRight className="w-3.5 h-3.5" />
+                  View Khata <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <Link
                   href={`/sales/invoices/new?customerId=${d.id}`}
                   className="px-2.5 py-1 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100"
                 >
-                  Bill
+                  + Make Bill
                 </Link>
               </div>
             </div>
@@ -379,7 +307,7 @@ export default function DistributorsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
-                Register New Distributor
+                Add New Wholesale Distributor
               </h2>
               <button
                 onClick={() => setIsAdding(false)}
@@ -392,7 +320,7 @@ export default function DistributorsPage() {
             <form onSubmit={handleAddDistributor} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Distributor Name *
+                  Distributor Business Name *
                 </label>
                 <input
                   type="text"
@@ -425,7 +353,7 @@ export default function DistributorsPage() {
                   <input
                     type="text"
                     required
-                    placeholder="+92 300 ..."
+                    placeholder="0300 1234567"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
@@ -447,7 +375,7 @@ export default function DistributorsPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Territory
+                    Territory / Area
                   </label>
                   <input
                     type="text"
@@ -461,7 +389,7 @@ export default function DistributorsPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Credit Limit (PKR)
+                    Udhaar Limit (PKR)
                   </label>
                   <input
                     type="number"
@@ -472,7 +400,7 @@ export default function DistributorsPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Terms (Days)
+                    Payment Time (Days)
                   </label>
                   <input
                     type="number"
@@ -483,7 +411,7 @@ export default function DistributorsPage() {
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Margin %
+                    Margin / Discount %
                   </label>
                   <input
                     type="number"
@@ -507,7 +435,7 @@ export default function DistributorsPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
                 >
-                  Save Distributor
+                  Save Distributor (Dealer)
                 </button>
               </div>
             </form>
