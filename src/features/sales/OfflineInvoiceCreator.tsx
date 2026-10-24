@@ -85,6 +85,10 @@ export function OfflineInvoiceCreator() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [createdInvoice, setCreatedInvoice] = useState<Invoice | null>(null);
 
+  // Duplicate product warning & highlight
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [highlightedLineIndex, setHighlightedLineIndex] = useState<number | null>(null);
+
   // Product Selection Modal State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -150,6 +154,19 @@ export function OfflineInvoiceCreator() {
 
   // Add line item from modal selection
   const handleSelectProduct = (prod: Product, specificBatch?: InventoryBatch) => {
+    // 0. Prevent duplicate product in the same invoice
+    const existingIndex = lines.findIndex((l) => l.productId === prod.id);
+    if (existingIndex !== -1) {
+      setDuplicateWarning(
+        `"${prod.name}" pehle se is invoice mein shamil hai! Duplicate row add nahi ki ja sakti. Quantity barhane ke liye maujuda line item ko update karein.`
+      );
+      setHighlightedLineIndex(existingIndex);
+      setTimeout(() => {
+        setHighlightedLineIndex(null);
+      }, 5000);
+      return;
+    }
+
     // 1. Find product's pricing
     const pricing = pricings.find((p) => p.productId === prod.id);
     const defaultPrice = pricing?.tradePricePerPack || pricing?.mrpPerPack || 0;
@@ -184,6 +201,7 @@ export function OfflineInvoiceCreator() {
       },
     ]);
 
+    setDuplicateWarning(null);
     setIsProductModalOpen(false);
     setProductSearch("");
   };
@@ -700,7 +718,10 @@ export function OfflineInvoiceCreator() {
             </h2>
             <button
               type="button"
-              onClick={() => setIsProductModalOpen(true)}
+              onClick={() => {
+                setDuplicateWarning(null);
+                setIsProductModalOpen(true);
+              }}
               className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -708,12 +729,32 @@ export function OfflineInvoiceCreator() {
             </button>
           </div>
 
+          {/* Duplicate Product Warning Banner */}
+          {duplicateWarning && (
+            <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-bold flex items-center justify-between gap-2.5 animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>{duplicateWarning}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateWarning(null)}
+                className="p-1 text-amber-600 hover:text-amber-800 dark:hover:text-amber-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {lines.length === 0 ? (
             <div className="py-10 text-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
               <p className="text-sm font-medium">No medicines added yet. Tap &quot;Add Medicine&quot; to pick from your catalog.</p>
               <button
                 type="button"
-                onClick={() => setIsProductModalOpen(true)}
+                onClick={() => {
+                  setDuplicateWarning(null);
+                  setIsProductModalOpen(true);
+                }}
                 className="inline-flex items-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-sm font-bold hover:bg-teal-100 btn-interactive"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -725,11 +766,16 @@ export function OfflineInvoiceCreator() {
               {lines.map((line, idx) => {
                 // Find all available batches for this product
                 const itemBatches = batches.filter((b) => b.productId === line.productId && Number(b.remainingQuantity || 0) > 0);
+                const isHighlighted = idx === highlightedLineIndex;
 
                 return (
                   <div
                     key={idx}
-                    className="p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-center text-xs sm:text-sm card-interactive"
+                    className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-center text-xs sm:text-sm card-interactive transition-all ${
+                      isHighlighted
+                        ? "border-amber-500 ring-4 ring-amber-500/30 bg-amber-50/80 dark:bg-amber-950/60"
+                        : "border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40"
+                    }`}
                   >
                     {/* Medicine & Batch Selection */}
                     <div className="sm:col-span-5">
@@ -963,6 +1009,23 @@ export function OfflineInvoiceCreator() {
               </div>
             </div>
 
+            {/* In-Modal Duplicate Product Warning */}
+            {duplicateWarning && (
+              <div className="mx-4 mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-bold flex items-center justify-between gap-2.5 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <span>{duplicateWarning}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateWarning(null)}
+                  className="p-1 text-amber-600 hover:text-amber-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* Products List */}
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5">
               {modalProducts.length === 0 ? (
@@ -980,6 +1043,7 @@ export function OfflineInvoiceCreator() {
                 modalProducts.map((prod) => {
                   const pricing = pricings.find((p) => p.productId === prod.id);
                   const price = pricing?.tradePricePerPack || pricing?.mrpPerPack || 0;
+                  const isAlreadyInInvoice = lines.some((l) => l.productId === prod.id);
 
                   // Find in-stock batches
                   const prodBatches = batches.filter(
@@ -994,7 +1058,11 @@ export function OfflineInvoiceCreator() {
                     <div
                       key={prod.id}
                       onClick={() => handleSelectProduct(prod)}
-                      className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 dark:border-slate-800 hover:border-teal-500 hover:bg-teal-50/20 dark:hover:bg-teal-950/20 transition-all cursor-pointer flex items-center justify-between gap-3 text-xs sm:text-sm card-interactive active:scale-[0.99] min-h-[60px]"
+                      className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs sm:text-sm card-interactive active:scale-[0.99] min-h-[60px] ${
+                        isAlreadyInInvoice
+                          ? "border-amber-300 dark:border-amber-700/80 bg-amber-50/30 dark:bg-amber-950/20 hover:border-amber-400"
+                          : "border-slate-200/90 dark:border-slate-800 hover:border-teal-500 hover:bg-teal-50/20 dark:hover:bg-teal-950/20"
+                      }`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1004,6 +1072,12 @@ export function OfflineInvoiceCreator() {
                           <span className="text-xs text-slate-400 font-mono font-medium">
                             {prod.packSize || "1 Pack"}
                           </span>
+                          {isAlreadyInInvoice && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-amber-600" />
+                              Pehle se Shamil Hai (In Bill)
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5">
                           {prod.genericName || prod.categoryName} &bull; SKU: {prod.sku}
