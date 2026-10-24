@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Building2,
@@ -31,13 +32,26 @@ import type {
   LedgerEntry,
 } from "@/types";
 
-interface PageProps {
-  params: Promise<{ id: string }>;
+/**
+ * Static-export friendly: the customer id is read from `?id=` at runtime
+ * (data lives in IndexedDB, so there is nothing to pre-render per customer).
+ */
+export default function CustomerDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-slate-500 min-h-[400px] flex items-center justify-center">
+          <p className="font-semibold text-sm">Loading customer profile...</p>
+        </div>
+      }
+    >
+      <CustomerDetailContent />
+    </Suspense>
+  );
 }
 
-export default function CustomerDetailPage({ params }: PageProps) {
-  const resolvedParams = use(params);
-  const customerId = resolvedParams.id;
+function CustomerDetailContent() {
+  const customerId = useSearchParams().get("id") ?? "";
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -434,7 +448,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
               href={`/sales/invoices/new?customerId=${customer.id}`}
               className="text-xs font-bold text-teal-600 hover:underline"
             >
-              + Make New Bill
+              Make New Bill
             </Link>
           </div>
 
@@ -659,7 +673,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
               href={`/crm/visits`}
               className="text-xs font-bold text-teal-600 hover:underline"
             >
-              + Add Visit Note
+              Add Visit Note
             </Link>
           </div>
 

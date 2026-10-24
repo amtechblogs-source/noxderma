@@ -153,7 +153,7 @@ export default function MarketingCampaignsPage() {
             onClick={() => setIsCreating(true)}
             className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
           >
-            <Plus className="w-4 h-4" /> + New Promotion Scheme
+            <Plus className="w-4 h-4" /> New Promotion Scheme
           </button>
         </div>
       </div>

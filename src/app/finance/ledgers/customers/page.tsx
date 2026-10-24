@@ -125,7 +125,7 @@ export default function CustomerLedgersPage() {
             href="/sales/invoices/new"
             className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
           >
-            <Receipt className="w-4 h-4" /> + Make Bill
+            <Receipt className="w-4 h-4" /> Make Bill
           </Link>
         </div>
       </div>
@@ -225,7 +225,7 @@ export default function CustomerLedgersPage() {
                     </td>
                     <td className="p-2.5 font-semibold text-slate-900 dark:text-slate-100">
                       <Link
-                        href={`/customers/${row.customerId}`}
+                        href={`/customers/detail?id=${encodeURIComponent(row.customerId)}`}
                         className="hover:underline hover:text-teal-600"
                       >
                         {row.customerName}

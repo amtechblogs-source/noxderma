@@ -22,6 +22,14 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+firebase-debug.log*
+firestore-debug.log*
+
+# firebase local cache
+.firebase/
+
+# editor
+.vscode/
 
 # local env files
 .env*.local
@@ -34,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*

@@ -162,7 +162,7 @@ export default function LeadsCrmPage() {
             onClick={() => setIsAdding(true)}
             className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
           >
-            <Plus className="w-4 h-4" /> + Add New Lead
+            <Plus className="w-4 h-4" /> Add New Lead
           </button>
         </div>
       </div>

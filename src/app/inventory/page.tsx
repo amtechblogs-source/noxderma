@@ -22,6 +22,7 @@ import {
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
+import { useAuth } from "@/context/AuthContext";
 import type {
   Product,
   InventoryBatch,
@@ -32,6 +33,7 @@ import type {
 } from "@/types";
 
 export default function InventoryOverviewPage() {
+  const { currentUser } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
@@ -140,8 +142,8 @@ export default function InventoryOverviewPage() {
       balanceAfter: (totalInventoryUnits || 0) - damageQty,
       referenceId: `DMG-${Date.now().toString().slice(-4)}`,
       referenceType: "damage",
-      userId: "usr_admin",
-      userName: "Dr. Asim (Admin)",
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Admin",
       reason: damageReason,
       timestamp: now,
     };
@@ -181,8 +183,8 @@ export default function InventoryOverviewPage() {
       balanceAfter: (totalInventoryUnits || 0) - sampleQty,
       referenceId: `SMP-${Date.now().toString().slice(-4)}`,
       referenceType: "sample",
-      userId: "usr_admin",
-      userName: "Dr. Asim (Admin)",
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Admin",
       reason: `Issued to ${sampleRecipient} (${sampleOrg}) - ${samplePurpose}`,
       timestamp: now,
     };
@@ -386,7 +388,7 @@ export default function InventoryOverviewPage() {
                   </td>
                   <td className="p-2.5 text-right">
                     <Link
-                      href={`/products/${item.product.id}`}
+                      href={`/products/detail?id=${encodeURIComponent(item.product.id)}`}
                       className="text-teal-600 font-bold hover:underline"
                     >
                       View Batches

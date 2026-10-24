@@ -107,7 +107,7 @@ export default function ManufacturersPage() {
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-md shadow-teal-600/20"
         >
           <Plus className="w-4 h-4" />
-          {isAdding ? "Cancel" : "+ Add New Company"}
+          {isAdding ? "Cancel" : "Add New Company"}
         </button>
       </div>
 

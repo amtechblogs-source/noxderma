@@ -172,21 +172,20 @@ export function DashboardView() {
         </div>
 
         {/* Quick Action Toolbar */}
-        <div className="flex items-center flex-wrap gap-2">
-
+        <div className="flex items-center flex-wrap gap-2.5 w-full sm:w-auto">
           <Link
             href="/sales/invoices/new"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-semibold shadow-md shadow-teal-600/20 transition-all"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
           >
-            <PlusCircle className="w-4 h-4" />
-            <span>+ Make New Bill (Invoice)</span>
+            <PlusCircle className="w-4 h-4 stroke-[2.5]" />
+            <span>Make New Bill (Invoice)</span>
           </Link>
 
           <Link
             href="/crm/visits"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs md:text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive"
           >
-            <span>Add Doctor / Field Visit</span>
+            <span>Add Doctor Visit</span>
           </Link>
         </div>
       </div>
@@ -212,89 +211,89 @@ export function DashboardView() {
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Today's Sales */}
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden group hover:border-teal-500/50 transition-all">
+        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Today's Total Sales
             </span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shadow-sm">
+              <TrendingUp className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
               {formatPKR(todaySalesTotal || 64000)}
             </span>
-            <span className="text-[11px] font-semibold text-emerald-600 flex items-center">
-              <ArrowUpRight className="w-3 h-3" /> +14%
+            <span className="text-xs font-bold text-emerald-600 flex items-center">
+              <ArrowUpRight className="w-3.5 h-3.5" /> +14%
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Cash Received: <strong>{formatPKR(todayPaymentsCollected || 48000)}</strong>
+          <p className="text-xs text-slate-500 mt-1.5">
+            Cash Received: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(todayPaymentsCollected || 48000)}</strong>
           </p>
         </div>
 
         {/* Card 2: 3-Way Receivables */}
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden group hover:border-sky-500/50 transition-all">
+        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Money to Receive (Udhaar)
             </span>
-            <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center">
-              <CreditCard className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center shadow-sm">
+              <CreditCard className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
               {formatPKR(totalReceivables || 248500)}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Pharmacies: <strong>{formatPKR(185000)}</strong> • Dist: <strong>{formatPKR(63500)}</strong>
+          <p className="text-xs text-slate-500 mt-1.5">
+            Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(185000)}</strong> • Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(63500)}</strong>
           </p>
         </div>
 
         {/* Card 3: Manufacturer Payables */}
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden group hover:border-indigo-500/50 transition-all">
+        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/50">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Money We Owe Companies
             </span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
-              <Receipt className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-sm">
+              <Receipt className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
               {formatPKR(312000)}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Due in 15 days: <strong>{formatPKR(120000)}</strong>
+          <p className="text-xs text-slate-500 mt-1.5">
+            Due in 15 days: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(120000)}</strong>
           </p>
         </div>
 
         {/* Card 4: FEFO Expiry / Low Stock Alerts */}
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden group hover:border-amber-500/50 transition-all">
+        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/50">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Medicines Expiring Soon
             </span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
-              <Clock className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shadow-sm">
+              <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-extrabold text-amber-600 dark:text-amber-400">
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">
               {nearExpiryBatches.length || 1}
             </span>
-            <span className="text-xs text-slate-500">batches within 3 months</span>
+            <span className="text-xs font-medium text-slate-500">batches within 90 days</span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+          <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
             {expiredBatches.length > 0 ? (
               <span className="text-red-600 font-bold">{expiredBatches.length} Expired (Blocked from sale)</span>
             ) : (
-              <span className="text-emerald-600 font-medium">0 Expired Medicines</span>
+              <span className="text-emerald-600 font-semibold">0 Expired Medicines (Stock Safe)</span>
             )}
           </p>
         </div>
@@ -303,35 +302,35 @@ export function DashboardView() {
       {/* Analytics & Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sales Performance Trend */}
-        <div className="lg:col-span-2 p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+        <div className="lg:col-span-2 p-5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 Sales & Cash Collected Trend
               </h2>
-              <p className="text-xs text-slate-500">Daily total bills vs cash received (PKR)</p>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Daily total bills vs cash received (PKR)</p>
             </div>
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg text-xs font-semibold">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto text-xs sm:text-sm font-bold">
               <button
                 onClick={() => setSelectedRange("today")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  selectedRange === "today" ? "bg-white dark:bg-slate-700 text-teal-600 shadow-sm" : "text-slate-500"
+                className={`px-3 py-1.5 min-h-[34px] rounded-lg transition-all btn-interactive ${
+                  selectedRange === "today" ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
                 Today
               </button>
               <button
                 onClick={() => setSelectedRange("7d")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  selectedRange === "7d" ? "bg-white dark:bg-slate-700 text-teal-600 shadow-sm" : "text-slate-500"
+                className={`px-3 py-1.5 min-h-[34px] rounded-lg transition-all btn-interactive ${
+                  selectedRange === "7d" ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
                 7 Days
               </button>
               <button
                 onClick={() => setSelectedRange("30d")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  selectedRange === "30d" ? "bg-white dark:bg-slate-700 text-teal-600 shadow-sm" : "text-slate-500"
+                className={`px-3 py-1.5 min-h-[34px] rounded-lg transition-all btn-interactive ${
+                  selectedRange === "30d" ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
                 30 Days

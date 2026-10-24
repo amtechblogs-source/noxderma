@@ -22,6 +22,7 @@ import {
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
+import { useAuth } from "@/context/AuthContext";
 import type {
   Product,
   InventoryBatch,
@@ -51,6 +52,7 @@ interface PurchaseOrder {
 }
 
 export default function PurchasesPage() {
+  const { currentUser } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -196,8 +198,8 @@ export default function PurchasesPage() {
       balanceAfter: Number(receivedQty),
       referenceId: grnNumber,
       referenceType: "goods_receipt",
-      userId: "usr_admin",
-      userName: "Dr. Asim (Admin)",
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Admin",
       reason: `Goods Receipt from ${selectedPO.manufacturerName} (Landed Cost: ${formatPKR(
         landedCostPerUnit
       )}/unit)`,
@@ -320,7 +322,7 @@ export default function PurchasesPage() {
           onClick={() => setIsCreatingPO(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> + Order Stock from Company
+          <Plus className="w-4 h-4" /> Order Stock from Company
         </button>
       </div>
 

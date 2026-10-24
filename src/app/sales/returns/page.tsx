@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
 import type { Customer, Product, InventoryBatch, StockMovement } from "@/types";
 
 interface SalesReturn {
@@ -40,6 +41,7 @@ interface SalesReturn {
 }
 
 export default function SalesReturnsPage() {
+  const { currentUser } = useAuth();
   const [returns, setReturns] = useState<SalesReturn[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -141,7 +143,7 @@ export default function SalesReturnsPage() {
       disposition,
       status: "approved",
       returnDate: now.slice(0, 10),
-      recordedByName: "Dr. Asim (Admin)",
+      recordedByName: currentUser?.displayName || "Admin",
     };
 
     // 1. Stock Movement
@@ -155,8 +157,8 @@ export default function SalesReturnsPage() {
       balanceAfter: Number(qty),
       referenceId: cnNumber,
       referenceType: "adjustment",
-      userId: "usr_admin",
-      userName: "Dr. Asim (Admin)",
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Admin",
       reason: `Customer Return (${reason}) routed to ${disposition}`,
       timestamp: now,
     };
@@ -209,7 +211,7 @@ export default function SalesReturnsPage() {
           onClick={() => setIsProcessing(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> + Record Customer Return
+          <Plus className="w-4 h-4" /> Record Customer Return
         </button>
       </div>
 

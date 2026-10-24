@@ -139,7 +139,7 @@ export default function DistributorsPage() {
           onClick={() => setIsAdding(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> + Add New Distributor
+          <Plus className="w-4 h-4" /> Add New Distributor
         </button>
       </div>
 
@@ -284,7 +284,7 @@ export default function DistributorsPage() {
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <Link
-                  href={`/customers/${d.id}`}
+                  href={`/customers/detail?id=${encodeURIComponent(d.id)}`}
                   className="font-bold text-teal-600 hover:underline flex items-center gap-1"
                 >
                   View Khata <ArrowRight className="w-3.5 h-3.5" />
@@ -293,7 +293,7 @@ export default function DistributorsPage() {
                   href={`/sales/invoices/new?customerId=${d.id}`}
                   className="px-2.5 py-1 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100"
                 >
-                  + Make Bill
+                  Make Bill
                 </Link>
               </div>
             </div>

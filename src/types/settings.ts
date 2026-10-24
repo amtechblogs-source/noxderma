@@ -6,6 +6,7 @@ export interface BusinessSettings {
   appLogoUrl: string;
   invoiceLogoUrl: string;
   faviconUrl: string;
+  colorTheme?: string;
   address: string;
   website: string;
   contactPhone: string;

@@ -26,9 +26,11 @@ import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { imageStorageService } from "@/lib/image-storage/service";
 import { useCategory } from "@/context/CategoryContext";
+import { useAuth } from "@/context/AuthContext";
 import type { Product, ProductPricing, DynamicCategory, ProductImage } from "@/types";
 
 export function ProductCatalogView() {
+  const { currentUser } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -54,6 +56,11 @@ export function ProductCatalogView() {
   const [purchaseCost, setPurchaseCost] = useState(0);
   const [tradePrice, setTradePrice] = useState(0);
   const [mrp, setMrp] = useState(0);
+
+  // Initial Opening Stock State
+  const [initialStock, setInitialStock] = useState<number>(0);
+  const [initialBatchNumber, setInitialBatchNumber] = useState<string>("");
+  const [initialExpiryDate, setInitialExpiryDate] = useState<string>("");
 
   // Uploaded Images
   const [uploadedImages, setUploadedImages] = useState<ProductImage[]>([]);
@@ -191,9 +198,55 @@ export function ProductCatalogView() {
       updatedAt: now,
     };
 
-    await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
+    const tablesToLock: any[] = [offlineDb.products, offlineDb.productPricing];
+    const hasOpeningStock = Number(initialStock) > 0;
+    if (hasOpeningStock) {
+      tablesToLock.push(offlineDb.inventoryBatches, offlineDb.stockMovements);
+    }
+
+    await offlineDb.transaction("rw", tablesToLock, async () => {
       await offlineDb.products.add(newProduct);
       await offlineDb.productPricing.add(newPricing);
+
+      if (hasOpeningStock) {
+        const batchId = `bch_${Date.now()}`;
+        const bchNum = initialBatchNumber.trim().toUpperCase() || `BCH-${Date.now().toString().slice(-4)}`;
+        const expDate = initialExpiryDate || new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10);
+        const qty = Number(initialStock);
+
+        await offlineDb.inventoryBatches.add({
+          id: batchId,
+          productId: prodId,
+          productName: newProduct.name,
+          batchNumber: bchNum,
+          manufacturerId: manufacturerId || "mfr_primary",
+          manufacturingDate: now.slice(0, 10),
+          expiryDate: expDate,
+          receivedQuantity: qty,
+          remainingQuantity: qty,
+          blockedQuantity: 0,
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await offlineDb.stockMovements.add({
+          id: `mov_init_${Date.now()}`,
+          productId: prodId,
+          productName: newProduct.name,
+          batchId: batchId,
+          batchNumber: bchNum,
+          type: "purchase_receipt",
+          quantityChange: qty,
+          balanceAfter: qty,
+          referenceId: `INIT-${bchNum}`,
+          referenceType: "goods_receipt",
+          userId: currentUser?.id || "usr_admin",
+          userName: currentUser?.displayName || "Admin",
+          reason: "Initial warehouse stock added during product setup",
+          timestamp: now,
+        });
+      }
     });
 
     await refreshCatalog();
@@ -204,8 +257,13 @@ export function ProductCatalogView() {
     setBarcode("");
     setGenericName("");
     setDescription("");
+    setInitialStock(0);
+    setInitialBatchNumber("");
+    setInitialExpiryDate("");
     setUploadedImages([]);
-    setSuccessNotice(`Medicine "${newProduct.name}" shamil ho chuki hai!`);
+    setSuccessNotice(
+      `Medicine "${newProduct.name}" shamil ho chuki hai!${hasOpeningStock ? ` (${initialStock} boxes stock shamil)` : ""}`
+    );
     setTimeout(() => setSuccessNotice(null), 4000);
   };
 
@@ -320,53 +378,53 @@ export function ProductCatalogView() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-1"
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-1 btn-interactive"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
+            <ArrowLeft className="w-4 h-4" />
             Back to Home
           </Link>
-          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <PackageCheck className="w-6 h-6 text-teal-600" />
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+            <PackageCheck className="w-7 h-7 text-teal-600" />
             Medicine List & Photos (Products)
           </h1>
-          <p className="text-xs md:text-sm text-slate-500">
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             All your medicines, pack sizes, purchase costs, and selling prices.
           </p>
         </div>
 
         <button
           onClick={() => setIsAdding(!isAdding)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-md shadow-teal-600/20"
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
         >
           <Plus className="w-4 h-4" />
-          {isAdding ? "Cancel" : "+ Add New Medicine"}
+          {isAdding ? "Cancel" : "Add New Medicine"}
         </button>
       </div>
 
       {/* Success Notification */}
       {successNotice && (
-        <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm font-bold flex items-center gap-2.5 animate-in fade-in">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           {successNotice}
         </div>
       )}
 
       {/* Active Category Filter Banner (Data Isolation Indication) */}
       {activeCategoryObj && (
-        <div className="p-3 px-4 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/60 flex items-center justify-between text-xs animate-in fade-in">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm animate-in fade-in">
           <div className="flex items-center gap-2 text-teal-800 dark:text-teal-200 font-semibold">
-            <Layers className="w-4 h-4 text-teal-600" />
+            <Layers className="w-4 h-4 text-teal-600 shrink-0" />
             <span>
               Header Category Filter Active: <strong>{activeCategoryObj.name}</strong> ({filtered.length} medicines found)
             </span>
           </div>
           <button
             onClick={() => setSelectedCategoryId("all")}
-            className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold hover:bg-teal-100 text-[11px] border border-slate-200 dark:border-slate-700 shadow-sm"
+            className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold hover:bg-teal-100 text-xs border border-slate-200 dark:border-slate-700 shadow-sm btn-interactive self-start sm:self-auto"
           >
             Show All Categories
           </button>
@@ -377,43 +435,43 @@ export function ProductCatalogView() {
       {isAdding && (
         <form
           onSubmit={handleCreateProduct}
-          className="p-5 md:p-6 rounded-2xl border border-teal-500/30 bg-white dark:bg-slate-900 shadow-xl space-y-5 text-xs animate-in fade-in"
+          className="p-5 md:p-6 rounded-2xl border border-teal-500/30 bg-white dark:bg-slate-900 shadow-card space-y-5 text-xs sm:text-sm animate-in fade-in"
         >
-          <h2 className="text-sm font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-2">
-            <Plus className="w-4 h-4" />
+          <h2 className="text-sm sm:text-base font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-2">
+            <Plus className="w-5 h-5" />
             Add New Medicine / Product
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block font-semibold mb-1">Medicine Name *</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Medicine Name *</label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. NoxDerm Hydro-Barrier Cream 50g"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Formula / Generic Name (Optional)</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Formula / Generic Name (Optional)</label>
               <input
                 type="text"
                 value={genericName}
                 onChange={(e) => setGenericName(e.target.value)}
                 placeholder="e.g. Ceramide + Hyaluronic Acid"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Category</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Category</label>
               <select
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               >
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -424,118 +482,171 @@ export function ProductCatalogView() {
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Item Code (SKU) *</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Item Code (SKU) *</label>
               <input
                 type="text"
                 required
                 value={sku}
                 onChange={(e) => setSku(e.target.value)}
                 placeholder="e.g. NXD-DRM-050"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono uppercase"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono uppercase text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Barcode</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Barcode</label>
               <input
                 type="text"
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 placeholder="e.g. 8964000987654"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Brand / Company</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Brand / Company</label>
               <input
                 type="text"
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Pack Details (Box / Bottle / Tube)</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Pack Details (Box / Bottle / Tube)</label>
               <input
                 type="text"
                 value={packSize}
                 onChange={(e) => setPackSize(e.target.value)}
                 placeholder="e.g. Pack of 30 Tablets"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Items per Pack</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Items per Pack</label>
               <input
                 type="number"
                 value={unitsPerPack}
                 onChange={(e) => setUnitsPerPack(Number(e.target.value) || 1)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Low-Stock Alert Level</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Low-Stock Alert Level</label>
               <input
                 type="number"
                 value={reorderThreshold}
                 onChange={(e) => setReorderThreshold(Number(e.target.value) || 10)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
           </div>
 
           {/* Pricing Row */}
-          <div className="p-4 rounded-xl border border-teal-500/20 bg-teal-50/20 dark:bg-slate-800/40 space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
-              <DollarSign className="w-3.5 h-3.5" />
+          <div className="p-4 sm:p-5 rounded-2xl border border-teal-500/20 bg-teal-50/20 dark:bg-slate-800/40 space-y-3.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4" />
               Medicine Pricing (Rates in PKR)
             </span>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block font-bold mb-1">Buying Cost (Kharid Rate)</label>
+                <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
                 <input
                   type="number"
                   value={purchaseCost}
                   onChange={(e) => setPurchaseCost(Number(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1 text-teal-600 dark:text-teal-400">
+                <label className="block text-xs sm:text-sm font-bold mb-1.5 text-teal-600 dark:text-teal-400">
                   Sale Rate to Medical Stores
                 </label>
                 <input
                   type="number"
                   value={tradePrice}
                   onChange={(e) => setTradePrice(Number(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1 text-slate-500">Customer Print Price (MRP)</label>
+                <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-500">Customer Print Price (MRP)</label>
                 <input
                   type="number"
                   value={mrp}
                   onChange={(e) => setMrp(Number(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Opening Warehouse Stock Section (Instant Availability) */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-teal-500/30 bg-teal-50/30 dark:bg-slate-800/50 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
+                <Boxes className="w-4 h-4" />
+                Warehouse Stock (Opening Stock - Optional)
+              </span>
+              <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">
+                Shamil karte hi bill or inventory ma show ho ga
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-700 dark:text-slate-300">
+                  Initial Stock (Opening Boxes / Packs)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 50"
+                  value={initialStock || ""}
+                  onChange={(e) => setInitialStock(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-teal-700 dark:text-teal-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-700 dark:text-slate-300">
+                  Batch Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. BCH-01 (Auto if empty)"
+                  value={initialBatchNumber}
+                  onChange={(e) => setInitialBatchNumber(e.target.value)}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-700 dark:text-slate-300">
+                  Expiry Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={initialExpiryDate}
+                  onChange={(e) => setInitialExpiryDate(e.target.value)}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
             </div>
           </div>
 
           {/* Image Upload Area */}
-          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2">
-            <label className="block font-bold text-slate-700 dark:text-slate-300">
+          <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2.5">
+            <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
               Product Photos (ImageKit.io Cloud Upload)
             </label>
-            <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold text-sm btn-interactive">
                 <Upload className="w-4 h-4" />
                 {isUploadingImage ? "Uploading to ImageKit..." : "Upload Medicine Picture"}
                 <input
@@ -546,26 +657,26 @@ export function ProductCatalogView() {
                   className="hidden"
                 />
               </label>
-              <span className="text-slate-400 text-[11px]">
+              <span className="text-slate-400 text-xs">
                 {uploadedImages.length > 0
                   ? `${uploadedImages.length} photo(s) attached`
                   : "Photos will be stored on ImageKit CDN"}
               </span>
             </div>
-            {uploadError && <p className="text-rose-600 text-[11px]">{uploadError}</p>}
+            {uploadError && <p className="text-rose-600 text-xs font-semibold">{uploadError}</p>}
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2.5 pt-2">
             <button
               type="button"
               onClick={() => setIsAdding(false)}
-              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300"
+              className="min-h-[44px] px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm btn-interactive"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20"
+              className="min-h-[44px] px-7 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-soft shadow-teal-600/20 btn-interactive"
             >
               Save Medicine (Mehfooz Karein)
             </button>
@@ -574,29 +685,29 @@ export function ProductCatalogView() {
       )}
 
       {/* Search and Category Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by medicine name, SKU or code..."
+            placeholder="Search medicine name, SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm shadow-soft focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
         </div>
 
         {/* Category Pills (Synced with global CategoryContext) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 text-xs">
-          <span className="text-slate-400 text-[11px] font-semibold flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1.5 scrollbar-thin">
+          <span className="text-slate-400 text-xs font-semibold flex items-center gap-1 shrink-0">
             <Layers className="w-3.5 h-3.5" /> Category:
           </span>
           <button
             onClick={() => setSelectedCategoryId("all")}
-            className={`px-3 py-1 rounded-lg font-bold shrink-0 transition-all ${
+            className={`min-h-[40px] px-4 py-2 rounded-xl font-bold text-xs sm:text-sm shrink-0 btn-interactive transition-all ${
               selectedCategoryId === "all"
-                ? "bg-teal-600 text-white shadow-sm"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                ? "bg-teal-600 text-white shadow-soft"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
             }`}
           >
             All Categories
@@ -605,10 +716,10 @@ export function ProductCatalogView() {
             <button
               key={c.id}
               onClick={() => setSelectedCategoryId(c.id)}
-              className={`px-3 py-1 rounded-lg font-bold shrink-0 transition-all ${
+              className={`min-h-[40px] px-4 py-2 rounded-xl font-bold text-xs sm:text-sm shrink-0 btn-interactive transition-all ${
                 selectedCategoryId === c.id
-                  ? "bg-teal-600 text-white shadow-sm"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                  ? "bg-teal-600 text-white shadow-soft"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}
             >
               {c.name}
@@ -618,14 +729,14 @@ export function ProductCatalogView() {
       </div>
 
       {/* Catalog Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         {filtered.length === 0 ? (
-          <div className="col-span-full p-12 text-center text-slate-400 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900">
+          <div className="col-span-full p-12 text-center text-slate-400 border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-soft">
             <Boxes className="w-12 h-12 mx-auto mb-2 opacity-40 text-teal-600" />
-            <h3 className="font-extrabold text-slate-700 dark:text-slate-300 text-sm">
+            <h3 className="font-extrabold text-slate-700 dark:text-slate-300 text-base">
               No Medicines Found in this Category
             </h3>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
               {selectedCategoryId !== "all"
                 ? "Is category mein abhi koi medicine shamil nahi hai."
                 : "Aap ki search se koi medicine match nahi hui."}
@@ -638,11 +749,11 @@ export function ProductCatalogView() {
             return (
               <div
                 key={prod.id}
-                className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between hover:border-teal-500/50 transition-all text-xs"
+                className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft hover:shadow-card-hover card-interactive flex flex-col justify-between transition-all"
               >
-                <div className="space-y-3">
-                  <div className="flex gap-3 items-start">
-                    <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden border border-slate-200 dark:border-slate-700 relative flex items-center justify-center">
+                <div className="space-y-3.5">
+                  <div className="flex gap-3.5 items-start">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden border border-slate-200 dark:border-slate-700 relative flex items-center justify-center">
                       {primaryImg?.url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -651,54 +762,54 @@ export function ProductCatalogView() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <PackageCheck className="w-7 h-7 text-slate-400" />
+                        <PackageCheck className="w-8 h-8 text-slate-400" />
                       )}
                     </div>
 
                     <div className="space-y-1 min-w-0 flex-1">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
                         {prod.categoryName}
                       </span>
-                      <h3 className="font-extrabold text-slate-900 dark:text-slate-100 truncate">
+                      <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base leading-snug line-clamp-2">
                         {prod.name}
                       </h3>
-                      <p className="font-mono text-[11px] text-slate-400">Code: {prod.sku}</p>
+                      <p className="font-mono text-xs text-slate-500 font-medium">Code: {prod.sku}</p>
                     </div>
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-[11px] space-y-1">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 text-xs sm:text-sm space-y-1.5">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Pack Details:</span>
-                      <span className="font-bold text-slate-700 dark:text-slate-300">{prod.packSize}</span>
+                      <span className="text-slate-500 font-medium">Pack Details:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{prod.packSize}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Items per Pack:</span>
-                      <span className="font-bold text-slate-700 dark:text-slate-300">{prod.unitsPerPack}</span>
+                      <span className="text-slate-500 font-medium">Items per Pack:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{prod.unitsPerPack}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Low Stock Alert:</span>
+                      <span className="text-slate-500 font-medium">Low Stock Alert:</span>
                       <span className="font-bold text-amber-600">{prod.reorderThreshold} packs</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                <div className="pt-3.5 mt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
                     IN STOCK
                   </span>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => openEditModal(prod)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-[11px] transition-colors"
+                      className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm btn-interactive"
                       title="Edit Product Details"
                     >
-                      <Edit2 className="w-3 h-3" /> Edit
+                      <Edit2 className="w-3.5 h-3.5" /> Edit
                     </button>
 
                     <Link
-                      href={`/products/${prod.id}`}
-                      className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 font-bold hover:text-teal-600"
+                      href={`/products/detail?id=${encodeURIComponent(prod.id)}`}
+                      className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm btn-interactive"
                     >
                       <Eye className="w-3.5 h-3.5" /> Details
                     </Link>
@@ -715,58 +826,58 @@ export function ProductCatalogView() {
       {/* ========================================================================= */}
       {editingProduct && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-5 my-8 text-xs animate-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-2xl w-full p-5 sm:p-7 space-y-5 my-8 text-xs sm:text-sm animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center">
-                  <Edit2 className="w-4 h-4" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center">
+                  <Edit2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100">
+                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">
                     Edit Medicine Details
                   </h3>
-                  <p className="text-slate-400 text-[11px]">
+                  <p className="text-slate-500 text-xs mt-0.5">
                     Update name, category, pack size, code, and pricing
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setEditingProduct(null)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
+                className="min-h-[38px] min-w-[38px] p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center btn-interactive"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleUpdateProduct} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <label className="block font-bold mb-1">Medicine Name *</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Medicine Name *</label>
                   <input
                     type="text"
                     required
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Formula / Generic Name</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Formula / Generic Name</label>
                   <input
                     type="text"
                     value={editGenericName}
                     onChange={(e) => setEditGenericName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Category</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Category</label>
                   <select
                     value={editCategoryId}
                     onChange={(e) => setEditCategoryId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -777,118 +888,118 @@ export function ProductCatalogView() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Item Code (SKU) *</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Item Code (SKU) *</label>
                   <input
                     type="text"
                     required
                     value={editSku}
                     onChange={(e) => setEditSku(e.target.value.toUpperCase())}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-bold"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-bold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Barcode</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Barcode</label>
                   <input
                     type="text"
                     value={editBarcode}
                     onChange={(e) => setEditBarcode(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Brand / Company</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Brand / Company</label>
                   <input
                     type="text"
                     value={editBrand}
                     onChange={(e) => setEditBrand(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Pack Details (e.g. Pack of 30 Tablets)</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Pack Details (e.g. Pack of 30 Tablets)</label>
                   <input
                     type="text"
                     value={editPackSize}
                     onChange={(e) => setEditPackSize(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Items per Pack</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Items per Pack</label>
                   <input
                     type="number"
                     value={editUnitsPerPack}
                     onChange={(e) => setEditUnitsPerPack(Number(e.target.value) || 1)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Low-Stock Alert Level</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Low-Stock Alert Level</label>
                   <input
                     type="number"
                     value={editReorderThreshold}
                     onChange={(e) => setEditReorderThreshold(Number(e.target.value) || 10)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
               </div>
 
               {/* Pricing Section */}
-              <div className="p-4 rounded-xl border border-teal-500/20 bg-teal-50/20 dark:bg-slate-800/40 space-y-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
-                  <DollarSign className="w-3.5 h-3.5" />
+              <div className="p-4 sm:p-5 rounded-2xl border border-teal-500/20 bg-teal-50/20 dark:bg-slate-800/40 space-y-3.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
+                  <DollarSign className="w-4 h-4" />
                   Medicine Rates (Prices in PKR)
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-bold mb-1">Buying Cost (Kharid Rate)</label>
+                    <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
                     <input
                       type="number"
                       value={editPurchaseCost}
                       onChange={(e) => setEditPurchaseCost(Number(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                      className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1 text-teal-600 dark:text-teal-400">
+                    <label className="block text-xs sm:text-sm font-bold mb-1.5 text-teal-600 dark:text-teal-400">
                       Sale Rate to Medical Stores
                     </label>
                     <input
                       type="number"
                       value={editTradePrice}
                       onChange={(e) => setEditTradePrice(Number(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                      className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1 text-slate-500">
+                    <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-500">
                       Customer Print Price (MRP)
                     </label>
                     <input
                       type="number"
                       value={editMrp}
                       onChange={(e) => setEditMrp(Number(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
+                      className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Photo Upload for Editing */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2">
-                <label className="block font-bold text-slate-700 dark:text-slate-300">
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2">
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
                   Update Medicine Picture (ImageKit)
                 </label>
-                <div className="flex items-center gap-3">
-                  <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold">
-                    <Upload className="w-3.5 h-3.5" />
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="min-h-[40px] inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold text-xs sm:text-sm btn-interactive">
+                    <Upload className="w-4 h-4" />
                     {isUploadingImage ? "Uploading..." : "Upload New Photo"}
                     <input
                       type="file"
@@ -898,7 +1009,7 @@ export function ProductCatalogView() {
                       className="hidden"
                     />
                   </label>
-                  <span className="text-slate-400 text-[11px]">
+                  <span className="text-slate-400 text-xs">
                     {editImages.length > 0
                       ? `${editImages.length} photo(s) attached`
                       : "No photo attached yet"}
@@ -906,18 +1017,18 @@ export function ProductCatalogView() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingProduct(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm btn-interactive"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingEdit}
-                  className="px-6 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20 disabled:opacity-50"
+                  className="min-h-[44px] px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-2 text-sm shadow-soft shadow-teal-600/20 disabled:opacity-50 btn-interactive"
                 >
                   <Save className="w-4 h-4" />
                   {isSavingEdit ? "Saving Changes..." : "Save Changes (Update Karein)"}

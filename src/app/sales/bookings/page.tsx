@@ -361,7 +361,7 @@ export default function SalesBookingsPage() {
           onClick={() => setIsCreating(true)}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
-          <Plus className="w-4 h-4" /> + Take New Order
+          <Plus className="w-4 h-4" /> Take New Order
         </button>
       </div>
 
@@ -652,7 +652,7 @@ export default function SalesBookingsPage() {
                           : "text-slate-600 dark:text-slate-400"
                       }`}
                     >
-                      + Type Manual
+                      Type Manual
                     </button>
                   </div>
                 </div>
@@ -750,7 +750,7 @@ export default function SalesBookingsPage() {
                           : "text-slate-600 dark:text-slate-400"
                       }`}
                     >
-                      + Type Item
+                      Type Item
                     </button>
                   </div>
                 </div>

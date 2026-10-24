@@ -58,7 +58,7 @@ export default function NotificationsCenterPage() {
                 cust.currentOutstandingBalance
               )} is due. Please send WhatsApp reminder.`,
               timestamp: new Date().toISOString(),
-              actionUrl: `/customers/${cust.id}`,
+              actionUrl: `/customers/detail?id=${encodeURIComponent(cust.id)}`,
               actionLabel: "Send WhatsApp Reminder",
               severity: "high",
             });

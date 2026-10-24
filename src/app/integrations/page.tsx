@@ -32,7 +32,7 @@ export default function IntegrationsDashboardPage() {
     setTestingImageKit(true);
     setImageKitResult(null);
     try {
-      const res = await fetch("/api/auth/imagekit");
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/auth/imagekit`);
       const data = await res.json();
       if (res.ok && data.signature) {
         setImageKitResult({

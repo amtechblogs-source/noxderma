@@ -110,7 +110,7 @@ export default function CustomerVisitsPage() {
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-md shadow-teal-600/20"
         >
           <Plus className="w-4 h-4" />
-          {isAdding ? "Cancel" : "+ Add Visit Record"}
+          {isAdding ? "Cancel" : "Add Visit Record"}
         </button>
       </div>
 
@@ -217,7 +217,7 @@ export default function CustomerVisitsPage() {
                   }}
                   className="w-1/2 px-2.5 py-1.5 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-xs"
                 >
-                  <option value="">+ Pick Saved Medicine to Add...</option>
+                  <option value="">Pick Saved Medicine to Add...</option>
                   {(selectedCategoryId === "all"
                     ? products
                     : products.filter((p) => p.categoryId === selectedCategoryId)

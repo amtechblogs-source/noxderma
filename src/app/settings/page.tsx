@@ -9,18 +9,25 @@ import {
   Building2,
   Receipt,
   Clock,
-  ShieldAlert,
   ArrowLeft,
   DollarSign,
   Phone,
   Mail,
   MapPin,
   Globe,
+  Palette,
+  Image as ImageIcon,
+  Upload,
+  Trash2,
+  Check,
+  Eye,
 } from "lucide-react";
 import { DEFAULT_BUSINESS_SETTINGS, type BusinessSettings } from "@/types";
 import { offlineDb } from "@/lib/offline/db";
+import { useTheme, type ThemeId } from "@/context/ThemeContext";
 
 export default function BusinessSettingsPage() {
+  const { currentTheme, themeId, setTheme, availableThemes } = useTheme();
   const [settings, setSettings] = useState<BusinessSettings>(DEFAULT_BUSINESS_SETTINGS);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -41,18 +48,51 @@ export default function BusinessSettingsPage() {
     loadSettings();
   }, []);
 
+  // Handle local image upload to base64 data URL for offline-first logo storage
+  const handleImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "appLogoUrl" | "invoiceLogoUrl"
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Image size should be less than 2MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setSettings((prev) => ({
+          ...prev,
+          [field]: result,
+        }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     try {
       const updated: BusinessSettings = {
         ...settings,
+        colorTheme: themeId,
         updatedAt: new Date().toISOString(),
         updatedBy: "usr_admin",
       };
       await offlineDb.settings.put(updated);
       setSettings(updated);
       setIsSaved(true);
+
+      // Notify Sidebar and Header
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("noxderma_settings_updated"));
+      }
+
       setTimeout(() => setIsSaved(false), 4000);
     } catch (err) {
       console.error("Failed to save settings:", err);
@@ -64,6 +104,7 @@ export default function BusinessSettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Top Header */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <Link
@@ -75,27 +116,226 @@ export default function BusinessSettingsPage() {
           </Link>
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Settings className="w-6 h-6 text-teal-600" />
-            Business Name, Address & Bill Settings
+            Company Settings & Themes
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Yahan apni company ka naam, phone number, address aur bill k rules set karein.
+            Choose from 5 color themes, upload software UI and invoice print logos, and configure company details.
           </p>
         </div>
 
         {isSaved && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-xs font-bold border border-teal-200 dark:border-teal-800 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-teal-600" />
-            Settings Saved (Save Ho Gai)
+            Settings Saved
           </span>
         )}
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Section 1: Business Identity & Legal Information */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+        {/* Section 1: Color Themes (Dark Mode Compatible) */}
+        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <Palette className="w-4 h-4 text-teal-600" />
+              1. Color Themes (5 Options &bull; Dark Mode Compatible)
+            </h2>
+            <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">
+              Active: {currentTheme.name}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Aap apni pasand ka color theme chun saktay hain jo poori app, buttons, badges aur dark mode ma khubsurat nazar aayega.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {availableThemes.map((t) => {
+              const isSelected = themeId === t.id;
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                    isSelected
+                      ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20 shadow-md"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-4 h-4 rounded-full shadow-sm"
+                        style={{ backgroundColor: t.primaryColor }}
+                      />
+                      <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                        {t.name}
+                      </span>
+                    </div>
+                    {isSelected && (
+                      <span className="w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px]">
+                        <Check className="w-3 h-3" />
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 mb-3">{t.description}</p>
+
+                  <div className="flex items-center gap-2 text-[10px] font-mono">
+                    <span
+                      className="px-2 py-0.5 rounded font-bold text-white shadow-sm"
+                      style={{ backgroundColor: t.primaryColor }}
+                    >
+                      Button Primary
+                    </span>
+                    <span className="px-2 py-0.5 rounded font-semibold text-slate-500 bg-slate-100 dark:bg-slate-700">
+                      {t.nameUrdu}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Section 2: Software UI Logo & Print Invoice Logo */}
+        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <ImageIcon className="w-4 h-4 text-teal-600" />
+            2. Software UI Logo & Invoice Print Logo
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            {/* UI Logo Card */}
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-3">
+              <div>
+                <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                  Software / UI Brand Logo
+                </span>
+                <span className="text-[11px] text-slate-500 block">
+                  Sidebar aur app header ma show honay wala logo
+                </span>
+              </div>
+
+              {/* Preview Box */}
+              <div className="h-24 rounded-lg bg-slate-900 flex items-center justify-center p-3 border border-slate-800">
+                {settings.appLogoUrl ? (
+                  <img
+                    src={settings.appLogoUrl}
+                    alt="UI Logo Preview"
+                    className="max-h-16 max-w-full object-contain"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-white">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-teal-500 to-teal-400 flex items-center justify-center font-bold text-sm">
+                      ND
+                    </div>
+                    <span className="font-extrabold text-sm tracking-tight">NOXDERMA</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer transition-colors shadow-sm">
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload UI Logo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, "appLogoUrl")}
+                    className="hidden"
+                  />
+                </label>
+
+                {settings.appLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, appLogoUrl: "" })}
+                    className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
+                    title="Remove Logo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <input
+                type="text"
+                placeholder="Or paste image URL (e.g. https://...)"
+                value={settings.appLogoUrl || ""}
+                onChange={(e) => setSettings({ ...settings, appLogoUrl: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px]"
+              />
+            </div>
+
+            {/* Print Logo Card */}
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-3">
+              <div>
+                <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                  Print Logo (Bills & Invoices)
+                </span>
+                <span className="text-[11px] text-slate-500 block">
+                  Print honay walay customer bills / receipts k ooper show ho ga
+                </span>
+              </div>
+
+              {/* Preview Box */}
+              <div className="h-24 rounded-lg bg-white border border-slate-300 flex items-center justify-center p-3">
+                {settings.invoiceLogoUrl ? (
+                  <img
+                    src={settings.invoiceLogoUrl}
+                    alt="Invoice Print Logo Preview"
+                    className="max-h-16 max-w-full object-contain"
+                  />
+                ) : (
+                  <div className="text-center">
+                    <span className="font-extrabold text-sm tracking-tight text-slate-900 block">
+                      NOXDERMA PHARMA
+                    </span>
+                    <span className="text-[10px] text-slate-400">Default Text Brand on Bills</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer transition-colors shadow-sm">
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Print Logo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, "invoiceLogoUrl")}
+                    className="hidden"
+                  />
+                </label>
+
+                {settings.invoiceLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, invoiceLogoUrl: "" })}
+                    className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
+                    title="Remove Logo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <input
+                type="text"
+                placeholder="Or paste invoice logo image URL..."
+                value={settings.invoiceLogoUrl || ""}
+                onChange={(e) => setSettings({ ...settings, invoiceLogoUrl: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px]"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Business Identity & Contact */}
+        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Building2 className="w-4 h-4 text-teal-600" />
-            1. Company Name & Contact Details
+            3. Company Name & Contact Details
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -190,58 +430,11 @@ export default function BusinessSettingsPage() {
           </div>
         </div>
 
-        {/* Section 2: Financial, Currency & Locale */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-teal-600" />
-            2. Currency & Udhaar Days
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div>
-              <label className="block font-semibold mb-1">Currency</label>
-              <input
-                type="text"
-                disabled
-                value={`${settings.currency} (${settings.currencySymbol})`}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 font-bold text-slate-500 cursor-not-allowed"
-              />
-              <span className="text-[10px] text-slate-400 mt-1 block">Default: Pakistani Rupee (PKR)</span>
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">City Timezone</label>
-              <input
-                type="text"
-                disabled
-                value={settings.timezone}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 font-bold text-slate-500 cursor-not-allowed"
-              />
-              <span className="text-[10px] text-slate-400 mt-1 block">Default: Pakistan Standard Time</span>
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">Standard Udhaar Days (Credit Days)</label>
-              <input
-                type="number"
-                value={settings.defaultCreditTermsDays}
-                onChange={(e) =>
-                  setSettings({ ...settings, defaultCreditTermsDays: Number(e.target.value) || 30 })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
-              />
-              <span className="text-[10px] text-teal-600 mt-1 block">
-                Itne din baad customer ko udhaar wapis karne ka alert show ho ga
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 3: Invoice Prefix & Payment Instructions */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+        {/* Section 4: Bill Settings & Payment Instructions */}
+        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Receipt className="w-4 h-4 text-teal-600" />
-            3. Bill Settings & Bank Account Details
+            4. Bill Settings & Bank Account Details
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -253,24 +446,15 @@ export default function BusinessSettingsPage() {
                 onChange={(e) => setSettings({ ...settings, invoicePrefix: e.target.value.toUpperCase() })}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-bold"
               />
-              <span className="text-[10px] text-slate-400 mt-1 block">
-                Bill number aisa bane ga: {settings.invoicePrefix}-2026-00001
-              </span>
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Rider / Delivery Charges (PKR)</label>
+              <label className="block font-semibold mb-1">Standard Udhaar Days (Credit Days)</label>
               <input
                 type="number"
-                value={settings.defaultDeliverySettings.standardCharge}
+                value={settings.defaultCreditTermsDays}
                 onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    defaultDeliverySettings: {
-                      ...settings.defaultDeliverySettings,
-                      standardCharge: Number(e.target.value) || 0,
-                    },
-                  })
+                  setSettings({ ...settings, defaultCreditTermsDays: Number(e.target.value) || 30 })
                 }
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
               />
@@ -287,7 +471,7 @@ export default function BusinessSettingsPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block font-semibold mb-1">Bill k Nechay Ka Message (Note / Disclaimer)</label>
+              <label className="block font-semibold mb-1">Bill Footer Note / Disclaimer</label>
               <input
                 type="text"
                 value={settings.invoiceFooter}
@@ -298,45 +482,7 @@ export default function BusinessSettingsPage() {
           </div>
         </div>
 
-        {/* Section 4: Clinical Shelf-life & FEFO Expiry Policies */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-teal-600" />
-            4. Low Stock Alert & Expiry Rule
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div>
-              <label className="block font-semibold mb-1">Low-Stock Alert (Jab itne box bachein to alert show ho)</label>
-              <input
-                type="number"
-                value={settings.lowStockThresholdDefault}
-                onChange={(e) =>
-                  setSettings({ ...settings, lowStockThresholdDefault: Number(e.target.value) || 10 })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">Expired Medicine Sale Rule</label>
-              <select
-                value={settings.expiryBlockingPolicy}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    expiryBlockingPolicy: e.target.value as "block_sale" | "warn_admin_override",
-                  })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
-              >
-                <option value="block_sale">Strict Block: Expired medicine ka bill bilkul na bane (Recommended)</option>
-                <option value="warn_admin_override">Warning: Warning de aur owner ki permission se bill bane</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
+        {/* Save Button */}
         <div className="flex justify-end pt-2">
           <button
             type="submit"

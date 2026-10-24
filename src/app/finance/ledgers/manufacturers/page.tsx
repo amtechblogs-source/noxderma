@@ -128,7 +128,7 @@ export default function ManufacturerLedgersPage() {
             onClick={() => setIsRecordingPayment(true)}
             className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
           >
-            <Plus className="w-4 h-4" /> + Add Payment to Company
+            <Plus className="w-4 h-4" /> Add Payment to Company
           </button>
         </div>
       </div>

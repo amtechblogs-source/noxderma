@@ -99,6 +99,11 @@ export class NoxdermaDexieDB extends Dexie {
       employeeTargets: "id, repName, month",
       users: "id, email, role, active",
     });
+
+    this.version(3).stores({
+      inventoryBatches: "id, productId, batchNumber, expiryDate, remainingQuantity, status",
+      users: "id, email, role, active",
+    });
   }
 }
 

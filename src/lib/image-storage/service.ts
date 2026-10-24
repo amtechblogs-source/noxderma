@@ -15,6 +15,12 @@ export interface ImageStorageProvider {
 }
 
 /**
+ * Base URL of the external backend that serves /api/auth/imagekit.
+ * Empty string = same-origin (not available on static Firebase Hosting).
+ */
+const apiBase = () => process.env.NEXT_PUBLIC_API_URL || "";
+
+/**
  * ImageKit implementation using signed client-side uploads.
  * Private keys are NEVER exposed on the client. Tokens are fetched from /api/auth/imagekit.
  */
@@ -25,7 +31,7 @@ class ImageKitProvider implements ImageStorageProvider {
 
   async upload(file: File, options?: { folder?: string; tags?: string[] }): Promise<ProductImage> {
     // 1. Fetch secure authentication parameters from trusted server route
-    const authRes = await fetch("/api/auth/imagekit");
+    const authRes = await fetch(`${apiBase()}/api/auth/imagekit`);
     if (!authRes.ok) {
       throw new Error(`Failed to obtain upload authorization: ${authRes.statusText}`);
     }
@@ -72,7 +78,7 @@ class ImageKitProvider implements ImageStorageProvider {
   }
 
   async deleteImage(fileId: string): Promise<boolean> {
-    const res = await fetch(`/api/auth/imagekit?fileId=${encodeURIComponent(fileId)}`, {
+    const res = await fetch(`${apiBase()}/api/auth/imagekit?fileId=${encodeURIComponent(fileId)}`, {
       method: "DELETE",
     });
     return res.ok;

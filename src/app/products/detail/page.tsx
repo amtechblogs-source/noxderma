@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   PackageCheck,
@@ -29,6 +30,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
 import type {
   Product,
   ProductPricing,
@@ -36,13 +38,27 @@ import type {
   StockMovement,
 } from "@/types";
 
-interface PageProps {
-  params: Promise<{ id: string }>;
+/**
+ * Static-export friendly: the product id is read from `?id=` at runtime
+ * (data lives in IndexedDB, so there is nothing to pre-render per product).
+ */
+export default function ProductDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-slate-500 min-h-[400px] flex items-center justify-center">
+          <p className="font-semibold text-sm">Loading product profile...</p>
+        </div>
+      }
+    >
+      <ProductDetailContent />
+    </Suspense>
+  );
 }
 
-export default function ProductDetailPage({ params }: PageProps) {
-  const resolvedParams = use(params);
-  const productId = resolvedParams.id;
+function ProductDetailContent() {
+  const { currentUser } = useAuth();
+  const productId = useSearchParams().get("id") ?? "";
 
   const [product, setProduct] = useState<Product | null>(null);
   const [pricing, setPricing] = useState<ProductPricing | null>(null);
@@ -223,8 +239,8 @@ export default function ProductDetailPage({ params }: PageProps) {
       balanceAfter: (totalStock || 0) + Number(newQuantity),
       referenceId: `GRN-MANUAL-${Date.now().toString().slice(-4)}`,
       referenceType: "goods_receipt",
-      userId: "usr_admin",
-      userName: "Dr. Asim (Admin)",
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Admin",
       reason: "Manual Initial Stock Batch Intake",
       timestamp: now,
     };
@@ -316,7 +332,7 @@ export default function ProductDetailPage({ params }: PageProps) {
             onClick={() => setIsAddingBatch(true)}
             className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
           >
-            <Plus className="w-4 h-4" /> + Add New Batch
+            <Plus className="w-4 h-4" /> Add New Batch
           </button>
         </div>
       </div>
@@ -534,7 +550,7 @@ export default function ProductDetailPage({ params }: PageProps) {
                   onClick={() => setIsAddingBatch(true)}
                   className="mt-2 text-xs font-bold text-teal-600 hover:underline"
                 >
-                  + Add First Batch
+                  Add First Batch
                 </button>
               </div>
             ) : (

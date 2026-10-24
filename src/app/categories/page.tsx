@@ -41,18 +41,7 @@ export default function CategoriesPage() {
 
   const refreshCategories = async () => {
     const list = await offlineDb.categories.toArray();
-    if (list.length === 0) {
-      const now = new Date().toISOString();
-      const initial = INITIAL_DEFAULT_CATEGORIES.map((c) => ({
-        ...c,
-        createdAt: now,
-        updatedAt: now,
-      }));
-      await offlineDb.categories.bulkPut(initial);
-      setCategories(initial.sort((a, b) => a.displayOrder - b.displayOrder));
-    } else {
-      setCategories(list.sort((a, b) => a.displayOrder - b.displayOrder));
-    }
+    setCategories(list.sort((a, b) => a.displayOrder - b.displayOrder));
     await refreshGlobalCategories();
   };
 
@@ -222,7 +211,7 @@ export default function CategoriesPage() {
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-md shadow-teal-600/20"
         >
           <Plus className="w-4 h-4" />
-          {isAdding ? "Cancel" : "+ Add New Category"}
+          {isAdding ? "Cancel" : "Add New Category"}
         </button>
       </div>
 
