@@ -15,11 +15,11 @@ import {
   ArrowRight,
   DollarSign,
   Calendar,
-  Building2,
   Phone,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { getProductImageUrl } from "@/features/sales/OfflineInvoiceCreator";
 import type { Invoice, Product, BusinessSettings } from "@/types";
 
 export default function SalesInvoicesListPage() {
@@ -480,9 +480,7 @@ export default function SalesInvoicesListPage() {
               {selectedInvoice.lines?.map((line, idx) => {
                 const lineImg =
                   line.imageUrl ||
-                  products.find((p) => p.id === line.productId)?.images?.find((img) => img.isPrimary)?.url ||
-                  products.find((p) => p.id === line.productId)?.images?.[0]?.url ||
-                  "";
+                  getProductImageUrl(products.find((p) => p.id === line.productId));
 
                 return (
                   <tr key={idx} className="border-b border-slate-300">

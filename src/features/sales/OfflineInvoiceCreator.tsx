@@ -44,6 +44,91 @@ import type {
   BusinessSettings,
 } from "@/types";
 
+// Helper: Resolve product image from various schemas (images array, imageUrl, image, thumbnailUrl)
+export function getProductImageUrl(prod?: Product | null): string {
+  if (!prod) return "";
+  const pAny = prod as unknown as Record<string, unknown>;
+
+  // 1. Array of images
+  if (Array.isArray(prod.images) && prod.images.length > 0) {
+    const primary = prod.images.find((img) => img && typeof img === "object" && (img as any).isPrimary);
+    if (primary && typeof (primary as any).url === "string" && (primary as any).url.trim()) {
+      return (primary as any).url.trim();
+    }
+    const first = prod.images[0] as unknown;
+    if (first) {
+      if (typeof first === "string" && (first as string).trim()) return (first as string).trim();
+      if (typeof (first as Record<string, unknown>).url === "string" && ((first as Record<string, unknown>).url as string).trim()) {
+        return ((first as Record<string, unknown>).url as string).trim();
+      }
+      if (typeof (first as Record<string, unknown>).thumbnailUrl === "string" && ((first as Record<string, unknown>).thumbnailUrl as string).trim()) {
+        return ((first as Record<string, unknown>).thumbnailUrl as string).trim();
+      }
+    }
+  }
+
+  // 2. Direct string fields
+  if (typeof pAny.imageUrl === "string" && pAny.imageUrl.trim()) return pAny.imageUrl.trim();
+  if (typeof pAny.image === "string" && pAny.image.trim()) return pAny.image.trim();
+  if (typeof pAny.thumbnailUrl === "string" && pAny.thumbnailUrl.trim()) return pAny.thumbnailUrl.trim();
+  if (typeof pAny.photo === "string" && pAny.photo.trim()) return pAny.photo.trim();
+
+  return "";
+}
+
+// Helper: Resolve default price with multi-tier fallback (tradePrice > mrp > batch price)
+export function getProductDefaultPrice(
+  prod?: Product | null,
+  pricingsList?: ProductPricing[],
+  batch?: InventoryBatch | null
+): number {
+  if (!prod) return 0;
+
+  // 1. Look in productPricing table
+  if (Array.isArray(pricingsList)) {
+    const pricing = pricingsList.find(
+      (p) => String(p.productId).trim() === String(prod.id).trim()
+    );
+    if (pricing) {
+      if (Number(pricing.tradePricePerPack) > 0) return Number(pricing.tradePricePerPack);
+      if (Number(pricing.mrpPerPack) > 0) return Number(pricing.mrpPerPack);
+      if (Number(pricing.distributorPricePerPack) > 0) return Number(pricing.distributorPricePerPack);
+      if (Number(pricing.purchaseCostPerPack) > 0) return Number(pricing.purchaseCostPerPack);
+    }
+  }
+
+  // 2. Look in product direct fields
+  const pAny = prod as unknown as Record<string, unknown>;
+  const directFields = [
+    pAny.tradePricePerPack,
+    pAny.tradePrice,
+    pAny.mrpPerPack,
+    pAny.mrp,
+    pAny.price,
+    pAny.salePrice,
+    pAny.unitPrice,
+    pAny.distributorPricePerPack,
+    pAny.purchaseCostPerPack,
+    pAny.costPrice,
+  ];
+  for (const field of directFields) {
+    const num = Number(field);
+    if (!isNaN(num) && num > 0) return num;
+  }
+
+  // 3. Look in batch pricing
+  if (batch) {
+    const bAny = batch as unknown as Record<string, unknown>;
+    const batchFields = [bAny.tradePrice, bAny.price, bAny.mrp, bAny.purchasePrice, bAny.costPrice];
+    for (const field of batchFields) {
+      const num = Number(field);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  }
+
+  return 0;
+}
+
 export function OfflineInvoiceCreator() {
   const router = useRouter();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
@@ -184,38 +269,16 @@ export function OfflineInvoiceCreator() {
       return;
     }
 
-    // 1. Auto-fetch product's pricing (tradePrice > mrp > product direct fields > batch price)
-    const pricing = pricings.find(
-      (p) => String(p.productId).trim() === String(prod.id).trim()
-    );
-    const pAny = prod as unknown as Record<string, unknown>;
-    const defaultPrice =
-      Number(pricing?.tradePricePerPack) ||
-      Number(pricing?.mrpPerPack) ||
-      Number(pAny.tradePrice) ||
-      Number(pAny.tradePricePerPack) ||
-      Number(pAny.price) ||
-      Number(pAny.mrp) ||
-      Number(pAny.mrpPerPack) ||
-      Number(pAny.salePrice) ||
-      Number((specificBatch as unknown as Record<string, unknown>)?.tradePrice) ||
-      Number((specificBatch as unknown as Record<string, unknown>)?.purchasePrice) ||
-      0;
-
-    // 2. Extract product primary image
-    const primaryImg =
-      prod.images?.find((img) => img.isPrimary)?.url ||
-      prod.images?.[0]?.url ||
-      (typeof pAny.imageUrl === "string" ? pAny.imageUrl : "") ||
-      (typeof pAny.image === "string" ? pAny.image : "") ||
-      "";
-
-    // 3. Find batches for this product (FEFO)
+    // 1. Find batches for this product (FEFO)
     const prodBatches = batches
       .filter((b) => b.productId === prod.id && Number(b.remainingQuantity || 0) > 0)
       .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
 
     const chosenBatch = specificBatch || prodBatches[0];
+
+    // 2. Auto-fetch product's pricing & image with comprehensive fallbacks
+    const defaultPrice = getProductDefaultPrice(prod, pricings, chosenBatch);
+    const primaryImg = getProductImageUrl(prod);
 
     const batchId = chosenBatch ? chosenBatch.id : `bch_gen_${prod.id}`;
     const batchNumber = chosenBatch ? chosenBatch.batchNumber : "GEN-STOCK";
@@ -491,7 +554,7 @@ export function OfflineInvoiceCreator() {
   // If invoice is successfully created, render printable Enterprise Receipt view
   if (createdInvoice) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 print:max-w-none print:w-full print:m-0 print:space-y-4">
+      <div className="max-w-4xl mx-auto space-y-6 print:max-w-none print:w-full print:m-0 print:p-0 print:space-y-0 print:bg-white">
         <div className="flex items-center justify-between no-print">
           <Link
             href="/"
@@ -535,7 +598,7 @@ export function OfflineInvoiceCreator() {
         </div>
 
         {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
-        <div className="print-page p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-6 text-slate-900 dark:text-slate-100 print:p-0 print:border-none print:shadow-none print:bg-white print:text-black">
+        <div className="print-page p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-6 text-slate-900 dark:text-slate-100 print:p-0 print:m-0 print:border-none print:rounded-none print:shadow-none print:bg-white print:text-black">
           {/* Header with Print Logo support */}
           <div className="flex justify-between items-start pb-5 border-b-2 border-slate-900 dark:border-slate-700 print:border-black gap-4">
             <div className="flex items-start gap-3.5">
@@ -627,9 +690,7 @@ export function OfflineInvoiceCreator() {
                 {createdInvoice.lines.map((line, idx) => {
                   const lineImg =
                     line.imageUrl ||
-                    products.find((p) => p.id === line.productId)?.images?.find((img) => img.isPrimary)?.url ||
-                    products.find((p) => p.id === line.productId)?.images?.[0]?.url ||
-                    "";
+                    getProductImageUrl(products.find((p) => p.id === line.productId));
 
                   return (
                     <tr key={idx} className="border-b border-slate-200 dark:border-slate-800 print:border-slate-300">
@@ -892,15 +953,20 @@ export function OfflineInvoiceCreator() {
                     {/* Medicine & Batch Selection with Product Image */}
                     <div className="sm:col-span-5 flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
-                        {line.imageUrl ? (
-                          <img
-                            src={line.imageUrl}
-                            alt={line.productName}
-                            className="w-full h-full object-contain p-0.5"
-                          />
-                        ) : (
-                          <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
-                        )}
+                        {(() => {
+                          const itemImg =
+                            line.imageUrl ||
+                            getProductImageUrl(products.find((p) => p.id === line.productId));
+                          return itemImg ? (
+                            <img
+                              src={itemImg}
+                              alt={line.productName}
+                              className="w-full h-full object-contain p-0.5"
+                            />
+                          ) : (
+                            <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                          );
+                        })()}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -1302,30 +1368,6 @@ export function OfflineInvoiceCreator() {
                 </div>
               ) : (
                 modalProducts.map((prod) => {
-                  const pricing = pricings.find(
-                    (p) => String(p.productId).trim() === String(prod.id).trim()
-                  );
-                  const pAny = prod as unknown as Record<string, unknown>;
-                  const price =
-                    Number(pricing?.tradePricePerPack) ||
-                    Number(pricing?.mrpPerPack) ||
-                    Number(pAny.tradePrice) ||
-                    Number(pAny.tradePricePerPack) ||
-                    Number(pAny.price) ||
-                    Number(pAny.mrp) ||
-                    Number(pAny.mrpPerPack) ||
-                    Number(pAny.salePrice) ||
-                    0;
-
-                  const prodImage =
-                    prod.images?.find((img) => img.isPrimary)?.url ||
-                    prod.images?.[0]?.url ||
-                    (typeof pAny.imageUrl === "string" ? pAny.imageUrl : "") ||
-                    (typeof pAny.image === "string" ? pAny.image : "") ||
-                    "";
-
-                  const isAlreadyInInvoice = lines.some((l) => l.productId === prod.id);
-
                   // Find in-stock batches
                   const prodBatches = batches.filter(
                     (b) => b.productId === prod.id && Number(b.remainingQuantity || 0) > 0
@@ -1334,6 +1376,10 @@ export function OfflineInvoiceCreator() {
                     (sum, b) => sum + Number(b.remainingQuantity || 0),
                     0
                   );
+
+                  const price = getProductDefaultPrice(prod, pricings, prodBatches[0]);
+                  const prodImage = getProductImageUrl(prod);
+                  const isAlreadyInInvoice = lines.some((l) => l.productId === prod.id);
 
                   return (
                     <div

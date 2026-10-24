@@ -254,15 +254,25 @@ body {
     display: none !important;
   }
 
-  /* 2. Reset Document Canvas for Clean A4 Output */
+  /* 2. Reset Document Canvas & Outer Wrappers for Clean A4 Output (Eliminates bluish/slate background blocks) */
   html,
-  body {
+  body,
+  #root,
+  #__next,
+  main,
+  div[class*="min-h-screen"],
+  div[class*="bg-slate-50"],
+  div[class*="bg-slate-950"],
+  div[class*="dark:bg-slate-950"] {
     background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #000000 !important;
     width: 100% !important;
     height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
+    box-shadow: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     font-size: 12pt;
@@ -280,6 +290,8 @@ body {
     max-width: 100% !important;
     width: 100% !important;
     box-shadow: none !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
   }
 
   /* 3. A4 Printable Page Container */
@@ -290,7 +302,9 @@ body {
     padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
     background: #ffffff !important;
+    background-color: #ffffff !important;
   }
 
   /* 4. Table Print Rules */

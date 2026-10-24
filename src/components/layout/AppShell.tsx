@@ -85,11 +85,11 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const isPrefixActive = (path: string) => pathname.startsWith(path);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
       {/* Offline and Sync Banner */}
       <OfflineBanner />
 
-      <div className="flex flex-1 min-h-[calc(100vh-theme(spacing.10))]">
+      <div className="flex flex-1 min-h-[calc(100vh-theme(spacing.10))] print:min-h-0 print:bg-white">
         {/* Navigation Sidebar */}
         <Sidebar
           isOpen={sidebarOpen}
@@ -101,14 +101,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         {/* Main Content Area */}
         <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
           isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
-        } print:pl-0`}>
+        } print:pl-0 print:bg-white print:min-h-0`}>
           <Header
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             currentUser={currentUser}
             onLogout={logout}
           />
 
-          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-24 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0">
+          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-24 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0 print:bg-white print:min-h-0">
             {children}
           </main>
         </div>
