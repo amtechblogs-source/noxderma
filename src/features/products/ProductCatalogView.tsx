@@ -22,6 +22,7 @@ import {
   X,
   Save,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -123,6 +124,12 @@ export function ProductCatalogView() {
   const [editMrp, setEditMrp] = useState(0);
   const [editImages, setEditImages] = useState<ProductImage[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Selection and Deletion State
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [isDeletingLoading, setIsDeletingLoading] = useState<boolean>(false);
 
   const refreshCatalog = async () => {
     const prodList = await offlineDb.products.toArray();
@@ -418,6 +425,69 @@ export function ProductCatalogView() {
     }
     return true;
   });
+
+  // Selection helpers
+  const isAllSelected = filtered.length > 0 && filtered.every((p) => selectedProductIds.includes(p.id));
+
+  const handleToggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(id) ? prev.filter((pId) => pId !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedProductIds([]);
+    } else {
+      setSelectedProductIds(filtered.map((p) => p.id));
+    }
+  };
+
+  // Delete Individual Product Handler
+  const handleDeleteProduct = async (product: Product) => {
+    setIsDeletingLoading(true);
+    try {
+      await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
+        await offlineDb.products.delete(product.id);
+        await offlineDb.productPricing.delete(product.id);
+      });
+      setSelectedProductIds((prev) => prev.filter((id) => id !== product.id));
+      setDeletingProduct(null);
+      await refreshCatalog();
+      setSuccessNotice(`Medicine "${product.name}" (${product.sku}) catalog se delete ho gai.`);
+      setTimeout(() => setSuccessNotice(null), 4000);
+    } catch (err: any) {
+      console.error("Delete failed:", err);
+      alert("Delete failed: " + (err.message || "Unknown error"));
+    } finally {
+      setIsDeletingLoading(false);
+    }
+  };
+
+  // Bulk Delete Selected Products Handler
+  const handleBulkDelete = async () => {
+    if (selectedProductIds.length === 0) return;
+    setIsDeletingLoading(true);
+    try {
+      const count = selectedProductIds.length;
+      await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
+        for (const id of selectedProductIds) {
+          await offlineDb.products.delete(id);
+          await offlineDb.productPricing.delete(id);
+        }
+      });
+      setSelectedProductIds([]);
+      setIsBulkDeleting(false);
+      await refreshCatalog();
+      setSuccessNotice(`${count} medicines kamyabi se catalog se delete ho gaien.`);
+      setTimeout(() => setSuccessNotice(null), 4000);
+    } catch (err: any) {
+      console.error("Bulk delete failed:", err);
+      alert("Bulk delete failed: " + (err.message || "Unknown error"));
+    } finally {
+      setIsDeletingLoading(false);
+    }
+  };
 
   const activeCategoryObj =
     selectedCategoryId === "all"
@@ -721,12 +791,12 @@ export function ProductCatalogView() {
           {/* Image Upload Area */}
           <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2.5">
             <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
-              Product Photos (ImageKit.io Cloud Upload)
+              Product Photos
             </label>
             <div className="flex flex-wrap items-center gap-3">
               <label className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold text-sm btn-interactive">
                 <Upload className="w-4 h-4" />
-                {isUploadingImage ? "Uploading to ImageKit..." : "Upload Medicine Picture"}
+                {isUploadingImage ? "Uploading Image..." : "Upload Medicine Picture"}
                 <input
                   type="file"
                   accept="image/*"
@@ -738,7 +808,7 @@ export function ProductCatalogView() {
               <span className="text-slate-400 text-xs">
                 {uploadedImages.length > 0
                   ? `${uploadedImages.length} photo(s) attached`
-                  : "Photos will be stored on ImageKit CDN"}
+                  : "Photos will be saved and displayed on catalog & bills"}
               </span>
             </div>
             {uploadError && <p className="text-rose-600 text-xs font-semibold">{uploadError}</p>}
@@ -806,6 +876,49 @@ export function ProductCatalogView() {
         </div>
       </div>
 
+      {/* Selection Control Bar & Bulk Action Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-soft">
+        <label className="inline-flex items-center gap-2.5 cursor-pointer select-none text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={isAllSelected}
+            onChange={handleToggleSelectAll}
+            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+          />
+          <span>{isAllSelected ? "Deselect All Visible Medicines" : "Select All Visible Medicines"}</span>
+          <span className="text-xs text-slate-400 font-medium">
+            ({filtered.length} visible)
+          </span>
+        </label>
+
+        {selectedProductIds.length > 0 && (
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end animate-in fade-in">
+            <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-3 py-1.5 rounded-xl border border-teal-200 dark:border-teal-800">
+              {selectedProductIds.length} item{selectedProductIds.length > 1 ? "s" : ""} selected
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedProductIds([])}
+                className="min-h-[36px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold btn-interactive"
+              >
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsBulkDeleting(true)}
+                className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-rose-600/30 btn-interactive"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected ({selectedProductIds.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Catalog Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         {filtered.length === 0 ? (
@@ -823,12 +936,47 @@ export function ProductCatalogView() {
         ) : (
           filtered.map((prod) => {
             const primaryImg = prod.images.find((i) => i.isPrimary) || prod.images[0];
+            const isSelected = selectedProductIds.includes(prod.id);
 
             return (
               <div
                 key={prod.id}
-                className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft hover:shadow-card-hover card-interactive flex flex-col justify-between transition-all"
+                className={`p-4 sm:p-5 rounded-2xl border bg-white dark:bg-slate-900 shadow-soft hover:shadow-card-hover card-interactive flex flex-col justify-between transition-all relative ${
+                  isSelected
+                    ? "border-teal-500 dark:border-teal-400 ring-2 ring-teal-500/20 bg-teal-50/15 dark:bg-teal-950/15"
+                    : "border-slate-200/80 dark:border-slate-800"
+                }`}
               >
+                {/* Top Card Bar: Selection Checkbox & Individual Delete Button */}
+                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800/80">
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 cursor-pointer select-none group"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelectProduct(prod.id)}
+                      className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200">
+                      {isSelected ? "Selected" : "Select"}
+                    </span>
+                  </label>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setDeletingProduct(prod)}
+                      title={`Delete "${prod.name}" from catalog`}
+                      aria-label="Delete medicine"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
                 <div className="space-y-3.5">
                   <div className="flex gap-3.5 items-start">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden border border-slate-200 dark:border-slate-700 relative flex items-center justify-center">
@@ -1086,12 +1234,12 @@ export function ProductCatalogView() {
               {/* Photo Upload for Editing */}
               <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2">
                 <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
-                  Update Medicine Picture (ImageKit)
+                  Update Medicine Picture
                 </label>
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="min-h-[40px] inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold text-xs sm:text-sm btn-interactive">
                     <Upload className="w-4 h-4" />
-                    {isUploadingImage ? "Uploading..." : "Upload New Photo"}
+                    {isUploadingImage ? "Uploading Image..." : "Upload New Photo"}
                     <input
                       type="file"
                       accept="image/*"
@@ -1126,6 +1274,104 @@ export function ProductCatalogView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* INDIVIDUAL DELETE CONFIRMATION MODAL                                      */}
+      {/* ========================================================================= */}
+      {deletingProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">
+                Delete Medicine from Catalog?
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Are you sure you want to remove{" "}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {deletingProduct.name}
+                </strong>{" "}
+                (SKU: <span className="font-mono">{deletingProduct.sku}</span>)?
+              </p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 font-medium bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40">
+                ⚠️ Yeh medicine catalog aur pricing list se mukammal delete ho jayegi.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={() => setDeletingProduct(null)}
+                className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={() => handleDeleteProduct(deletingProduct)}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-rose-600/30 flex items-center gap-1.5 btn-interactive"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isDeletingLoading ? "Deleting..." : "Delete Medicine"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* BULK DELETE CONFIRMATION MODAL                                            */}
+      {/* ========================================================================= */}
+      {isBulkDeleting && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">
+                Delete {selectedProductIds.length} Selected Medicines?
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                You have selected{" "}
+                <strong className="text-rose-600 font-bold">
+                  {selectedProductIds.length} medicines
+                </strong>
+                . Are you sure you want to delete all of them from the catalog?
+              </p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 font-medium bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40">
+                ⚠️ All selected medicines will be permanently removed from your catalog and price lists.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={() => setIsBulkDeleting(false)}
+                className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={handleBulkDelete}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-rose-600/30 flex items-center gap-1.5 btn-interactive"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isDeletingLoading ? "Deleting..." : `Delete All ${selectedProductIds.length} Items`}
+              </button>
+            </div>
           </div>
         </div>
       )}
