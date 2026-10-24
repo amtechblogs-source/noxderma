@@ -19,23 +19,18 @@ export function getDeviceId(): string {
 }
 
 /**
- * Generates a collision-safe provisional invoice reference.
- * Format: OFF-{DEVICE_ID}-{YYMMDD}-{SEQUENCE}
- * Example: OFF-DEV-A9B4C2-261022-0001
+ * Generates a clean, short, professional invoice reference.
+ * Format: INV-{SEQUENCE} (e.g. INV-1001, INV-1002)
  */
 export function generateCollisionSafeInvoiceReference(): string {
-  const deviceId = getDeviceId();
-  const now = new Date();
-  const year = String(now.getFullYear()).slice(-2);
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const dateStr = `${year}${month}${day}`;
-
-  const currentSeq = parseInt(localStorage.getItem(INVOICE_SEQ_KEY) || "0", 10) + 1;
+  let stored = parseInt(localStorage.getItem(INVOICE_SEQ_KEY) || "1000", 10);
+  if (isNaN(stored) || stored < 1000) {
+    stored = 1000;
+  }
+  const currentSeq = stored + 1;
   localStorage.setItem(INVOICE_SEQ_KEY, currentSeq.toString());
 
-  const paddedSeq = String(currentSeq).padStart(4, "0");
-  return `OFF-${deviceId}-${dateStr}-${paddedSeq}`;
+  return `INV-${currentSeq}`;
 }
 
 /**

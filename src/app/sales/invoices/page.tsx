@@ -16,6 +16,8 @@ import {
   DollarSign,
   Calendar,
   Phone,
+  MapPin,
+  Mail,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -404,18 +406,25 @@ export default function SalesInvoicesListPage() {
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-black leading-tight">
                   {businessSettings?.brandName || "NOXDERMA PHARMA"}
                 </h1>
-                <p className="text-xs sm:text-sm font-semibold text-slate-800 mt-1">
-                  {businessSettings?.address || "Plot 42, Industrial Sector 7, Karachi, Pakistan"}
-                </p>
-                <p className="text-xs sm:text-sm font-semibold text-slate-800">
-                  Phone: {businessSettings?.contactPhone || "+92 300 1234567"} &bull;{" "}
-                  {businessSettings?.email || "info@noxderma.com"}
-                </p>
+                <div className="mt-1.5 space-y-0.5 text-xs sm:text-sm font-semibold text-slate-800">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-black shrink-0" />
+                    <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-black shrink-0" />
+                    <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-black shrink-0" />
+                    <span>{businessSettings?.email || "info@noxderma.com"}</span>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="text-right shrink-0">
               <span className="inline-block px-3 py-1 rounded text-xs sm:text-sm font-black border border-black text-black bg-slate-100 tracking-wider uppercase">
-                SALES BILL / CASH MEMO
+                SALE INVOICE
               </span>
               <p className="font-mono text-base sm:text-lg font-black text-black mt-1.5">
                 {selectedInvoice.provisionalReference}
@@ -438,12 +447,18 @@ export default function SalesInvoicesListPage() {
               <p className="font-black text-base sm:text-lg text-black mt-1">
                 {selectedInvoice.customerName}
               </p>
-              <p className="font-semibold text-slate-800 mt-0.5">
-                {selectedInvoice.customerAddress || "Walk-in Counter"}
-              </p>
-              <p className="font-bold text-black mt-0.5">
-                {selectedInvoice.customerPhone || "N/A"}
-              </p>
+              {selectedInvoice.customerPhone && (
+                <div className="flex items-center gap-1.5 font-bold text-black mt-1 text-xs sm:text-sm">
+                  <Phone className="w-3.5 h-3.5 text-black shrink-0" />
+                  <span>{selectedInvoice.customerPhone}</span>
+                </div>
+              )}
+              {selectedInvoice.customerAddress && (
+                <div className="flex items-center gap-1.5 font-semibold text-slate-800 mt-0.5 text-xs sm:text-sm">
+                  <MapPin className="w-3.5 h-3.5 text-black shrink-0" />
+                  <span>{selectedInvoice.customerAddress}</span>
+                </div>
+              )}
             </div>
             <div className="p-3.5 rounded-xl border border-slate-400 bg-white">
               <span className="text-slate-600 font-black uppercase text-[11px] tracking-wider block">
@@ -470,7 +485,6 @@ export default function SalesInvoicesListPage() {
             <thead className="border-y-2 border-black bg-slate-100 text-black font-black text-xs sm:text-sm uppercase">
               <tr>
                 <th className="py-2.5 px-3">Item Details</th>
-                <th className="py-2.5 px-3">Batch & Expiry</th>
                 <th className="py-2.5 px-3 text-center">Qty</th>
                 <th className="py-2.5 px-3 text-right">Price (PKR)</th>
                 <th className="py-2.5 px-3 text-right">Total (PKR)</th>
@@ -500,10 +514,6 @@ export default function SalesInvoicesListPage() {
                           <span className="text-xs text-slate-700 font-semibold">{line.packSize}</span>
                         </div>
                       </div>
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-xs sm:text-sm text-black">
-                      {line.batchAllocations?.[0]?.batchNumber || "GEN"} &bull;{" "}
-                      {line.batchAllocations?.[0]?.expiryDate || "N/A"}
                     </td>
                     <td className="py-2.5 px-3 text-center font-black text-sm sm:text-base text-black">
                       {line.quantity}

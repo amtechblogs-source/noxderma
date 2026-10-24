@@ -25,6 +25,8 @@ import {
   DollarSign,
   Boxes,
   Pill,
+  MapPin,
+  Mail,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -372,9 +374,15 @@ export function OfflineInvoiceCreator() {
     }
 
     const selectedCust = customers.find((c) => c.id === selectedCustomerId);
-    const finalCustomerName = selectedCust ? selectedCust.name : customCustomerName.trim();
+    const finalCustomerName =
+      customCustomerName.trim() || (selectedCust ? selectedCust.name : "");
+    const finalCustomerPhone =
+      customCustomerPhone.trim() || (selectedCust?.phone ? selectedCust.phone : "");
+    const finalCustomerAddress =
+      customCustomerAddress.trim() || (selectedCust?.address ? selectedCust.address : "");
+
     if (!finalCustomerName) {
-      alert("Please select a customer or provide a customer name.");
+      alert("Please provide customer / pharmacy name.");
       return;
     }
 
@@ -420,8 +428,8 @@ export function OfflineInvoiceCreator() {
         customerId: selectedCustomerId || "cust_guest",
         customerName: finalCustomerName,
         customerCategory: selectedCust ? selectedCust.category : customCustomerCategory,
-        customerPhone: selectedCust ? selectedCust.phone : customCustomerPhone,
-        customerAddress: selectedCust ? selectedCust.address : customCustomerAddress,
+        customerPhone: finalCustomerPhone,
+        customerAddress: finalCustomerAddress,
         lines: invoiceLines,
         subtotal,
         invoiceDiscountAmount: totalDiscount,
@@ -613,18 +621,25 @@ export function OfflineInvoiceCreator() {
                 <div className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 print:text-black leading-tight">
                   {businessSettings?.brandName || "NOXDERMA PHARMA"}
                 </div>
-                <p className="text-xs sm:text-sm font-semibold text-slate-600 print:text-slate-800 mt-1">
-                  {businessSettings?.address || "Plot 42, Industrial Sector 7, Karachi, Pakistan"}
-                </p>
-                <p className="text-xs sm:text-sm font-semibold text-slate-600 print:text-slate-800">
-                  Phone: {businessSettings?.contactPhone || "+92 300 1234567"} &bull;{" "}
-                  {businessSettings?.email || "info@noxderma.com"}
-                </p>
+                <div className="mt-1.5 space-y-0.5 text-xs sm:text-sm font-semibold text-slate-700 print:text-black">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                    <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                    <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                    <span>{businessSettings?.email || "info@noxderma.com"}</span>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="text-right shrink-0">
               <span className="inline-block px-3 py-1 rounded text-xs sm:text-sm font-black bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 print:bg-slate-100 print:border print:border-black print:text-black tracking-wider uppercase">
-                SALES BILL / CASH MEMO
+                SALE INVOICE
               </span>
               <p className="font-mono text-base sm:text-lg font-black text-teal-700 print:text-black mt-1.5">
                 {createdInvoice.provisionalReference}
@@ -647,12 +662,18 @@ export function OfflineInvoiceCreator() {
               <p className="font-black text-base sm:text-lg text-slate-900 print:text-black mt-1">
                 {createdInvoice.customerName}
               </p>
-              <p className="font-semibold text-slate-700 print:text-slate-800 mt-0.5">
-                {createdInvoice.customerAddress || "Walk-in Counter"}
-              </p>
-              <p className="font-bold text-slate-700 print:text-black mt-0.5">
-                {createdInvoice.customerPhone || "N/A"}
-              </p>
+              {createdInvoice.customerPhone && (
+                <div className="flex items-center gap-1.5 font-bold text-slate-700 print:text-black mt-1 text-xs sm:text-sm">
+                  <Phone className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                  <span>{createdInvoice.customerPhone}</span>
+                </div>
+              )}
+              {createdInvoice.customerAddress && (
+                <div className="flex items-center gap-1.5 font-semibold text-slate-700 print:text-slate-800 mt-0.5 text-xs sm:text-sm">
+                  <MapPin className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                  <span>{createdInvoice.customerAddress}</span>
+                </div>
+              )}
             </div>
             <div className="p-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400">
               <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
@@ -680,7 +701,6 @@ export function OfflineInvoiceCreator() {
               <thead className="border-y-2 border-slate-900 bg-slate-100 dark:bg-slate-800 print:bg-slate-100 text-slate-900 print:text-black font-black text-xs sm:text-sm uppercase">
                 <tr>
                   <th className="py-2.5 px-3">Item Details</th>
-                  <th className="py-2.5 px-3">Batch & Expiry</th>
                   <th className="py-2.5 px-3 text-center">Qty</th>
                   <th className="py-2.5 px-3 text-right">Price (PKR)</th>
                   <th className="py-2.5 px-3 text-right">Total (PKR)</th>
@@ -716,10 +736,6 @@ export function OfflineInvoiceCreator() {
                             </span>
                           </div>
                         </div>
-                      </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-xs sm:text-sm text-slate-800 print:text-black">
-                        {line.batchAllocations?.[0]?.batchNumber || "GEN"} &bull;{" "}
-                        {line.batchAllocations?.[0]?.expiryDate ? formatKarachiDate(line.batchAllocations[0].expiryDate) : "N/A"}
                       </td>
                       <td className="py-2.5 px-3 text-center font-black text-sm sm:text-base text-slate-900 print:text-black">
                         {line.quantity}
@@ -839,46 +855,90 @@ export function OfflineInvoiceCreator() {
       )}
 
       <form onSubmit={handleCreateInvoice} className="space-y-6">
-        {/* Step 1: Customer Selection */}
+        {/* Step 1: Customer Details */}
         <div className="p-5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <Building className="w-4 h-4 text-teal-600" />
-            1. Select Customer / Pharmacy
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <Building className="w-4 h-4 text-teal-600" />
+              1. Customer / Buyer Details
+            </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-700 dark:text-slate-300">
-                Choose Saved Customer
-              </label>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
-              >
-                <option value="">-- Choose From List or Enter New Below --</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.category === "pharmacy" ? "Medical Store" : c.category.toUpperCase()}) &bull; Udhaar Limit: {formatPKR(c.creditLimit)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {!selectedCustomerId && (
-              <div>
-                <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-700 dark:text-slate-300">
-                  New Customer / Medical Store Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. LifeCare Pharmacy"
-                  value={customCustomerName}
-                  onChange={(e) => setCustomCustomerName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 placeholder-slate-400"
-                />
+            {customers.length > 0 && (
+              <div className="w-full sm:w-80">
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => {
+                    const custId = e.target.value;
+                    setSelectedCustomerId(custId);
+                    if (custId) {
+                      const found = customers.find((c) => c.id === custId);
+                      if (found) {
+                        setCustomCustomerName(found.name || "");
+                        setCustomCustomerPhone(found.phone || "");
+                        setCustomCustomerAddress(found.address || "");
+                        setCustomCustomerCategory(found.category || "pharmacy");
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold"
+                >
+                  <option value="">⚡ Quick-Fill From Saved Customer List</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.phone ? `(${c.phone})` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">
+                Customer / Pharmacy Name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. LifeCare Pharmacy or Ahmed Khan"
+                value={customCustomerName}
+                onChange={(e) => setCustomCustomerName(e.target.value)}
+                className="w-full px-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold placeholder-slate-400 focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">
+                Phone / Mobile Number
+              </label>
+              <div className="relative">
+                <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="tel"
+                  placeholder="e.g. 0300 1234567"
+                  value={customCustomerPhone}
+                  onChange={(e) => setCustomCustomerPhone(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium placeholder-slate-400 focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-2 md:col-span-1">
+              <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">
+                Address / City (Optional)
+              </label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="e.g. Sector 7, Karachi"
+                  value={customCustomerAddress}
+                  onChange={(e) => setCustomCustomerAddress(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium placeholder-slate-400 focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
