@@ -23,6 +23,7 @@ import {
   Save,
   RefreshCw,
   Trash2,
+  Calculator,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -514,20 +515,30 @@ export function ProductCatalogView() {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            const nextAdding = !isAdding;
-            if (nextAdding && (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-"))) {
-              const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
-              setSku(freshSku);
-            }
-            setIsAdding(nextAdding);
-          }}
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
-        >
-          <Plus className="w-4 h-4" />
-          {isAdding ? "Cancel" : "Add New Medicine"}
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link
+            href="/products/price-estimator"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-teal-200 dark:border-teal-800/80 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-sm font-bold btn-interactive shadow-sm"
+          >
+            <Calculator className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            Price Estimator (Rate Calculator)
+          </Link>
+
+          <button
+            onClick={() => {
+              const nextAdding = !isAdding;
+              if (nextAdding && (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-"))) {
+                const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
+                setSku(freshSku);
+              }
+              setIsAdding(nextAdding);
+            }}
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
+          >
+            <Plus className="w-4 h-4" />
+            {isAdding ? "Cancel" : "Add New Medicine"}
+          </button>
+        </div>
       </div>
 
       {/* Success Notification */}

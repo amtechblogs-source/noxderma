@@ -33,6 +33,7 @@ import {
   PlugZap,
   Settings,
   Database,
+  Calculator,
   X,
   PanelLeftClose,
   PanelLeftOpen,
@@ -76,6 +77,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     title: "Stock & Medicines",
     items: [
       { name: "Medicine Catalog", href: "/products", icon: PackageCheck, requiredPermission: "products:view" },
+      { name: "New Product Price Estimator", href: "/products/price-estimator", icon: Calculator, requiredPermission: "pricing:view" },
       { name: "Batch Stock & Expiry Dates", href: "/inventory/batches", icon: Barcode, requiredPermission: "inventory:view" },
       { name: "Stock & Low-Stock Alerts", href: "/inventory", icon: Boxes, requiredPermission: "inventory:view" },
       { name: "Stock In & Out History", href: "/inventory/movements", icon: ArrowLeftRight, requiredPermission: "inventory:view" },
