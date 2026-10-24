@@ -20,7 +20,27 @@ import { ThemeProvider } from "@/context/ThemeContext";
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { currentUser, logout } = useAuth();
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("noxderma_sidebar_collapsed");
+      if (saved === "true") {
+        setIsSidebarCollapsed(true);
+      }
+    } catch {}
+  }, []);
+
+  const handleToggleCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("noxderma_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // If on login page, render children cleanly without ERP chrome
   if (pathname === "/login") {
@@ -37,10 +57,17 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-1 min-h-[calc(100vh-theme(spacing.10))]">
         {/* Navigation Sidebar */}
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={handleToggleCollapse}
+        />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 lg:pl-72 transition-all">
+        <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+          isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
+        }`}>
           <Header
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             currentUser={currentUser}

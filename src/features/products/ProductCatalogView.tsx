@@ -21,6 +21,7 @@ import {
   Edit2,
   X,
   Save,
+  RefreshCw,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -28,6 +29,43 @@ import { imageStorageService } from "@/lib/image-storage/service";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type { Product, ProductPricing, DynamicCategory, ProductImage } from "@/types";
+
+export function generateAutoSku(
+  prodName: string,
+  catId: string,
+  existingProducts: Product[],
+  allCategories: DynamicCategory[]
+): string {
+  const cat = allCategories.find((c) => c.id === catId);
+  const catName = (cat?.name || "").toLowerCase();
+  const lowerName = (prodName || "").toLowerCase();
+
+  let prefix = "GEN";
+  if (catName.includes("tab") || lowerName.includes("tab")) prefix = "TAB";
+  else if (catName.includes("cream") || lowerName.includes("cream") || catName.includes("crm") || lowerName.includes("crm")) prefix = "CRM";
+  else if (catName.includes("serum") || lowerName.includes("serum") || lowerName.includes("ser")) prefix = "SER";
+  else if (catName.includes("syrup") || lowerName.includes("syrup") || catName.includes("susp") || lowerName.includes("susp") || lowerName.includes("syr")) prefix = "SYR";
+  else if (catName.includes("cap") || lowerName.includes("cap")) prefix = "CAP";
+  else if (catName.includes("inj") || lowerName.includes("inj")) prefix = "INJ";
+  else if (catName.includes("lot") || lowerName.includes("lot") || catName.includes("lotion") || lowerName.includes("lotion")) prefix = "LOT";
+  else if (catName.includes("gel") || lowerName.includes("gel")) prefix = "GEL";
+  else if (catName.includes("soap") || lowerName.includes("soap") || catName.includes("wash") || lowerName.includes("wash")) prefix = "SOP";
+  else if (catName.includes("drop") || lowerName.includes("drop") || catName.includes("eye") || catName.includes("ear")) prefix = "DRP";
+  else if (cat?.name) {
+    const letters = cat.name.replace(/[^a-zA-Z]/g, "").toUpperCase();
+    if (letters.length >= 3) prefix = letters.slice(0, 3);
+  }
+
+  // Count existing products with this prefix to get sequential number
+  const existingSet = new Set(existingProducts.map((p) => p.sku.toUpperCase()));
+  let count = existingProducts.filter((p) => p.sku.toUpperCase().includes(prefix)).length + 1;
+  let code = `ND-${prefix}-${String(count).padStart(3, "0")}`;
+  while (existingSet.has(code)) {
+    count++;
+    code = `ND-${prefix}-${String(count).padStart(3, "0")}`;
+  }
+  return code;
+}
 
 export function ProductCatalogView() {
   const { currentUser } = useAuth();
@@ -98,6 +136,16 @@ export function ProductCatalogView() {
   useEffect(() => {
     refreshCatalog();
   }, [categories]);
+
+  // Auto-generate SKU when Add modal is opened or when category changes
+  useEffect(() => {
+    if (isAdding) {
+      if (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-")) {
+        const nextSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
+        setSku(nextSku);
+      }
+    }
+  }, [isAdding, categoryId]);
 
   // Handle direct ImageKit upload for new product
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -397,7 +445,14 @@ export function ProductCatalogView() {
         </div>
 
         <button
-          onClick={() => setIsAdding(!isAdding)}
+          onClick={() => {
+            const nextAdding = !isAdding;
+            if (nextAdding && (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-"))) {
+              const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
+              setSku(freshSku);
+            }
+            setIsAdding(nextAdding);
+          }}
           className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
         >
           <Plus className="w-4 h-4" />
@@ -482,15 +537,38 @@ export function ProductCatalogView() {
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Item Code (SKU) *</label>
-              <input
-                type="text"
-                required
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="e.g. NXD-DRM-050"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono uppercase text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
+                  Item Code (SKU) *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSku(generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories))}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:text-teal-700 hover:underline btn-interactive"
+                  title="Generate new unique SKU"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Auto-Generate SKU
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value.toUpperCase())}
+                  placeholder="Auto-generated (e.g. ND-CRM-001)"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 pr-28 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono uppercase text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                    Auto SKU
+                  </span>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Auto-generated unique code for billing and inventory.
+              </p>
             </div>
 
             <div>
@@ -888,7 +966,20 @@ export function ProductCatalogView() {
                 </div>
 
                 <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Item Code (SKU) *</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
+                      Item Code (SKU) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setEditSku(generateAutoSku(editName, editCategoryId, products, categories))}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:text-teal-700 hover:underline btn-interactive"
+                      title="Generate fresh unique SKU"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Auto-Generate
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required

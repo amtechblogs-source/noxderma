@@ -81,6 +81,8 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const categoryMenuRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   // Global Ctrl+K / '/' shortcut listener
   useEffect(() => {
@@ -96,20 +98,35 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
       } else if (e.key === "Escape") {
         setIsSearchOpen(false);
         setIsMobileSearchOpen(false);
+        setIsCategoryMenuOpen(false);
+        setIsProfileMenuOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Close search dropdown on click outside
+  // Close search, category, and profile dropdowns on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node;
       if (
         searchContainerRef.current &&
-        !searchContainerRef.current.contains(event.target as Node)
+        !searchContainerRef.current.contains(target)
       ) {
         setIsSearchOpen(false);
+      }
+      if (
+        categoryMenuRef.current &&
+        !categoryMenuRef.current.contains(target)
+      ) {
+        setIsCategoryMenuOpen(false);
+      }
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(target)
+      ) {
+        setIsProfileMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -268,13 +285,13 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           <button
             onClick={onToggleSidebar}
             aria-label="Toggle navigation menu"
-            className="p-2.5 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 btn-interactive"
+            className="lg:hidden p-2.5 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 btn-interactive"
           >
             <Menu className="w-5 h-5" />
           </button>
 
           {/* Dynamic Category Switcher Dropdown */}
-          <div className="relative">
+          <div ref={categoryMenuRef} className="relative">
             <button
               onClick={() => setIsCategoryMenuOpen(!isCategoryMenuOpen)}
               className="flex items-center gap-2 px-3 sm:px-3.5 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all shadow-sm btn-interactive"
@@ -576,7 +593,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           </button>
 
           {/* User Profile Dropdown */}
-          <div className="relative">
+          <div ref={profileMenuRef} className="relative">
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
               className="flex items-center gap-2 p-1.5 min-h-[44px] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all btn-interactive"
