@@ -224,32 +224,14 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
             </div>
           )}
 
-          <div className="flex items-center gap-1">
-            {/* Desktop Collapse / Expand Toggle Button */}
-            {onToggleCollapse && (
-              <button
-                onClick={onToggleCollapse}
-                title={isCollapsed ? "Expand sidebar (Kholiye)" : "Collapse sidebar (Chota kijiye)"}
-                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors btn-interactive items-center justify-center"
-              >
-                {isCollapsed ? (
-                  <PanelLeftOpen className="w-4 h-4 text-teal-400" />
-                ) : (
-                  <PanelLeftClose className="w-4 h-4" />
-                )}
-              </button>
-            )}
-
-            {/* Mobile Close Button */}
-            <button
-              onClick={onClose}
-              aria-label="Close navigation"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 lg:hidden"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          {/* Mobile Close Button */}
+          <button
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 lg:hidden"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Navigation Sections */}
@@ -301,7 +283,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           ))}
         </div>
 
-        {/* User Session & Logout Footer */}
+        {/* User Session & Collapse/Expand Footer */}
         <div className="p-2.5 border-t border-slate-800/80 bg-slate-950/60 pb-safe sm:pb-3">
           {!isCollapsed ? (
             <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-slate-800/40 border border-slate-800">
@@ -314,11 +296,24 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                 </div>
               </div>
 
+              {/* Desktop: Collapse Button in place of logout */}
+              {onToggleCollapse && (
+                <button
+                  onClick={onToggleCollapse}
+                  title="Collapse sidebar (Sidebar chota kijiye)"
+                  aria-label="Collapse sidebar"
+                  className="hidden lg:flex p-2 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-xl transition-colors shrink-0 min-h-[38px] min-w-[38px] items-center justify-center btn-interactive"
+                >
+                  <PanelLeftClose className="w-4 h-4 text-teal-400" />
+                </button>
+              )}
+
+              {/* Mobile: Logout button */}
               <button
                 onClick={() => logout()}
                 title="Logout / Sign Out"
                 aria-label="Logout"
-                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center btn-interactive"
+                className="lg:hidden p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center btn-interactive"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -331,14 +326,18 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
               >
                 {currentUser?.displayName ? currentUser.displayName[0].toUpperCase() : "A"}
               </div>
-              <button
-                onClick={() => logout()}
-                title="Logout / Sign Out"
-                aria-label="Logout"
-                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center btn-interactive"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+
+              {/* Desktop: Expand Button in collapsed mode */}
+              {onToggleCollapse && (
+                <button
+                  onClick={onToggleCollapse}
+                  title="Expand sidebar (Sidebar bara kijiye)"
+                  aria-label="Expand sidebar"
+                  className="hidden lg:flex p-2 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-xl transition-colors min-h-[36px] min-w-[36px] items-center justify-center btn-interactive"
+                >
+                  <PanelLeftOpen className="w-4 h-4 text-teal-400" />
+                </button>
+              )}
             </div>
           )}
         </div>

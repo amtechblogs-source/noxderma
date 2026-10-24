@@ -705,8 +705,13 @@ export function ProductCatalogView() {
                 <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
                 <input
                   type="number"
-                  value={purchaseCost}
-                  onChange={(e) => setPurchaseCost(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  value={purchaseCost === 0 ? "" : purchaseCost}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                    setPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
+                  }}
+                  onFocus={(e) => e.target.select()}
                   className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
@@ -717,8 +722,13 @@ export function ProductCatalogView() {
                 </label>
                 <input
                   type="number"
-                  value={tradePrice}
-                  onChange={(e) => setTradePrice(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  value={tradePrice === 0 ? "" : tradePrice}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                    setTradePrice(raw === "" ? 0 : Number(raw) || 0);
+                  }}
+                  onFocus={(e) => e.target.select()}
                   className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
@@ -727,8 +737,13 @@ export function ProductCatalogView() {
                 <label className="block text-xs sm:text-sm font-bold mb-1.5 text-slate-500">Customer Print Price (MRP)</label>
                 <input
                   type="number"
-                  value={mrp}
-                  onChange={(e) => setMrp(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  value={mrp === 0 ? "" : mrp}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                    setMrp(raw === "" ? 0 : Number(raw) || 0);
+                  }}
+                  onFocus={(e) => e.target.select()}
                   className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
@@ -1199,8 +1214,13 @@ export function ProductCatalogView() {
                     <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
                     <input
                       type="number"
-                      value={editPurchaseCost}
-                      onChange={(e) => setEditPurchaseCost(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      value={editPurchaseCost === 0 ? "" : editPurchaseCost}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        setEditPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>
@@ -1211,8 +1231,13 @@ export function ProductCatalogView() {
                     </label>
                     <input
                       type="number"
-                      value={editTradePrice}
-                      onChange={(e) => setEditTradePrice(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      value={editTradePrice === 0 ? "" : editTradePrice}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        setEditTradePrice(raw === "" ? 0 : Number(raw) || 0);
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>
@@ -1223,8 +1248,13 @@ export function ProductCatalogView() {
                     </label>
                     <input
                       type="number"
-                      value={editMrp}
-                      onChange={(e) => setEditMrp(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      value={editMrp === 0 ? "" : editMrp}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        setEditMrp(raw === "" ? 0 : Number(raw) || 0);
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>

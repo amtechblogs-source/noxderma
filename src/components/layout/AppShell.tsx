@@ -30,6 +30,40 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         setIsSidebarCollapsed(true);
       }
     } catch {}
+
+    // Global enhancement for numeric inputs: auto-select on focus and strip leading zeros
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement &&
+        (target.type === "number" || target.inputMode === "numeric" || target.inputMode === "decimal")
+      ) {
+        target.select();
+      }
+    };
+
+    const handleInput = (e: Event) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement &&
+        (target.type === "number" || target.inputMode === "numeric" || target.inputMode === "decimal")
+      ) {
+        const val = target.value;
+        if (/^0\d/.test(val)) {
+          const cleaned = val.replace(/^0+(?=\d)/, "");
+          target.value = cleaned;
+          target.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+    };
+
+    window.addEventListener("focusin", handleFocusIn);
+    window.addEventListener("input", handleInput);
+
+    return () => {
+      window.removeEventListener("focusin", handleFocusIn);
+      window.removeEventListener("input", handleInput);
+    };
   }, []);
 
   const handleToggleCollapse = () => {

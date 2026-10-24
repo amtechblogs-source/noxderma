@@ -228,12 +228,17 @@ export function OfflineInvoiceCreator() {
         }
       }
     } else if (field === "quantity") {
-      const qty = Math.max(1, Number(value) || 1);
-      current.quantity = current.availableQuantity > 0 ? Math.min(qty, current.availableQuantity) : qty;
+      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+      const qty = raw === "" ? 0 : Number(raw);
+      current.quantity = isNaN(qty) ? 0 : current.availableQuantity > 0 ? Math.min(qty, current.availableQuantity) : qty;
     } else if (field === "unitPrice") {
-      current.unitPrice = Math.max(0, Number(value) || 0);
+      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+      const price = raw === "" ? 0 : Number(raw);
+      current.unitPrice = isNaN(price) ? 0 : Math.max(0, price);
     } else if (field === "discountPercent") {
-      current.discountPercent = Math.min(100, Math.max(0, Number(value) || 0));
+      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+      const pct = raw === "" ? 0 : Number(raw);
+      current.discountPercent = isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
     }
 
     updated[index] = current;
@@ -830,8 +835,10 @@ export function OfflineInvoiceCreator() {
                         type="number"
                         min={1}
                         max={line.availableQuantity}
-                        value={line.quantity}
+                        placeholder="1"
+                        value={line.quantity === 0 ? "" : line.quantity}
                         onChange={(e) => handleUpdateLine(idx, "quantity", e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-center text-base"
                       />
                     </div>
@@ -843,8 +850,10 @@ export function OfflineInvoiceCreator() {
                       </label>
                       <input
                         type="number"
-                        value={line.unitPrice}
+                        placeholder="0"
+                        value={line.unitPrice === 0 ? "" : line.unitPrice}
                         onChange={(e) => handleUpdateLine(idx, "unitPrice", e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-right font-mono font-bold text-sm sm:text-base"
                       />
                     </div>
@@ -902,8 +911,13 @@ export function OfflineInvoiceCreator() {
                 <input
                   type="number"
                   min={0}
-                  value={paidAmount}
-                  onChange={(e) => setPaidAmount(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  value={paidAmount === 0 ? "" : paidAmount}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                    setPaidAmount(raw === "" ? 0 : Number(raw) || 0);
+                  }}
+                  onFocus={(e) => e.target.select()}
                   className="w-full px-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold font-mono text-emerald-600"
                 />
               </div>
@@ -957,12 +971,14 @@ export function OfflineInvoiceCreator() {
                       min={0}
                       max={100}
                       step="0.5"
-                      placeholder="e.g. 5, 10, 12.5"
-                      value={discountPercent > 0 ? discountPercent : ""}
+                      placeholder="0"
+                      value={discountPercent === 0 ? "" : discountPercent}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value);
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        const val = raw === "" ? 0 : parseFloat(raw);
                         setDiscountPercent(isNaN(val) ? 0 : Math.min(100, Math.max(0, val)));
                       }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full pl-3.5 pr-10 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-teal-500/50 dark:border-teal-500/40 bg-teal-50/20 dark:bg-teal-950/20 font-mono font-bold focus:ring-2 focus:ring-teal-500 transition-all text-teal-700 dark:text-teal-300"
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-extrabold text-teal-600 dark:text-teal-400 pointer-events-none">
@@ -1008,12 +1024,14 @@ export function OfflineInvoiceCreator() {
                     <input
                       type="number"
                       min={0}
-                      placeholder="e.g. 50, 100, 500"
-                      value={invoiceDiscount > 0 ? invoiceDiscount : ""}
+                      placeholder="0"
+                      value={invoiceDiscount === 0 ? "" : invoiceDiscount}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value);
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        const val = raw === "" ? 0 : parseFloat(raw);
                         setInvoiceDiscount(isNaN(val) ? 0 : Math.max(0, val));
                       }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full pl-3.5 pr-14 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-semibold focus:ring-2 focus:ring-teal-500 transition-all"
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
