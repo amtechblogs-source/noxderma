@@ -1,0 +1,40 @@
+{
+  "id": "primary",
+  "legalName": "Noxderma Pharmaceuticals Ltd.",
+  "brandName": "Noxderma Pharma",
+  "businessLogoUrl": "/brand/logo.svg",
+  "appLogoUrl": "/brand/logo.svg",
+  "invoiceLogoUrl": "/brand/invoice-logo.svg",
+  "faviconUrl": "/favicon.ico",
+  "address": "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan",
+  "website": "https://noxderma.web.app",
+  "contactPhone": "+92 300 1234567",
+  "whatsappNumber": "+92 300 1234567",
+  "email": "info@noxderma.com",
+  "currency": "PKR",
+  "currencySymbol": "₨",
+  "timezone": "Asia/Karachi",
+  "dateFormat": "dd/MM/yyyy",
+  "numberFormat": "en-PK",
+  "invoicePrefix": "NXD",
+  "invoiceFooter": "Thank you for partnering with Noxderma. Quality healthcare distributed with integrity.",
+  "paymentInstructions": "Bank: Meezan Bank | A/C Title: Noxderma Pharma | IBAN: PK00MEZN0001234567890123",
+  "defaultCreditTermsDays": 30,
+  "defaultDeliverySettings": {
+    "standardCharge": 250,
+    "freeDeliveryThreshold": 5000
+  },
+  "lowStockThresholdDefault": 15,
+  "nearExpiryWarningDays": [
+    90,
+    60,
+    30
+  ],
+  "expiryBlockingPolicy": "block_sale",
+  "samplePolicy": "expense_at_cost",
+  "damagedStockPolicy": "write_off_loss",
+  "taxRateDefault": 0,
+  "updatedAt": "2026-10-24T06:10:15.877Z",
+  "updatedBy": "system",
+  "colorTheme": "teal"
+}

@@ -24,6 +24,91 @@
     --input: #e2e8f0;
     --ring: #0d9488;
     --radius: 0.5rem;
+
+    /* Theme 1: Emerald Clinical (Default Teal) */
+    --color-primary-50: 240 253 250;
+    --color-primary-100: 204 251 241;
+    --color-primary-200: 153 246 228;
+    --color-primary-300: 94 234 212;
+    --color-primary-400: 45 212 191;
+    --color-primary-500: 20 184 166;
+    --color-primary-600: 13 148 136;
+    --color-primary-700: 15 118 110;
+    --color-primary-800: 17 94 89;
+    --color-primary-900: 19 78 74;
+    --color-primary-950: 4 47 46;
+  }
+
+  [data-theme="indigo"] {
+    --primary: #4f46e5;
+    --ring: #4f46e5;
+    --accent: #eef2ff;
+    --accent-foreground: #4338ca;
+    --color-primary-50: 238 242 255;
+    --color-primary-100: 224 231 255;
+    --color-primary-200: 199 210 254;
+    --color-primary-300: 165 180 252;
+    --color-primary-400: 129 140 248;
+    --color-primary-500: 99 102 241;
+    --color-primary-600: 79 70 229;
+    --color-primary-700: 67 56 202;
+    --color-primary-800: 55 48 163;
+    --color-primary-900: 49 46 129;
+    --color-primary-950: 30 27 75;
+  }
+
+  [data-theme="violet"] {
+    --primary: #7c3aed;
+    --ring: #7c3aed;
+    --accent: #f5f3ff;
+    --accent-foreground: #6d28d9;
+    --color-primary-50: 245 243 255;
+    --color-primary-100: 237 233 254;
+    --color-primary-200: 221 214 254;
+    --color-primary-300: 196 181 253;
+    --color-primary-400: 167 139 250;
+    --color-primary-500: 139 92 246;
+    --color-primary-600: 124 58 237;
+    --color-primary-700: 109 40 217;
+    --color-primary-800: 91 33 182;
+    --color-primary-900: 76 29 149;
+    --color-primary-950: 46 16 101;
+  }
+
+  [data-theme="rose"] {
+    --primary: #e11d48;
+    --ring: #e11d48;
+    --accent: #fff1f2;
+    --accent-foreground: #be123c;
+    --color-primary-50: 255 241 242;
+    --color-primary-100: 255 228 230;
+    --color-primary-200: 254 205 211;
+    --color-primary-300: 253 164 175;
+    --color-primary-400: 251 113 133;
+    --color-primary-500: 244 63 94;
+    --color-primary-600: 225 29 72;
+    --color-primary-700: 190 18 60;
+    --color-primary-800: 159 18 57;
+    --color-primary-900: 136 19 55;
+    --color-primary-950: 76 5 25;
+  }
+
+  [data-theme="amber"] {
+    --primary: #d97706;
+    --ring: #d97706;
+    --accent: #fffbeb;
+    --accent-foreground: #b45309;
+    --color-primary-50: 255 251 235;
+    --color-primary-100: 254 243 199;
+    --color-primary-200: 253 230 138;
+    --color-primary-300: 252 211 77;
+    --color-primary-400: 251 191 36;
+    --color-primary-500: 245 158 11;
+    --color-primary-600: 217 119 6;
+    --color-primary-700: 180 83 9;
+    --color-primary-800: 146 64 14;
+    --color-primary-900: 120 53 15;
+    --color-primary-950: 69 26 3;
   }
 
   .dark {
@@ -47,6 +132,35 @@
     --input: #1e293b;
     --ring: #14b8a6;
   }
+
+  .dark[data-theme="indigo"], [data-theme="indigo"] .dark {
+    --primary: #818cf8;
+    --ring: #818cf8;
+    --accent: rgba(79, 70, 229, 0.25);
+    --accent-foreground: #c7d2fe;
+  }
+
+  .dark[data-theme="violet"], [data-theme="violet"] .dark {
+    --primary: #a78bfa;
+    --ring: #a78bfa;
+    --accent: rgba(124, 58, 237, 0.25);
+    --accent-foreground: #ddd6fe;
+  }
+
+  .dark[data-theme="rose"], [data-theme="rose"] .dark {
+    --primary: #fb7185;
+    --ring: #fb7185;
+    --accent: rgba(225, 29, 72, 0.25);
+    --accent-foreground: #fecdd3;
+  }
+
+  .dark[data-theme="amber"], [data-theme="amber"] .dark {
+    --primary: #fbbf24;
+    --ring: #fbbf24;
+    --accent: rgba(217, 119, 6, 0.25);
+    --accent-foreground: #fde68a;
+  }
+
   * {
     -webkit-tap-highlight-color: transparent;
   }

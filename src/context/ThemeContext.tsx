@@ -92,12 +92,81 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = "noxderma_color_theme";
 
+const THEME_RGB_PALETTES: Record<ThemeId, Record<number, string>> = {
+  teal: {
+    50: "240 253 250",
+    100: "204 251 241",
+    200: "153 246 228",
+    300: "94 234 212",
+    400: "45 212 191",
+    500: "20 184 166",
+    600: "13 148 136",
+    700: "15 118 110",
+    800: "17 94 89",
+    900: "19 78 74",
+    950: "4 47 46",
+  },
+  indigo: {
+    50: "238 242 255",
+    100: "224 231 255",
+    200: "199 210 254",
+    300: "165 180 252",
+    400: "129 140 248",
+    500: "99 102 241",
+    600: "79 70 229",
+    700: "67 56 202",
+    800: "55 48 163",
+    900: "49 46 129",
+    950: "30 27 75",
+  },
+  violet: {
+    50: "245 243 255",
+    100: "237 233 254",
+    200: "221 214 254",
+    300: "196 181 253",
+    400: "167 139 250",
+    500: "139 92 246",
+    600: "124 58 237",
+    700: "109 40 217",
+    800: "91 33 182",
+    900: "76 29 149",
+    950: "46 16 101",
+  },
+  rose: {
+    50: "255 241 242",
+    100: "255 228 230",
+    200: "254 205 211",
+    300: "253 164 175",
+    400: "251 113 133",
+    500: "244 63 94",
+    600: "225 29 72",
+    700: "190 18 60",
+    800: "159 18 57",
+    900: "136 19 55",
+    950: "76 5 25",
+  },
+  amber: {
+    50: "255 251 235",
+    100: "254 243 199",
+    200: "253 230 138",
+    300: "252 211 77",
+    400: "251 191 36",
+    500: "245 158 11",
+    600: "217 119 6",
+    700: "180 83 9",
+    800: "146 64 14",
+    900: "120 53 15",
+    950: "69 26 3",
+  },
+};
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeId, setThemeIdState] = useState<ThemeId>("teal");
 
-  // Load persisted theme
+  // Load persisted theme with database fallback
   useEffect(() => {
     async function loadTheme() {
+      // 1. Check fast localStorage
       if (typeof window !== "undefined") {
         const local = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
         if (local && COLOR_THEMES.some((t) => t.id === local)) {
@@ -107,18 +176,37 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // 2. Check offline Dexie database
       try {
         const stored = await offlineDb.settings.get("primary");
         if (stored && (stored as any).colorTheme) {
           const tId = (stored as any).colorTheme as ThemeId;
-          setThemeIdState(tId);
-          applyThemeToDOM(tId);
-        } else {
-          applyThemeToDOM("teal");
+          if (COLOR_THEMES.some((t) => t.id === tId)) {
+            setThemeIdState(tId);
+            applyThemeToDOM(tId);
+            return;
+          }
         }
-      } catch {
-        applyThemeToDOM("teal");
-      }
+      } catch {}
+
+      // 3. Fallback: Rehydrate from server database (/api/settings)
+      try {
+        const res = await fetch("/api/settings");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.settings?.colorTheme && COLOR_THEMES.some((t: any) => t.id === data.settings.colorTheme)) {
+            const serverTheme = data.settings.colorTheme as ThemeId;
+            setThemeIdState(serverTheme);
+            applyThemeToDOM(serverTheme);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(THEME_STORAGE_KEY, serverTheme);
+            }
+            return;
+          }
+        }
+      } catch {}
+
+      applyThemeToDOM("teal");
     }
 
     loadTheme();
@@ -131,7 +219,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     root.setAttribute("data-theme", id);
 
-    // Dynamic CSS Custom Properties
+    // Dynamic Tailwind primary palette RGB variables
+    const palette = THEME_RGB_PALETTES[id] || THEME_RGB_PALETTES.teal;
+    Object.entries(palette).forEach(([shade, rgbVal]) => {
+      root.style.setProperty(`--color-primary-${shade}`, rgbVal);
+    });
+
+    // Custom Properties
+    root.style.setProperty("--primary", themeObj.primaryColor);
+    root.style.setProperty("--ring", themeObj.primaryColor);
     root.style.setProperty("--theme-primary", themeObj.primaryColor);
     root.style.setProperty("--theme-primary-dark", themeObj.darkPrimaryColor);
     root.style.setProperty("--theme-accent-bg", themeObj.accentBg);
@@ -145,6 +241,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     applyThemeToDOM(id);
 
+    // Persist locally in Dexie
     try {
       const stored = await offlineDb.settings.get("primary");
       if (stored) {
@@ -157,6 +254,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn("Could not persist theme to offlineDb:", err);
     }
+
+    // Persist to server database & cloud in background
+    try {
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ colorTheme: id }),
+      }).catch(() => {});
+    } catch {}
   };
 
   const currentTheme = COLOR_THEMES.find((t) => t.id === themeId) || COLOR_THEMES[0];

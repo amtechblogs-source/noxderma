@@ -7,7 +7,8 @@ export type OutboxEntityType =
   | "stock_movement"
   | "damaged_stock"
   | "sample_record"
-  | "product_image";
+  | "product_image"
+  | "settings";
 
 export type OutboxActionType = "create" | "update" | "reversal";
 

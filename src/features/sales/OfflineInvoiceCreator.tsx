@@ -112,7 +112,20 @@ export function OfflineInvoiceCreator() {
       setBatches(validBatches);
       setProducts(prodList || []);
       setPricings(pricingList || []);
-      if (settingsRecord) setBusinessSettings(settingsRecord);
+      if (settingsRecord) {
+        setBusinessSettings(settingsRecord);
+      } else {
+        try {
+          const res = await fetch("/api/settings");
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.settings) {
+              setBusinessSettings(data.settings);
+              await offlineDb.settings.put(data.settings);
+            }
+          }
+        } catch {}
+      }
     } catch (err) {
       console.error("Failed to load master data in OfflineInvoiceCreator:", err);
     }

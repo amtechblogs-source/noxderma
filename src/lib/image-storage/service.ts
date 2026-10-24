@@ -179,6 +179,11 @@ export class ImageStorageService {
     }
   }
 
+  async uploadLogo(file: File, folder = "/logos"): Promise<string> {
+    const uploaded = await this.provider.upload(file, { folder });
+    return uploaded.url;
+  }
+
   private fileToDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -190,3 +195,5 @@ export class ImageStorageService {
 }
 
 export const imageStorageService = new ImageStorageService();
+export const imageStorage = imageStorageService;
+

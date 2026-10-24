@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { DEFAULT_BUSINESS_SETTINGS, type BusinessSettings } from "@/types";
 import { offlineDb } from "@/lib/offline/db";
+import { enqueueOperation } from "@/lib/offline/outbox";
+import { imageStorage } from "@/lib/image-storage/service";
 import { useTheme, type ThemeId } from "@/context/ThemeContext";
 
 export default function BusinessSettingsPage() {
@@ -31,47 +33,112 @@ export default function BusinessSettingsPage() {
   const [settings, setSettings] = useState<BusinessSettings>(DEFAULT_BUSINESS_SETTINGS);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   useEffect(() => {
     async function loadSettings() {
+      // 1. Try local offline storage first for instant render
       try {
         const stored = await offlineDb.settings.get("primary");
         if (stored) {
           setSettings(stored);
-        } else {
-          await offlineDb.settings.put(DEFAULT_BUSINESS_SETTINGS);
         }
       } catch (err) {
         console.warn("Could not load stored business settings:", err);
+      }
+
+      // 2. Fetch authoritative database settings from server (/api/settings)
+      try {
+        const res = await fetch("/api/settings");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.settings) {
+            setSettings(data.settings);
+            await offlineDb.settings.put(data.settings);
+            if (data.settings.colorTheme) {
+              setTheme(data.settings.colorTheme as ThemeId);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote settings:", err);
       }
     }
     loadSettings();
   }, []);
 
-  // Handle local image upload to base64 data URL for offline-first logo storage
-  const handleImageUpload = (
+  // Helper to compress logo image on client-side canvas so it fits smoothly in any database
+  const compressImage = (file: File, maxWidth = 500, maxHeight = 500): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/png", 0.9));
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handle image upload with dual-storage: compressed local data URL + permanent cloud upload
+  const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     field: "appLogoUrl" | "invoiceLogoUrl"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert("Image size should be less than 2MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image size should be less than 5MB.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setSettings((prev) => ({
-          ...prev,
-          [field]: result,
-        }));
+    setIsUploadingLogo(true);
+    try {
+      // 1. Immediately compress for zero-lag UI display and database safety
+      const compressedDataUrl = await compressImage(file);
+      setSettings((prev) => ({
+        ...prev,
+        [field]: compressedDataUrl,
+      }));
+
+      // 2. Also attempt permanent cloud upload via ImageKit provider
+      try {
+        const cloudUrl = await imageStorage.uploadLogo(file, "/logos");
+        if (cloudUrl) {
+          setSettings((prev) => ({
+            ...prev,
+            [field]: cloudUrl,
+          }));
+        }
+      } catch (cloudErr) {
+        console.log("ImageKit upload bypassed, using high-resolution compressed data URL:", cloudErr);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Failed to process image:", err);
+      alert("Error reading image file.");
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -84,11 +151,46 @@ export default function BusinessSettingsPage() {
         updatedAt: new Date().toISOString(),
         updatedBy: "usr_admin",
       };
+
+      // 1. Save to local Dexie IndexedDB for instant offline-first access
       await offlineDb.settings.put(updated);
       setSettings(updated);
+
+      // 2. Save directly to Server Database (/api/settings)
+      try {
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        });
+        if (!res.ok) {
+          console.warn("Server settings write returned status:", res.status);
+        }
+      } catch (netErr) {
+        console.warn("Offline: enqueued settings for automatic cloud synchronization:", netErr);
+        // 3. If offline, enqueue operation into outbox queue
+        await enqueueOperation(
+          "settings",
+          "primary",
+          "update",
+          updated as unknown as Record<string, unknown>,
+          "usr_admin",
+          "Administrator"
+        );
+      }
+
+      // 4. Also try direct Firebase Firestore write
+      try {
+        const { db } = await import("@/lib/firebase/config");
+        const { doc, setDoc } = await import("firebase/firestore");
+        await setDoc(doc(db, "organizationSettings", "primary"), updated, { merge: true });
+      } catch (firestoreErr) {
+        console.warn("Client Firestore notice:", firestoreErr);
+      }
+
       setIsSaved(true);
 
-      // Notify Sidebar and Header
+      // Notify Sidebar and Header to immediately re-render logos
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("noxderma_settings_updated"));
       }
@@ -96,7 +198,7 @@ export default function BusinessSettingsPage() {
       setTimeout(() => setIsSaved(false), 4000);
     } catch (err) {
       console.error("Failed to save settings:", err);
-      alert("Error saving settings to local storage.");
+      alert("Error saving settings.");
     } finally {
       setIsSaving(false);
     }

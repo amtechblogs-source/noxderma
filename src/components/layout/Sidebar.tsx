@@ -131,6 +131,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
 
   useEffect(() => {
     async function loadBrandLogo() {
+      // 1. Instant local read from IndexedDB
       try {
         const stored = await offlineDb.settings.get("primary");
         if (stored) {
@@ -139,6 +140,23 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           }
           if (stored.brandName) {
             setBrandName(stored.brandName);
+          }
+        }
+      } catch {}
+
+      // 2. Authoritative server database fetch (survives cookie & site data clearing)
+      try {
+        const res = await fetch("/api/settings");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.settings) {
+            if (data.settings.appLogoUrl && data.settings.appLogoUrl !== "/brand/logo.svg") {
+              setUiLogo(data.settings.appLogoUrl);
+            }
+            if (data.settings.brandName) {
+              setBrandName(data.settings.brandName);
+            }
+            await offlineDb.settings.put(data.settings);
           }
         }
       } catch {}

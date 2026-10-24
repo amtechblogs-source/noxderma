@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 import { adminDb, isFirebaseAdminReady } from "@/lib/firebase/admin";
 import type { OutboxOperation, Invoice } from "@/types";
 
@@ -187,7 +189,19 @@ export async function POST(request: Request) {
             ? "customerVisits"
             : op.entityType === "payment"
             ? "payments"
+            : op.entityType === "settings"
+            ? "organizationSettings"
             : op.entityType;
+
+        if (op.entityType === "settings") {
+          try {
+            const dataDir = path.join(process.cwd(), "data");
+            if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+            fs.writeFileSync(path.join(dataDir, "settings.json"), JSON.stringify(op.payload, null, 2), "utf-8");
+          } catch (e) {
+            console.warn("Could not write settings file in sync:", e);
+          }
+        }
 
         await adminDb.collection(targetCollection).doc(op.entityId).set(op.payload, { merge: true });
 
@@ -216,6 +230,16 @@ export async function POST(request: Request) {
     }
 
     // Standalone / Preview / Netlify reconciliation (when service account key is not provided)
+    if (op.entityType === "settings") {
+      try {
+        const dataDir = path.join(process.cwd(), "data");
+        if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+        fs.writeFileSync(path.join(dataDir, "settings.json"), JSON.stringify(op.payload, null, 2), "utf-8");
+      } catch (e) {
+        console.warn("Could not write settings file in standalone sync:", e);
+      }
+    }
+
     if (op.entityType === "invoice") {
       const invoice = op.payload as unknown as Invoice;
       const officialReference =
