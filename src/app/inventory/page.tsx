@@ -246,7 +246,7 @@ export default function InventoryOverviewPage() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-600 animate-pulse" />
             <span>
-              Showing inventory isolated for category: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
+              Showing inventory for: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
             </span>
           </div>
           <button

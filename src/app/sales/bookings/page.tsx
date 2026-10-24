@@ -371,7 +371,7 @@ export default function SalesBookingsPage() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-600 animate-pulse" />
             <span>
-              Orders isolated for category: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
+              Showing orders for: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
             </span>
           </div>
           <button

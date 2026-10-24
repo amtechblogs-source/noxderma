@@ -211,7 +211,7 @@ export default function ReportsExportPage() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-600 animate-pulse" />
             <span>
-              Reports data isolated for category: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
+              Showing reports for: <strong>{activeCategoryObj?.name || "Selected Category"}</strong>
             </span>
           </div>
           <button
