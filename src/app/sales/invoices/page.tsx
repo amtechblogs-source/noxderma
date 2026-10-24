@@ -445,7 +445,11 @@ export default function SalesInvoicesListPage() {
             </p>
             {selectedInvoice.invoiceDiscountAmount > 0 && (
               <p>
-                Discount: -<strong>{formatPKR(selectedInvoice.invoiceDiscountAmount)}</strong>
+                Discount
+                {selectedInvoice.invoiceDiscountPercentage
+                  ? ` (${selectedInvoice.invoiceDiscountPercentage}%):`
+                  : ":"}{" "}
+                -<strong>{formatPKR(selectedInvoice.invoiceDiscountAmount)}</strong>
               </p>
             )}
             <p className="text-sm">

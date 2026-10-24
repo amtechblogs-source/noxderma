@@ -81,6 +81,8 @@ export function OfflineInvoiceCreator() {
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [deliveryCharge, setDeliveryCharge] = useState<number>(0);
   const [invoiceDiscount, setInvoiceDiscount] = useState<number>(0);
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage">("fixed");
+  const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [createdInvoice, setCreatedInvoice] = useState<Invoice | null>(null);
@@ -244,7 +246,13 @@ export function OfflineInvoiceCreator() {
     (sum, item) => sum + (item.quantity * item.unitPrice * (item.discountPercent || 0)) / 100,
     0
   );
-  const netTotal = Math.max(0, subtotal - totalLineDiscount - invoiceDiscount + deliveryCharge);
+  const eligibleBaseForDiscount = Math.max(0, subtotal - totalLineDiscount);
+  const effectiveInvoiceDiscount =
+    discountType === "percentage"
+      ? Math.round((eligibleBaseForDiscount * (discountPercent || 0)) / 100)
+      : invoiceDiscount;
+  const totalDiscount = totalLineDiscount + effectiveInvoiceDiscount;
+  const netTotal = Math.max(0, subtotal - totalLineDiscount - effectiveInvoiceDiscount + deliveryCharge);
   const effectivePaid = paymentMethod === "credit" ? paidAmount : netTotal;
   const outstandingBalance = Math.max(0, netTotal - effectivePaid);
 
@@ -309,7 +317,8 @@ export function OfflineInvoiceCreator() {
         customerAddress: selectedCust ? selectedCust.address : customCustomerAddress,
         lines: invoiceLines,
         subtotal,
-        invoiceDiscountAmount: invoiceDiscount + totalLineDiscount,
+        invoiceDiscountAmount: totalDiscount,
+        invoiceDiscountPercentage: discountType === "percentage" ? discountPercent : undefined,
         taxAmount: 0,
         deliveryCharge,
         grossTotal: subtotal,
@@ -459,6 +468,9 @@ export function OfflineInvoiceCreator() {
               onClick={() => {
                 setCreatedInvoice(null);
                 setLines([]);
+                setInvoiceDiscount(0);
+                setDiscountPercent(0);
+                setDiscountType("fixed");
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm"
             >
@@ -588,7 +600,12 @@ export function OfflineInvoiceCreator() {
               </div>
               {createdInvoice.invoiceDiscountAmount > 0 && (
                 <div className="flex justify-between text-rose-500 font-semibold">
-                  <span>Discount:</span>
+                  <span>
+                    Discount
+                    {createdInvoice.invoiceDiscountPercentage
+                      ? ` (${createdInvoice.invoiceDiscountPercentage}%):`
+                      : ":"}
+                  </span>
                   <span className="font-mono">-{formatPKR(createdInvoice.invoiceDiscountAmount)}</span>
                 </div>
               )}
@@ -892,15 +909,134 @@ export function OfflineInvoiceCreator() {
               </div>
             )}
 
-            <div>
-              <label className="block text-xs sm:text-sm font-bold mb-1.5">Extra Discount (PKR)</label>
-              <input
-                type="number"
-                min={0}
-                value={invoiceDiscount}
-                onChange={(e) => setInvoiceDiscount(Number(e.target.value) || 0)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-semibold"
-              />
+            <div className={paymentMethod === "credit" ? "" : "sm:col-span-2"}>
+              <div className="flex items-center justify-between mb-1.5 gap-2">
+                <label className="block text-xs sm:text-sm font-bold">Extra Discount</label>
+                {/* Segmented Switch: PKR vs % */}
+                <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-200/80 dark:bg-slate-700 text-xs font-bold shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiscountType("fixed");
+                      if (discountPercent > 0 && eligibleBaseForDiscount > 0) {
+                        setInvoiceDiscount(Math.round((eligibleBaseForDiscount * discountPercent) / 100));
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-[11px] sm:text-xs transition-all ${
+                      discountType === "fixed"
+                        ? "bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    PKR (Rs.)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiscountType("percentage");
+                      if (invoiceDiscount > 0 && eligibleBaseForDiscount > 0) {
+                        setDiscountPercent(parseFloat(((invoiceDiscount / eligibleBaseForDiscount) * 100).toFixed(1)));
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-[11px] sm:text-xs transition-all ${
+                      discountType === "percentage"
+                        ? "bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    % Percentage
+                  </button>
+                </div>
+              </div>
+
+              {discountType === "percentage" ? (
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.5"
+                      placeholder="e.g. 5, 10, 12.5"
+                      value={discountPercent > 0 ? discountPercent : ""}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setDiscountPercent(isNaN(val) ? 0 : Math.min(100, Math.max(0, val)));
+                      }}
+                      className="w-full pl-3.5 pr-10 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-teal-500/50 dark:border-teal-500/40 bg-teal-50/20 dark:bg-teal-950/20 font-mono font-bold focus:ring-2 focus:ring-teal-500 transition-all text-teal-700 dark:text-teal-300"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-extrabold text-teal-600 dark:text-teal-400 pointer-events-none">
+                      %
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-medium">
+                      Calculated: <strong className="text-rose-600 dark:text-rose-400 font-mono">-{formatPKR(effectiveInvoiceDiscount)}</strong>
+                    </span>
+                    {/* Quick percentage chips */}
+                    <div className="flex items-center gap-1">
+                      {[2, 5, 7.5, 10, 15].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setDiscountPercent(preset)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                            discountPercent === preset
+                              ? "bg-teal-600 text-white border-teal-600 shadow-sm"
+                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-500"
+                          }`}
+                        >
+                          {preset}%
+                        </button>
+                      ))}
+                      {discountPercent > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setDiscountPercent(0)}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-bold text-rose-500 hover:text-rose-700"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="e.g. 50, 100, 500"
+                      value={invoiceDiscount > 0 ? invoiceDiscount : ""}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setInvoiceDiscount(isNaN(val) ? 0 : Math.max(0, val));
+                      }}
+                      className="w-full pl-3.5 pr-14 py-2.5 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-semibold focus:ring-2 focus:ring-teal-500 transition-all"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                      PKR
+                    </span>
+                  </div>
+
+                  {eligibleBaseForDiscount > 0 && invoiceDiscount > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                      <span>
+                        Equivalent to: <strong className="font-mono text-teal-600 dark:text-teal-400">{((invoiceDiscount / eligibleBaseForDiscount) * 100).toFixed(1)}%</strong> of bill subtotal
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceDiscount(0)}
+                        className="text-[10px] font-bold text-rose-500 hover:text-rose-700"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -910,10 +1046,13 @@ export function OfflineInvoiceCreator() {
               <span>Gross Total:</span>
               <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{formatPKR(subtotal)}</span>
             </div>
-            {invoiceDiscount > 0 && (
+            {totalDiscount > 0 && (
               <div className="flex justify-between text-rose-500 font-semibold">
-                <span>Total Discount:</span>
-                <span className="font-mono">-{formatPKR(invoiceDiscount)}</span>
+                <span>
+                  Total Discount
+                  {discountType === "percentage" && discountPercent > 0 ? ` (${discountPercent}%):` : ":"}
+                </span>
+                <span className="font-mono">-{formatPKR(totalDiscount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg sm:text-xl font-extrabold text-teal-600 pt-2 border-t border-slate-200 dark:border-slate-700">

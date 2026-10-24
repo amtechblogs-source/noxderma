@@ -58,6 +58,7 @@ export interface Invoice {
   lines: InvoiceLine[];
   subtotal: number;
   invoiceDiscountAmount: number;
+  invoiceDiscountPercentage?: number;
   taxAmount: number;
   deliveryCharge: number;
   grossTotal: number;
