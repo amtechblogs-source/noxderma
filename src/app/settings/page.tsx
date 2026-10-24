@@ -554,10 +554,12 @@ export default function BusinessSettingsPage() {
               <label className="block font-semibold mb-1">Standard Udhaar Days (Credit Days)</label>
               <input
                 type="number"
-                value={settings.defaultCreditTermsDays}
-                onChange={(e) =>
-                  setSettings({ ...settings, defaultCreditTermsDays: Number(e.target.value) || 30 })
-                }
+                placeholder="30"
+                value={settings.defaultCreditTermsDays === 0 ? "" : settings.defaultCreditTermsDays}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setSettings({ ...settings, defaultCreditTermsDays: raw === "" ? 0 : Number(raw) || 0 });
+                }}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
               />
             </div>

@@ -202,8 +202,12 @@ export default function CustomersDirectoryPage() {
               <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Maximum Udhaar Limit (PKR)</label>
               <input
                 type="number"
-                value={creditLimit}
-                onChange={(e) => setCreditLimit(Number(e.target.value) || 0)}
+                placeholder="0"
+                value={creditLimit === 0 ? "" : creditLimit}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setCreditLimit(raw === "" ? 0 : Number(raw) || 0);
+                }}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>

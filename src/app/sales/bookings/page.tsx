@@ -817,8 +817,12 @@ export default function SalesBookingsPage() {
                     type="number"
                     min="1"
                     required
-                    value={orderQty}
-                    onChange={(e) => setOrderQty(Number(e.target.value))}
+                    placeholder="0"
+                    value={orderQty === 0 ? "" : orderQty}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setOrderQty(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold"
                   />
                 </div>
@@ -830,8 +834,12 @@ export default function SalesBookingsPage() {
                     type="number"
                     min="1"
                     required
-                    value={orderPrice}
-                    onChange={(e) => setOrderPrice(Number(e.target.value))}
+                    placeholder="0"
+                    value={orderPrice === 0 ? "" : orderPrice}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setOrderPrice(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold"
                   />
                 </div>

@@ -393,8 +393,12 @@ export default function DistributorsPage() {
                   </label>
                   <input
                     type="number"
-                    value={creditLimit}
-                    onChange={(e) => setCreditLimit(Number(e.target.value))}
+                    placeholder="0"
+                    value={creditLimit === 0 ? "" : creditLimit}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setCreditLimit(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
                   />
                 </div>
@@ -404,8 +408,12 @@ export default function DistributorsPage() {
                   </label>
                   <input
                     type="number"
-                    value={creditTermsDays}
-                    onChange={(e) => setCreditTermsDays(Number(e.target.value))}
+                    placeholder="30"
+                    value={creditTermsDays === 0 ? "" : creditTermsDays}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setCreditTermsDays(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
                   />
                 </div>
@@ -416,8 +424,12 @@ export default function DistributorsPage() {
                   <input
                     type="number"
                     step="0.5"
-                    value={marginPercentage}
-                    onChange={(e) => setMarginPercentage(Number(e.target.value))}
+                    placeholder="10"
+                    value={marginPercentage === 0 ? "" : marginPercentage}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setMarginPercentage(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
                   />
                 </div>

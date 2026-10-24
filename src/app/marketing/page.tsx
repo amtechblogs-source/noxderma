@@ -349,8 +349,12 @@ export default function MarketingCampaignsPage() {
                 </label>
                 <input
                   type="number"
-                  value={budget}
-                  onChange={(e) => setBudget(Number(e.target.value))}
+                  placeholder="0"
+                  value={budget === 0 ? "" : budget}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBudget(raw === "" ? 0 : Number(raw) || 0);
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                 />
               </div>

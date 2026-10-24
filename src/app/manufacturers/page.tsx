@@ -149,8 +149,12 @@ export default function ManufacturersPage() {
               <label className="block font-semibold mb-1">Payment Time Allowed (Days)</label>
               <input
                 type="number"
-                value={terms}
-                onChange={(e) => setTerms(Number(e.target.value) || 30)}
+                placeholder="30"
+                value={terms === 0 ? "" : terms}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setTerms(raw === "" ? 0 : Number(raw) || 0);
+                }}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
               />
             </div>

@@ -773,9 +773,11 @@ export default function OnlineOrdersPage() {
                       <input
                         type="number"
                         min="1"
-                        value={orderQty}
+                        placeholder="1"
+                        value={orderQty === 0 ? "" : orderQty}
                         onChange={(e) => {
-                          const qty = Math.max(1, Number(e.target.value) || 1);
+                          const raw = e.target.value;
+                          const qty = raw === "" ? 0 : Number(raw) || 0;
                           setOrderQty(qty);
                           const tp = pricingMap[selectedProdId] || 650;
                           setTotalAmount(tp * qty);
@@ -806,8 +808,12 @@ export default function OnlineOrdersPage() {
                   </label>
                   <input
                     type="number"
-                    value={totalAmount}
-                    onChange={(e) => setTotalAmount(Number(e.target.value))}
+                    placeholder="0"
+                    value={totalAmount === 0 ? "" : totalAmount}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setTotalAmount(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-teal-600"
                   />
                 </div>

@@ -688,8 +688,10 @@ export function ProductCatalogView() {
               <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Items per Pack</label>
               <input
                 type="number"
-                value={unitsPerPack}
-                onChange={(e) => setUnitsPerPack(Number(e.target.value) || 1)}
+                min="1"
+                placeholder="1"
+                value={unitsPerPack === 0 ? "" : unitsPerPack}
+                onChange={(e) => setUnitsPerPack(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
@@ -698,8 +700,10 @@ export function ProductCatalogView() {
               <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Low-Stock Alert Level</label>
               <input
                 type="number"
-                value={reorderThreshold}
-                onChange={(e) => setReorderThreshold(Number(e.target.value) || 10)}
+                min="0"
+                placeholder="10"
+                value={reorderThreshold === 0 ? "" : reorderThreshold}
+                onChange={(e) => setReorderThreshold(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
@@ -1197,8 +1201,10 @@ export function ProductCatalogView() {
                   <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Items per Pack</label>
                   <input
                     type="number"
-                    value={editUnitsPerPack}
-                    onChange={(e) => setEditUnitsPerPack(Number(e.target.value) || 1)}
+                    min="1"
+                    placeholder="1"
+                    value={editUnitsPerPack === 0 ? "" : editUnitsPerPack}
+                    onChange={(e) => setEditUnitsPerPack(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
@@ -1207,8 +1213,10 @@ export function ProductCatalogView() {
                   <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Low-Stock Alert Level</label>
                   <input
                     type="number"
-                    value={editReorderThreshold}
-                    onChange={(e) => setEditReorderThreshold(Number(e.target.value) || 10)}
+                    min="0"
+                    placeholder="10"
+                    value={editReorderThreshold === 0 ? "" : editReorderThreshold}
+                    onChange={(e) => setEditReorderThreshold(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>

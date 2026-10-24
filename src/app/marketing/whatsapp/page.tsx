@@ -198,8 +198,12 @@ ${web ? `🌐 Web: ${web}` : ""}
                 type="number"
                 min="0"
                 max="50"
-                value={discountPercent}
-                onChange={(e) => setDiscountPercent(Number(e.target.value))}
+                placeholder="0"
+                value={discountPercent === 0 ? "" : discountPercent}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setDiscountPercent(raw === "" ? 0 : Number(raw) || 0);
+                }}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
               />
             </div>

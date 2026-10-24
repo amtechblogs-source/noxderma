@@ -31,7 +31,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       }
     } catch {}
 
-    // Global enhancement for numeric inputs: auto-select on focus and strip leading zeros
+    // Global enhancement for numeric & text inputs: auto-select on focus and smooth backspace
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target;
       if (
@@ -42,27 +42,32 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const handleInput = (e: Event) => {
-      const target = e.target;
-      if (
-        target instanceof HTMLInputElement &&
-        (target.type === "number" || target.inputMode === "numeric" || target.inputMode === "decimal")
-      ) {
-        const val = target.value;
-        if (/^0\d/.test(val)) {
-          const cleaned = val.replace(/^0+(?=\d)/, "");
-          target.value = cleaned;
-          target.dispatchEvent(new Event("change", { bubbles: true }));
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Backspace") {
+        const target = e.target;
+        if (
+          target instanceof HTMLInputElement &&
+          (target.type === "number" || target.inputMode === "numeric" || target.inputMode === "decimal")
+        ) {
+          // If input has only 1 character or single zero, clear it immediately
+          if (target.value === "0" || target.value.length === 1) {
+            e.preventDefault();
+            const proto = window.HTMLInputElement.prototype;
+            const nativeSet = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+            nativeSet?.call(target, "");
+            target.dispatchEvent(new Event("input", { bubbles: true }));
+            target.dispatchEvent(new Event("change", { bubbles: true }));
+          }
         }
       }
     };
 
     window.addEventListener("focusin", handleFocusIn);
-    window.addEventListener("input", handleInput);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("focusin", handleFocusIn);
-      window.removeEventListener("input", handleInput);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 

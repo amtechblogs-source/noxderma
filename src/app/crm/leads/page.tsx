@@ -247,8 +247,12 @@ export default function LeadsCrmPage() {
                   <input
                     type="number"
                     min={0}
-                    value={potentialPkr}
-                    onChange={(e) => setPotentialPkr(Number(e.target.value))}
+                    placeholder="0"
+                    value={potentialPkr === 0 ? "" : potentialPkr}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setPotentialPkr(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-teal-600"
                   />
                 </div>

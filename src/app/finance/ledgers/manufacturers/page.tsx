@@ -285,8 +285,12 @@ export default function ManufacturerLedgersPage() {
                   type="number"
                   min="1"
                   required
-                  value={amount}
-                  onChange={(e) => setAmount(Number(e.target.value))}
+                  placeholder="0"
+                  value={amount === 0 ? "" : amount}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setAmount(raw === "" ? 0 : Number(raw) || 0);
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-sm font-bold"
                 />
               </div>

@@ -527,10 +527,11 @@ export function CouponManagerView() {
                       type="number"
                       min="1"
                       max="90"
-                      value={discountPercent}
+                      placeholder="10"
+                      value={discountPercent === 0 ? "" : discountPercent}
                       onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setDiscountPercent(val);
+                        const raw = e.target.value;
+                        setDiscountPercent(raw === "" ? 0 : parseInt(raw) || 0);
                       }}
                       className="w-16 text-xs font-bold text-center px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-teal-500"
                     />

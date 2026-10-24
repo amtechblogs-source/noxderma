@@ -131,6 +131,11 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
   const { currentUser, hasPermission } = useAuth();
   const [uiLogo, setUiLogo] = useState<string | null>(null);
   const [brandName, setBrandName] = useState<string>("NOXDERMA");
+  const [hoveredTooltip, setHoveredTooltip] = useState<{ text: string; top: number } | null>(null);
+
+  useEffect(() => {
+    setHoveredTooltip(null);
+  }, [isCollapsed]);
 
   useEffect(() => {
     async function loadBrandLogo() {

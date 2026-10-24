@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Calculator,
   ArrowLeft,
+  ArrowRight,
   DollarSign,
   TrendingUp,
   Users2,
@@ -17,6 +18,7 @@ import {
   ShieldAlert,
   Percent,
   Sliders,
+  SlidersHorizontal,
   RotateCcw,
   PlusCircle,
   HelpCircle,
@@ -89,6 +91,9 @@ export function PriceEstimatorView() {
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [customSku, setCustomSku] = useState("");
   const [selectedCatId, setSelectedCatId] = useState("");
+
+  // Mobile active tab view: inputs vs results
+  const [mobileTab, setMobileTab] = useState<"inputs" | "results">("inputs");
 
   // Load existing products on mount
   useEffect(() => {
@@ -233,9 +238,9 @@ export function PriceEstimatorView() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-16">
+    <div className="max-w-7xl mx-auto space-y-5 pb-36 lg:pb-16 px-3 sm:px-6">
       {/* Top Breadcrumb & Action Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
           <Link
             href="/products"
@@ -244,25 +249,25 @@ export function PriceEstimatorView() {
             <ArrowLeft className="w-4 h-4" />
             Back to Medicine Catalog
           </Link>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
-              <Calculator className="w-7 h-7 text-teal-600" />
-              New Product Price Estimator & Simulator
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Calculator className="w-6 h-6 sm:w-7 sm:h-7 text-teal-600 shrink-0" />
+              <span>Price Estimator & Simulator</span>
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300">
-              Noxderma Margin Engine
+            <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300 shrink-0">
+              Margin Engine
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-1 max-w-2xl">
             Calculate accurate landed costs considering field staff salaries, fuel allowances, doctor sampling, and generate optimal Distributor, Trade & MRP pricing.
           </p>
         </div>
 
         {/* Quick Toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive shadow-sm"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive shadow-sm"
             title="Print or Save PDF"
           >
             <Printer className="w-3.5 h-3.5" />
@@ -272,7 +277,7 @@ export function PriceEstimatorView() {
           <button
             onClick={() => handleSaveToCatalog()}
             disabled={isSavingToCatalog}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
           >
             <PlusCircle className="w-4 h-4" />
             {isSavingToCatalog ? "Saving..." : "Add to Catalog"}
@@ -289,29 +294,29 @@ export function PriceEstimatorView() {
       )}
 
       {/* Preset Templates Selector & Existing Product Loader */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-teal-50/80 via-emerald-50/40 to-slate-50 dark:from-slate-900 dark:via-teal-950/20 dark:to-slate-900 border border-teal-200/70 dark:border-teal-800/50 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-            <Sparkles className="w-5 h-5" />
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-teal-50/80 via-emerald-50/40 to-slate-50 dark:from-slate-900 dark:via-teal-950/20 dark:to-slate-900 border border-teal-200/70 dark:border-teal-800/50 shadow-sm space-y-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 truncate sm:whitespace-normal">
               Select Industry Template or Existing Medicine
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
               Quickly load standard pharmaceutical, derma serum, or oral tablets cost structures.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
           {/* Preset Buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5 w-full sm:w-auto">
             {ESTIMATOR_PRESETS.map((preset) => (
               <button
                 key={preset.id}
                 onClick={() => handleApplyPreset(preset.id)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-800 hover:border-teal-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors btn-interactive"
+                className="px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:border-teal-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors btn-interactive text-center truncate"
               >
                 {preset.title.split("(")[0]}
               </button>
@@ -320,11 +325,11 @@ export function PriceEstimatorView() {
 
           {/* Load existing medicine dropdown */}
           {existingProducts.length > 0 && (
-            <div className="relative">
+            <div className="w-full sm:w-auto">
               <select
                 value={selectedExistingId}
                 onChange={(e) => handleLoadExistingProduct(e.target.value)}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                className="w-full sm:w-auto text-xs font-semibold px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-teal-500 focus:outline-none shadow-sm"
               >
                 <option value="">Load from Catalog...</option>
                 {existingProducts.map((p) => (
@@ -338,37 +343,66 @@ export function PriceEstimatorView() {
         </div>
       </div>
 
+      {/* Mobile Segmented View Switcher (lg:hidden) */}
+      <div className="lg:hidden flex items-center p-1 rounded-2xl bg-slate-200/80 dark:bg-slate-800 text-xs font-bold shadow-inner">
+        <button
+          type="button"
+          onClick={() => setMobileTab("inputs")}
+          className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+            mobileTab === "inputs"
+              ? "bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+          }`}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <span>1. Cost Drivers</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("results")}
+          className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+            mobileTab === "results"
+              ? "bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>2. Pricing & Simulator</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        </button>
+      </div>
+
       {/* Main Grid: Inputs on Left, Real-time Pricing Engine on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ========================================================= */}
         {/* LEFT COLUMN: Input Cost Drivers (7 Columns)               */}
         {/* ========================================================= */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className={`lg:col-span-7 space-y-4 ${mobileTab === "inputs" ? "block" : "hidden lg:block"}`}>
           {/* Section 1: Product Basics & Direct Production Cost */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             <button
               onClick={() => toggleSection("direct")}
-              className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-left border-b border-slate-200 dark:border-slate-800"
+              className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-2.5 text-left border-b border-slate-200 dark:border-slate-800"
             >
-              <div className="flex items-center gap-2.5">
-                <Package className="w-5 h-5 text-teal-600" />
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    1. Product Identity & Factory Cost (Per Pack)
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <Package className="w-5 h-5 text-teal-600 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 truncate sm:whitespace-normal">
+                    1. Product Identity & Factory Cost
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Toll manufacturing, packaging materials & factory inward freight
+                  <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
+                    Toll manufacturing, packaging & inward freight
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950 px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <span className="text-[10px] sm:text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950 px-2 py-0.5 rounded-full whitespace-nowrap">
                   Rs. {results.directCostPerUnit.toFixed(1)}/pack
                 </span>
                 {openSections.direct ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                 )}
               </div>
             </button>
@@ -527,27 +561,27 @@ export function PriceEstimatorView() {
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             <button
               onClick={() => toggleSection("overheads")}
-              className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-left border-b border-slate-200 dark:border-slate-800"
+              className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-2.5 text-left border-b border-slate-200 dark:border-slate-800"
             >
-              <div className="flex items-center gap-2.5">
-                <Users2 className="w-5 h-5 text-amber-600" />
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    2. Field Staff (Employees), Fuel & Operations
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <Users2 className="w-5 h-5 text-amber-600 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 truncate sm:whitespace-normal">
+                    2. Field Staff, Fuel & Overheads
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Monthly salaries, bike/car fuel, daily allowance & office fixed costs
+                  <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
+                    Monthly salaries, bike fuel, allowance & office fixed costs
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <span className="text-[10px] sm:text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full whitespace-nowrap">
                   Rs. {results.overheadCostPerUnit.toFixed(1)}/pack
                 </span>
                 {openSections.overheads ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                 )}
               </div>
             </button>
@@ -690,13 +724,15 @@ export function PriceEstimatorView() {
                     <input
                       type="number"
                       min="1"
-                      value={inputs.expectedMonthlyVolume || ""}
-                      onChange={(e) =>
+                      placeholder="1000"
+                      value={inputs.expectedMonthlyVolume === 0 ? "" : inputs.expectedMonthlyVolume}
+                      onChange={(e) => {
+                        const raw = e.target.value;
                         setInputs({
                           ...inputs,
-                          expectedMonthlyVolume: parseInt(e.target.value) || 1,
-                        })
-                      }
+                          expectedMonthlyVolume: raw === "" ? 0 : Math.max(0, parseInt(raw) || 0),
+                        });
+                      }}
                       className="w-full text-xs font-bold px-3 py-1.5 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-900 text-teal-800 dark:text-teal-300 focus:ring-1 focus:ring-teal-500 focus:outline-none"
                     />
                     <span className="text-[10px] text-teal-700 dark:text-teal-400">
@@ -732,27 +768,27 @@ export function PriceEstimatorView() {
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             <button
               onClick={() => toggleSection("pharma")}
-              className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-left border-b border-slate-200 dark:border-slate-800"
+              className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-2.5 text-left border-b border-slate-200 dark:border-slate-800"
             >
-              <div className="flex items-center gap-2.5">
-                <Stethoscope className="w-5 h-5 text-purple-600" />
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    3. Doctor Sampling, Bonus Schemes & Promotions
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <Stethoscope className="w-5 h-5 text-purple-600 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 truncate sm:whitespace-normal">
+                    3. Doctor Sampling & Schemes
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Free doctor samples, trade deal bonus (10+1 free), sales rep commissions
+                  <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
+                    Free doctor samples, trade deal bonus (10+1 free), rep commissions
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <span className="text-[10px] sm:text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 px-2 py-0.5 rounded-full whitespace-nowrap">
                   Rs. {(results.doctorSamplingCostPerUnit + results.fieldPromoCostPerUnit + results.deliveryCostPerUnit).toFixed(1)}/pack
                 </span>
                 {openSections.pharma ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                 )}
               </div>
             </button>
@@ -921,27 +957,27 @@ export function PriceEstimatorView() {
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             <button
               onClick={() => toggleSection("margins")}
-              className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-left border-b border-slate-200 dark:border-slate-800"
+              className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between gap-2.5 text-left border-b border-slate-200 dark:border-slate-800"
             >
-              <div className="flex items-center gap-2.5">
-                <Percent className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    4. Target Profit Margin, Channel Tiers & Tax
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <Percent className="w-5 h-5 text-blue-600 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 truncate sm:whitespace-normal">
+                    4. Target Profit Margin & Tax
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Noxderma profit %, Distributor margin %, Pharmacy margin % & GST
+                  <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
+                    Noxderma profit %, Distributor %, Pharmacy % & GST
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <span className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full whitespace-nowrap">
                   Net: {inputs.noxdermaTargetMarginPercent}%
                 </span>
                 {openSections.margins ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                 )}
               </div>
             </button>
@@ -1073,7 +1109,7 @@ export function PriceEstimatorView() {
         {/* ========================================================= */}
         {/* RIGHT COLUMN: Results, Pricing Tiers, Visuals & Simulator */}
         {/* ========================================================= */}
-        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-4">
+        <div className={`lg:col-span-5 space-y-4 lg:sticky lg:top-4 ${mobileTab === "results" ? "block" : "hidden lg:block"}`}>
           {/* Main Price Ladder Card */}
           <div className="rounded-2xl border border-teal-200 dark:border-teal-800/60 bg-gradient-to-b from-white to-teal-50/20 dark:from-slate-900 dark:to-teal-950/20 shadow-md p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -1415,6 +1451,58 @@ export function PriceEstimatorView() {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Persistent Mobile Bottom Quick Summary Bar (lg:hidden) */}
+      <div className="lg:hidden fixed bottom-16 left-0 right-0 z-30 px-3 py-2.5 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white border-t border-slate-800 shadow-2xl">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div>
+              <span className="block text-[8px] font-bold uppercase text-slate-400 leading-none">
+                Cost
+              </span>
+              <span className="text-[11px] font-black font-mono text-slate-200">
+                {formatPKR(results.totalLandedCostPerUnit)}
+              </span>
+            </div>
+            <div className="h-5 w-px bg-slate-700 shrink-0" />
+            <div>
+              <span className="block text-[8px] font-bold uppercase text-teal-400 leading-none">
+                Trade (TP)
+              </span>
+              <span className="text-[11px] font-black font-mono text-teal-300">
+                {formatPKR(results.tradePrice)}
+              </span>
+            </div>
+            <div className="h-5 w-px bg-slate-700 shrink-0" />
+            <div>
+              <span className="block text-[8px] font-bold uppercase text-amber-400 leading-none">
+                MRP
+              </span>
+              <span className="text-xs font-black font-mono text-amber-300">
+                {formatPKR(results.retailPriceFinalMrp)}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMobileTab(mobileTab === "inputs" ? "results" : "inputs")}
+            className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold text-xs flex items-center gap-1 shadow-sm shrink-0 transition-transform"
+          >
+            {mobileTab === "inputs" ? (
+              <>
+                <span>Results</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            ) : (
+              <>
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Inputs</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

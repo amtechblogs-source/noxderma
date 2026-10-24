@@ -313,8 +313,12 @@ export default function SalesTargetsPage() {
                     type="number"
                     min="1"
                     required
-                    value={quota}
-                    onChange={(e) => setQuota(Number(e.target.value))}
+                    placeholder="0"
+                    value={quota === 0 ? "" : quota}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setQuota(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -326,8 +330,12 @@ export default function SalesTargetsPage() {
                     type="number"
                     min="1"
                     required
-                    value={targetVisits}
-                    onChange={(e) => setTargetVisits(Number(e.target.value))}
+                    placeholder="0"
+                    value={targetVisits === 0 ? "" : targetVisits}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setTargetVisits(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>

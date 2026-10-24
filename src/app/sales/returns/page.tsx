@@ -431,8 +431,12 @@ export default function SalesReturnsPage() {
                     type="number"
                     min="1"
                     required
-                    value={qty}
-                    onChange={(e) => setQty(Number(e.target.value))}
+                    placeholder="0"
+                    value={qty === 0 ? "" : qty}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setQty(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -444,8 +448,12 @@ export default function SalesReturnsPage() {
                     type="number"
                     min="1"
                     required
-                    value={unitCredit}
-                    onChange={(e) => setUnitCredit(Number(e.target.value))}
+                    placeholder="0"
+                    value={unitCredit === 0 ? "" : unitCredit}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setUnitCredit(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>

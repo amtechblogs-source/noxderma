@@ -746,8 +746,12 @@ function ProductDetailContent() {
                     type="number"
                     min="1"
                     required
-                    value={newQuantity}
-                    onChange={(e) => setNewQuantity(Number(e.target.value))}
+                    placeholder="0"
+                    value={newQuantity === 0 ? "" : newQuantity}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setNewQuantity(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
                   />
                 </div>
@@ -895,8 +899,13 @@ function ProductDetailContent() {
                   <label className="block font-semibold mb-1">Items per Pack</label>
                   <input
                     type="number"
-                    value={editUnitsPerPack}
-                    onChange={(e) => setEditUnitsPerPack(Number(e.target.value) || 1)}
+                    min="1"
+                    placeholder="1"
+                    value={editUnitsPerPack === 0 ? "" : editUnitsPerPack}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setEditUnitsPerPack(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -905,8 +914,13 @@ function ProductDetailContent() {
                   <label className="block font-semibold mb-1">Low-Stock Alert Level</label>
                   <input
                     type="number"
-                    value={editReorderThreshold}
-                    onChange={(e) => setEditReorderThreshold(Number(e.target.value) || 10)}
+                    min="0"
+                    placeholder="10"
+                    value={editReorderThreshold === 0 ? "" : editReorderThreshold}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setEditReorderThreshold(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -923,8 +937,12 @@ function ProductDetailContent() {
                     <label className="block font-bold mb-1">Buying Cost (Kharid Rate)</label>
                     <input
                       type="number"
-                      value={editPurchaseCost}
-                      onChange={(e) => setEditPurchaseCost(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      value={editPurchaseCost === 0 ? "" : editPurchaseCost}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
+                      }}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
                     />
                   </div>
@@ -935,8 +953,12 @@ function ProductDetailContent() {
                     </label>
                     <input
                       type="number"
-                      value={editTradePrice}
-                      onChange={(e) => setEditTradePrice(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      value={editTradePrice === 0 ? "" : editTradePrice}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditTradePrice(raw === "" ? 0 : Number(raw) || 0);
+                      }}
                       className="w-full px-3 py-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-bold font-mono"
                     />
                   </div>
@@ -947,8 +969,12 @@ function ProductDetailContent() {
                     </label>
                     <input
                       type="number"
-                      value={editMrp}
-                      onChange={(e) => setEditMrp(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      value={editMrp === 0 ? "" : editMrp}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditMrp(raw === "" ? 0 : Number(raw) || 0);
+                      }}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono"
                     />
                   </div>

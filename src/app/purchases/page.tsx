@@ -579,8 +579,12 @@ export default function PurchasesPage() {
                     type="number"
                     min="1"
                     required
-                    value={receivedQty}
-                    onChange={(e) => setReceivedQty(Number(e.target.value))}
+                    placeholder="0"
+                    value={receivedQty === 0 ? "" : receivedQty}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setReceivedQty(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -592,8 +596,12 @@ export default function PurchasesPage() {
                     type="number"
                     min="1"
                     required
-                    value={baseInvoiceCost}
-                    onChange={(e) => setBaseInvoiceCost(Number(e.target.value))}
+                    placeholder="0"
+                    value={baseInvoiceCost === 0 ? "" : baseInvoiceCost}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setBaseInvoiceCost(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -609,8 +617,12 @@ export default function PurchasesPage() {
                     <label className="text-[11px] text-slate-500 block mb-1">Delivery / Freight (PKR)</label>
                     <input
                       type="number"
-                      value={freightCharges}
-                      onChange={(e) => setFreightCharges(Number(e.target.value))}
+                      placeholder="0"
+                      value={freightCharges === 0 ? "" : freightCharges}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setFreightCharges(raw === "" ? 0 : Number(raw) || 0);
+                      }}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                     />
                   </div>
@@ -618,8 +630,12 @@ export default function PurchasesPage() {
                     <label className="text-[11px] text-slate-500 block mb-1">Taxes / Toll (PKR)</label>
                     <input
                       type="number"
-                      value={customsAndTaxes}
-                      onChange={(e) => setCustomsAndTaxes(Number(e.target.value))}
+                      placeholder="0"
+                      value={customsAndTaxes === 0 ? "" : customsAndTaxes}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setCustomsAndTaxes(raw === "" ? 0 : Number(raw) || 0);
+                      }}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                     />
                   </div>
@@ -627,8 +643,12 @@ export default function PurchasesPage() {
                     <label className="text-[11px] text-slate-500 block mb-1">Packaging / Packing (PKR)</label>
                     <input
                       type="number"
-                      value={packagingCosts}
-                      onChange={(e) => setPackagingCosts(Number(e.target.value))}
+                      placeholder="0"
+                      value={packagingCosts === 0 ? "" : packagingCosts}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setPackagingCosts(raw === "" ? 0 : Number(raw) || 0);
+                      }}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                     />
                   </div>
@@ -835,8 +855,12 @@ export default function PurchasesPage() {
                   <input
                     type="number"
                     min="1"
-                    value={newPOQty}
-                    onChange={(e) => setNewPOQty(Number(e.target.value))}
+                    placeholder="0"
+                    value={newPOQty === 0 ? "" : newPOQty}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setNewPOQty(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>
@@ -847,8 +871,12 @@ export default function PurchasesPage() {
                   <input
                     type="number"
                     min="1"
-                    value={newPOPrice}
-                    onChange={(e) => setNewPOPrice(Number(e.target.value))}
+                    placeholder="0"
+                    value={newPOPrice === 0 ? "" : newPOPrice}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setNewPOPrice(raw === "" ? 0 : Number(raw) || 0);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
                   />
                 </div>
