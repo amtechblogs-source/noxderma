@@ -143,7 +143,13 @@ export default function MarketingCampaignsPage() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link
+            href="/marketing/coupons"
+            className="px-3.5 py-2 rounded-lg border border-teal-500/30 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+          >
+            <Ticket className="w-3.5 h-3.5" /> Customer Coupons (Vouchers)
+          </Link>
           <Link
             href="/marketing/whatsapp"
             className="px-3.5 py-2 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
