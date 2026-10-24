@@ -20,10 +20,12 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
-import type { Invoice } from "@/types";
+import type { Invoice, Product, BusinessSettings } from "@/types";
 
 export default function SalesInvoicesListPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -32,12 +34,18 @@ export default function SalesInvoicesListPage() {
 
   const loadData = async () => {
     try {
-      const invList = await offlineDb.invoices.toArray();
+      const [invList, prodList, settingsRecord] = await Promise.all([
+        offlineDb.invoices.toArray(),
+        offlineDb.products.toArray(),
+        offlineDb.settings.get("primary"),
+      ]);
       // Sort newest first
       const sorted = (invList || []).sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       setInvoices(sorted);
+      setProducts(prodList || []);
+      setBusinessSettings(settingsRecord || null);
     } finally {
       setLoading(false);
     }
@@ -379,92 +387,194 @@ export default function SalesInvoicesListPage() {
         )}
       </div>
 
-      {/* Hidden Print Receipt Template */}
+      {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
       {selectedInvoice && (
-        <div className="hidden print:block fixed inset-0 z-50 bg-white text-black p-8 font-mono text-xs">
-          <div className="text-center border-b pb-4 mb-4">
-            <h1 className="text-xl font-black">NOXDERMA PHARMACEUTICALS</h1>
-            <p className="text-[11px]">Industrial Area, Phase 2, Lahore, Pakistan</p>
-            <p className="text-[11px]">Phone: +92 300 1234567 • info@noxderma.com</p>
-            <h2 className="text-sm font-bold mt-2">SALES BILL / CASH MEMO</h2>
-          </div>
-
-          <div className="flex justify-between mb-4 text-xs">
-            <div>
-              <p>
-                <strong>Bill No:</strong> {selectedInvoice.provisionalReference}
+        <div className="hidden print:block fixed inset-0 z-50 bg-white text-black p-6 font-sans text-xs">
+          {/* Header with Print Logo support */}
+          <div className="flex justify-between items-start pb-5 border-b-2 border-black gap-4">
+            <div className="flex items-start gap-3.5">
+              {(businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl) && (
+                <img
+                  src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
+                  alt="Invoice Logo"
+                  className="h-16 w-auto max-w-[160px] object-contain shrink-0"
+                />
+              )}
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-black leading-tight">
+                  {businessSettings?.brandName || "NOXDERMA PHARMA"}
+                </h1>
+                <p className="text-xs sm:text-sm font-semibold text-slate-800 mt-1">
+                  {businessSettings?.address || "Plot 42, Industrial Sector 7, Karachi, Pakistan"}
+                </p>
+                <p className="text-xs sm:text-sm font-semibold text-slate-800">
+                  Phone: {businessSettings?.contactPhone || "+92 300 1234567"} &bull;{" "}
+                  {businessSettings?.email || "info@noxderma.com"}
+                </p>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="inline-block px-3 py-1 rounded text-xs sm:text-sm font-black border border-black text-black bg-slate-100 tracking-wider uppercase">
+                SALES BILL / CASH MEMO
+              </span>
+              <p className="font-mono text-base sm:text-lg font-black text-black mt-1.5">
+                {selectedInvoice.provisionalReference}
               </p>
-              <p>
-                <strong>Customer:</strong> {selectedInvoice.customerName}
+              <p className="text-xs sm:text-sm font-bold text-black mt-0.5">
+                Date: {selectedInvoice.invoiceDate?.slice(0, 10)}
               </p>
-              <p>
-                <strong>Phone:</strong> {selectedInvoice.customerPhone}
+              <p className="text-xs sm:text-sm font-bold text-black">
+                Due Date: {selectedInvoice.dueDate?.slice(0, 10)}
               </p>
             </div>
-            <div className="text-right">
-              <p>
-                <strong>Date:</strong> {selectedInvoice.invoiceDate}
+          </div>
+
+          {/* Customer & Payment Details Cards */}
+          <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm my-4">
+            <div className="p-3.5 rounded-xl border border-slate-400 bg-white">
+              <span className="text-slate-600 font-black uppercase text-[11px] tracking-wider block">
+                CUSTOMER / PHARMACY:
+              </span>
+              <p className="font-black text-base sm:text-lg text-black mt-1">
+                {selectedInvoice.customerName}
               </p>
-              <p>
-                <strong>Due Date:</strong> {selectedInvoice.dueDate}
+              <p className="font-semibold text-slate-800 mt-0.5">
+                {selectedInvoice.customerAddress || "Walk-in Counter"}
               </p>
-              <p>
-                <strong>Sales Rep:</strong> {selectedInvoice.salesRepName || "Field Staff"}
+              <p className="font-bold text-black mt-0.5">
+                {selectedInvoice.customerPhone || "N/A"}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl border border-slate-400 bg-white">
+              <span className="text-slate-600 font-black uppercase text-[11px] tracking-wider block">
+                PAYMENT DETAILS:
+              </span>
+              <p className="font-black text-base sm:text-lg text-black capitalize mt-1">
+                Paid Via: {selectedInvoice.paymentMethod === "credit" ? "Udhaar (Credit)" : selectedInvoice.paymentMethod?.replace("_", " ")}
+              </p>
+              <p className="font-bold text-black mt-0.5">
+                Payment Status:{" "}
+                <span className="font-black text-black uppercase">
+                  {selectedInvoice.paymentStatus === "paid"
+                    ? "FULL PAID"
+                    : selectedInvoice.paymentStatus === "partially_paid"
+                    ? "PARTIAL PAID"
+                    : "UNPAID (UDHAAR)"}
+                </span>
               </p>
             </div>
           </div>
 
+          {/* Line Items Table with Product Images & Bold Typography */}
           <table className="w-full text-left border-collapse mb-4">
-            <thead>
-              <tr className="border-b">
-                <th className="py-1">Medicine Name</th>
-                <th className="py-1 text-center">Batch</th>
-                <th className="py-1 text-right">Quantity</th>
-                <th className="py-1 text-right">Price</th>
-                <th className="py-1 text-right">Total</th>
+            <thead className="border-y-2 border-black bg-slate-100 text-black font-black text-xs sm:text-sm uppercase">
+              <tr>
+                <th className="py-2.5 px-3">Item Details</th>
+                <th className="py-2.5 px-3">Batch & Expiry</th>
+                <th className="py-2.5 px-3 text-center">Qty</th>
+                <th className="py-2.5 px-3 text-right">Price (PKR)</th>
+                <th className="py-2.5 px-3 text-right">Total (PKR)</th>
               </tr>
             </thead>
-            <tbody>
-              {selectedInvoice.lines?.map((line, idx) => (
-                <tr key={idx} className="border-b border-dashed">
-                  <td className="py-1">{line.productName}</td>
-                  <td className="py-1 text-center">
-                    {line.batchAllocations?.[0]?.batchNumber || "BCH-ACTIVE"}
-                  </td>
-                  <td className="py-1 text-right">{line.quantity}</td>
-                  <td className="py-1 text-right">{formatPKR(line.unitPrice)}</td>
-                  <td className="py-1 text-right">{formatPKR(line.lineTotal)}</td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-slate-300 text-xs sm:text-sm">
+              {selectedInvoice.lines?.map((line, idx) => {
+                const lineImg =
+                  line.imageUrl ||
+                  products.find((p) => p.id === line.productId)?.images?.find((img) => img.isPrimary)?.url ||
+                  products.find((p) => p.id === line.productId)?.images?.[0]?.url ||
+                  "";
+
+                return (
+                  <tr key={idx} className="border-b border-slate-300">
+                    <td className="py-2.5 px-3 text-black">
+                      <div className="flex items-center gap-3">
+                        {lineImg ? (
+                          <img
+                            src={lineImg}
+                            alt={line.productName}
+                            className="w-10 h-10 object-contain rounded-lg border border-slate-300 bg-white p-0.5 shrink-0"
+                          />
+                        ) : null}
+                        <div>
+                          <span className="font-black text-sm sm:text-base text-black block leading-tight">
+                            {line.productName}
+                          </span>
+                          <span className="text-xs text-slate-700 font-semibold">{line.packSize}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-xs sm:text-sm text-black">
+                      {line.batchAllocations?.[0]?.batchNumber || "GEN"} &bull;{" "}
+                      {line.batchAllocations?.[0]?.expiryDate || "N/A"}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-black text-sm sm:text-base text-black">
+                      {line.quantity}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-sm sm:text-base text-black">
+                      {formatPKR(line.unitPrice)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-sm sm:text-base text-black">
+                      {formatPKR(line.lineTotal)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
-          <div className="border-t pt-2 space-y-1 text-right">
-            <p>
-              Subtotal: <strong>{formatPKR(selectedInvoice.subtotal)}</strong>
-            </p>
-            {selectedInvoice.invoiceDiscountAmount > 0 && (
-              <p>
-                Discount
-                {selectedInvoice.invoiceDiscountPercentage
-                  ? ` (${selectedInvoice.invoiceDiscountPercentage}%):`
-                  : ":"}{" "}
-                -<strong>{formatPKR(selectedInvoice.invoiceDiscountAmount)}</strong>
-              </p>
-            )}
-            <p className="text-sm">
-              Total Bill: <strong>{formatPKR(selectedInvoice.netTotal)}</strong>
-            </p>
-            <p>
-              Cash Paid: <strong>{formatPKR(selectedInvoice.paidAmount)}</strong>
-            </p>
-            <p className="text-sm text-rose-600">
-              Remaining Udhaar (Baqaya): <strong>{formatPKR(selectedInvoice.outstandingBalance)}</strong>
-            </p>
+          {/* Summary Box */}
+          <div className="flex justify-end pt-4 border-t-2 border-black">
+            <div className="w-72 sm:w-80 space-y-2 text-xs sm:text-sm">
+              <div className="flex justify-between text-slate-800 font-bold">
+                <span>Gross Total:</span>
+                <span className="font-mono text-black font-black">{formatPKR(selectedInvoice.subtotal)}</span>
+              </div>
+              {selectedInvoice.invoiceDiscountAmount > 0 && (
+                <div className="flex justify-between text-rose-800 font-black">
+                  <span>
+                    Discount
+                    {selectedInvoice.invoiceDiscountPercentage
+                      ? ` (${selectedInvoice.invoiceDiscountPercentage}%):`
+                      : ":"}
+                  </span>
+                  <span className="font-mono">-{formatPKR(selectedInvoice.invoiceDiscountAmount)}</span>
+                </div>
+              )}
+              {selectedInvoice.deliveryCharge > 0 && (
+                <div className="flex justify-between text-slate-800 font-bold">
+                  <span>Delivery Charge:</span>
+                  <span className="font-mono text-black font-black">{formatPKR(selectedInvoice.deliveryCharge)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xl sm:text-2xl font-black text-black pt-2 border-t-2 border-black">
+                <span>Net Payable:</span>
+                <span className="font-mono text-black">{formatPKR(selectedInvoice.netTotal)}</span>
+              </div>
+              <div className="flex justify-between text-xs sm:text-sm font-bold text-emerald-900">
+                <span>Amount Paid:</span>
+                <span className="font-mono font-black">{formatPKR(selectedInvoice.paidAmount)}</span>
+              </div>
+              {selectedInvoice.outstandingBalance > 0 && (
+                <div className="flex justify-between text-sm sm:text-base font-black text-rose-800 pt-1 border-t border-dashed border-slate-400">
+                  <span>Balance (Baqaya Udhaar):</span>
+                  <span className="font-mono">{formatPKR(selectedInvoice.outstandingBalance)}</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="mt-8 border-t pt-4 text-center text-[10px]">
-            <p>Computer generated bill. Thank you for your business!</p>
+          {/* Official Signatures Section */}
+          <div className="pt-8 pb-3 grid grid-cols-2 gap-10 text-xs font-bold text-black">
+            <div className="border-t-2 border-slate-400 pt-2 text-center">
+              <span>Received By (Customer Signature & Stamp)</span>
+            </div>
+            <div className="border-t-2 border-slate-400 pt-2 text-center">
+              <span>Authorized Signature & Stamp ({businessSettings?.brandName || "Noxderma Pharma"})</span>
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-slate-300 pt-3 text-center text-xs text-slate-600 font-medium">
+            <p>{businessSettings?.invoiceFooter || "Computer generated bill. Thank you for your business!"}</p>
           </div>
         </div>
       )}

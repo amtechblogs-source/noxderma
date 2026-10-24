@@ -24,6 +24,7 @@ import {
   Check,
   DollarSign,
   Boxes,
+  Pill,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -66,6 +67,7 @@ export function OfflineInvoiceCreator() {
     Array<{
       productId: string;
       productName: string;
+      imageUrl?: string;
       packSize: string;
       batchId: string;
       batchNumber: string;
@@ -182,11 +184,33 @@ export function OfflineInvoiceCreator() {
       return;
     }
 
-    // 1. Find product's pricing
-    const pricing = pricings.find((p) => p.productId === prod.id);
-    const defaultPrice = pricing?.tradePricePerPack || pricing?.mrpPerPack || 0;
+    // 1. Auto-fetch product's pricing (tradePrice > mrp > product direct fields > batch price)
+    const pricing = pricings.find(
+      (p) => String(p.productId).trim() === String(prod.id).trim()
+    );
+    const pAny = prod as unknown as Record<string, unknown>;
+    const defaultPrice =
+      Number(pricing?.tradePricePerPack) ||
+      Number(pricing?.mrpPerPack) ||
+      Number(pAny.tradePrice) ||
+      Number(pAny.tradePricePerPack) ||
+      Number(pAny.price) ||
+      Number(pAny.mrp) ||
+      Number(pAny.mrpPerPack) ||
+      Number(pAny.salePrice) ||
+      Number((specificBatch as unknown as Record<string, unknown>)?.tradePrice) ||
+      Number((specificBatch as unknown as Record<string, unknown>)?.purchasePrice) ||
+      0;
 
-    // 2. Find batches for this product (FEFO)
+    // 2. Extract product primary image
+    const primaryImg =
+      prod.images?.find((img) => img.isPrimary)?.url ||
+      prod.images?.[0]?.url ||
+      (typeof pAny.imageUrl === "string" ? pAny.imageUrl : "") ||
+      (typeof pAny.image === "string" ? pAny.image : "") ||
+      "";
+
+    // 3. Find batches for this product (FEFO)
     const prodBatches = batches
       .filter((b) => b.productId === prod.id && Number(b.remainingQuantity || 0) > 0)
       .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
@@ -205,6 +229,7 @@ export function OfflineInvoiceCreator() {
       {
         productId: prod.id,
         productName: prod.name,
+        imageUrl: primaryImg,
         packSize: prod.packSize || "1 Pack",
         batchId,
         batchNumber,
@@ -306,6 +331,7 @@ export function OfflineInvoiceCreator() {
           productId: l.productId,
           productName: l.productName,
           packSize: l.packSize,
+          imageUrl: l.imageUrl,
           quantity: l.quantity,
           unitPrice: l.unitPrice,
           lineDiscountPercentage: l.discountPercent,
@@ -462,9 +488,10 @@ export function OfflineInvoiceCreator() {
   };
 
   // If invoice is successfully created, render printable Enterprise Receipt view
+  // If invoice is successfully created, render printable Enterprise Receipt view
   if (createdInvoice) {
     return (
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6 print:max-w-none print:w-full print:m-0 print:space-y-4">
         <div className="flex items-center justify-between no-print">
           <Link
             href="/"
@@ -477,10 +504,10 @@ export function OfflineInvoiceCreator() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-all btn-interactive"
             >
-              <Printer className="w-3.5 h-3.5" />
-              Print Invoice
+              <Printer className="w-4 h-4" />
+              Print Invoice Now
             </button>
             <button
               onClick={() => {
@@ -490,134 +517,174 @@ export function OfflineInvoiceCreator() {
                 setDiscountPercent(0);
                 setDiscountType("fixed");
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-bold shadow-sm transition-all btn-interactive"
             >
-              <Plus className="w-3.5 h-3.5" />
-              New Invoice
+              <Plus className="w-4 h-4" />
+              Make Another Bill
             </button>
           </div>
         </div>
 
         {/* Success Alert */}
-        <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs no-print flex items-center gap-3">
+        <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs sm:text-sm no-print flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
           <div>
             <strong>Bill Saved Offline Successfully!</strong> Bill No:{" "}
-            <span className="font-mono font-bold">{createdInvoice.provisionalReference}</span>. Stock has been
-            deducted immediately.
+            <span className="font-mono font-bold">{createdInvoice.provisionalReference}</span>. Stock deducted immediately.
           </div>
         </div>
 
-        {/* Printable Official Invoice Card */}
-        <div className="print-page p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-6 text-slate-900 dark:text-slate-100">
+        {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
+        <div className="print-page p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-6 text-slate-900 dark:text-slate-100 print:p-0 print:border-none print:shadow-none print:bg-white print:text-black">
           {/* Header with Print Logo support */}
-          <div className="flex justify-between items-start pb-6 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-3">
-              {businessSettings?.invoiceLogoUrl && (
+          <div className="flex justify-between items-start pb-5 border-b-2 border-slate-900 dark:border-slate-700 print:border-black gap-4">
+            <div className="flex items-start gap-3.5">
+              {(businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl) && (
                 <img
-                  src={businessSettings.invoiceLogoUrl}
+                  src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
                   alt="Invoice Logo"
-                  className="h-12 w-auto max-w-[140px] object-contain shrink-0"
+                  className="h-16 w-auto max-w-[160px] object-contain shrink-0"
                 />
               )}
               <div>
-                <div className="text-xl font-extrabold tracking-tight">
+                <div className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 print:text-black leading-tight">
                   {businessSettings?.brandName || "NOXDERMA PHARMA"}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {businessSettings?.address || "Plot 42, Industrial Sector 7, Karachi"}
+                <p className="text-xs sm:text-sm font-semibold text-slate-600 print:text-slate-800 mt-1">
+                  {businessSettings?.address || "Plot 42, Industrial Sector 7, Karachi, Pakistan"}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs sm:text-sm font-semibold text-slate-600 print:text-slate-800">
                   Phone: {businessSettings?.contactPhone || "+92 300 1234567"} &bull;{" "}
                   {businessSettings?.email || "info@noxderma.com"}
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <div className="text-right shrink-0">
+              <span className="inline-block px-3 py-1 rounded text-xs sm:text-sm font-black bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 print:bg-slate-100 print:border print:border-black print:text-black tracking-wider uppercase">
                 SALES BILL / CASH MEMO
               </span>
-              <p className="font-mono text-sm font-bold text-teal-600 mt-1">
+              <p className="font-mono text-base sm:text-lg font-black text-teal-700 print:text-black mt-1.5">
                 {createdInvoice.provisionalReference}
               </p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs sm:text-sm font-bold text-slate-700 print:text-black mt-0.5">
                 Date: {formatKarachiDate(createdInvoice.invoiceDate, true)}
               </p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs sm:text-sm font-bold text-slate-700 print:text-black">
                 Due Date: {formatKarachiDate(createdInvoice.dueDate)}
               </p>
             </div>
           </div>
 
-          {/* Customer Details */}
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Customer / Pharmacy:</span>
-              <p className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5">
+          {/* Customer & Payment Details Cards */}
+          <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm">
+            <div className="p-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400">
+              <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
+                CUSTOMER / PHARMACY:
+              </span>
+              <p className="font-black text-base sm:text-lg text-slate-900 print:text-black mt-1">
                 {createdInvoice.customerName}
               </p>
-              <p className="text-slate-500">{createdInvoice.customerAddress || "Walk-in Counter"}</p>
-              <p className="text-slate-500">{createdInvoice.customerPhone}</p>
+              <p className="font-semibold text-slate-700 print:text-slate-800 mt-0.5">
+                {createdInvoice.customerAddress || "Walk-in Counter"}
+              </p>
+              <p className="font-bold text-slate-700 print:text-black mt-0.5">
+                {createdInvoice.customerPhone || "N/A"}
+              </p>
             </div>
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Payment Details:</span>
-              <p className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5 capitalize">
+            <div className="p-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400">
+              <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
+                PAYMENT DETAILS:
+              </span>
+              <p className="font-black text-base sm:text-lg text-slate-900 print:text-black capitalize mt-1">
                 Paid Via: {createdInvoice.paymentMethod === "credit" ? "Udhaar (Credit)" : createdInvoice.paymentMethod?.replace("_", " ")}
               </p>
-              <p className="text-slate-500">
+              <p className="font-bold text-slate-700 print:text-black mt-0.5">
                 Payment Status:{" "}
-                <span className="font-bold text-teal-600 uppercase">
+                <span className="font-black text-teal-700 print:text-black uppercase">
                   {createdInvoice.paymentStatus === "paid"
-                    ? "Full Paid"
+                    ? "FULL PAID"
                     : createdInvoice.paymentStatus === "partially_paid"
-                    ? "Partial Paid"
-                    : "Unpaid (Udhaar)"}
+                    ? "PARTIAL PAID"
+                    : "UNPAID (UDHAAR)"}
                 </span>
               </p>
             </div>
           </div>
 
-          {/* Line Items Table */}
+          {/* Line Items Table with Product Images & High-Contrast Typography */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-y border-slate-200 dark:border-slate-700 font-bold text-slate-500">
+            <table className="w-full text-left border-collapse">
+              <thead className="border-y-2 border-slate-900 bg-slate-100 dark:bg-slate-800 print:bg-slate-100 text-slate-900 print:text-black font-black text-xs sm:text-sm uppercase">
                 <tr>
-                  <th className="py-2.5 px-3">Item Name</th>
+                  <th className="py-2.5 px-3">Item Details</th>
                   <th className="py-2.5 px-3">Batch & Expiry</th>
                   <th className="py-2.5 px-3 text-center">Qty</th>
-                  <th className="py-2.5 px-3 text-right">Price</th>
-                  <th className="py-2.5 px-3 text-right">Total</th>
+                  <th className="py-2.5 px-3 text-right">Price (PKR)</th>
+                  <th className="py-2.5 px-3 text-right">Total (PKR)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {createdInvoice.lines.map((line, idx) => (
-                  <tr key={idx}>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-slate-100">
-                      {line.productName}
-                      <span className="block text-[10px] text-slate-400 font-normal">{line.packSize}</span>
-                    </td>
-                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
-                      {line.batchAllocations?.[0]?.batchNumber || "GEN"} &bull;{" "}
-                      {line.batchAllocations?.[0]?.expiryDate ? formatKarachiDate(line.batchAllocations[0].expiryDate) : "N/A"}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-bold">{line.quantity}</td>
-                    <td className="py-2.5 px-3 text-right font-mono">{formatPKR(line.unitPrice)}</td>
-                    <td className="py-2.5 px-3 text-right font-bold font-mono">{formatPKR(line.lineTotal)}</td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 print:divide-slate-300 text-xs sm:text-sm">
+                {createdInvoice.lines.map((line, idx) => {
+                  const lineImg =
+                    line.imageUrl ||
+                    products.find((p) => p.id === line.productId)?.images?.find((img) => img.isPrimary)?.url ||
+                    products.find((p) => p.id === line.productId)?.images?.[0]?.url ||
+                    "";
+
+                  return (
+                    <tr key={idx} className="border-b border-slate-200 dark:border-slate-800 print:border-slate-300">
+                      <td className="py-2.5 px-3 text-slate-900 print:text-black">
+                        <div className="flex items-center gap-3">
+                          {lineImg ? (
+                            <img
+                              src={lineImg}
+                              alt={line.productName}
+                              className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-white p-0.5 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                              <Pill className="w-5 h-5 text-slate-400" />
+                            </div>
+                          )}
+                          <div>
+                            <span className="font-black text-sm sm:text-base text-slate-900 print:text-black block leading-tight">
+                              {line.productName}
+                            </span>
+                            <span className="text-xs text-slate-500 print:text-slate-700 font-semibold">
+                              {line.packSize}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-xs sm:text-sm text-slate-800 print:text-black">
+                        {line.batchAllocations?.[0]?.batchNumber || "GEN"} &bull;{" "}
+                        {line.batchAllocations?.[0]?.expiryDate ? formatKarachiDate(line.batchAllocations[0].expiryDate) : "N/A"}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-black text-sm sm:text-base text-slate-900 print:text-black">
+                        {line.quantity}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-sm sm:text-base text-slate-900 print:text-black">
+                        {formatPKR(line.unitPrice)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-black text-sm sm:text-base text-slate-900 print:text-black">
+                        {formatPKR(line.lineTotal)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Summary Box */}
-          <div className="flex justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
-            <div className="w-64 space-y-1.5 text-xs">
-              <div className="flex justify-between text-slate-500">
+          <div className="flex justify-end pt-4 border-t-2 border-slate-900 dark:border-slate-700 print:border-black">
+            <div className="w-72 sm:w-80 space-y-2 text-xs sm:text-sm">
+              <div className="flex justify-between text-slate-600 print:text-slate-800 font-bold">
                 <span>Gross Total:</span>
-                <span className="font-mono">{formatPKR(createdInvoice.subtotal)}</span>
+                <span className="font-mono text-slate-900 print:text-black font-black">{formatPKR(createdInvoice.subtotal)}</span>
               </div>
               {createdInvoice.invoiceDiscountAmount > 0 && (
-                <div className="flex justify-between text-rose-500 font-semibold">
+                <div className="flex justify-between text-rose-600 dark:text-rose-400 print:text-rose-700 font-black">
                   <span>
                     Discount
                     {createdInvoice.invoiceDiscountPercentage
@@ -628,31 +695,41 @@ export function OfflineInvoiceCreator() {
                 </div>
               )}
               {createdInvoice.deliveryCharge > 0 && (
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-slate-600 print:text-slate-800 font-bold">
                   <span>Delivery Charge:</span>
-                  <span className="font-mono">{formatPKR(createdInvoice.deliveryCharge)}</span>
+                  <span className="font-mono text-slate-900 print:text-black font-black">{formatPKR(createdInvoice.deliveryCharge)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-base font-extrabold text-teal-600 pt-2 border-t border-slate-200 dark:border-slate-700">
+              <div className="flex justify-between text-xl sm:text-2xl font-black text-slate-900 print:text-black pt-2 border-t-2 border-slate-900 dark:border-slate-700 print:border-black">
                 <span>Net Payable:</span>
-                <span className="font-mono">{formatPKR(createdInvoice.netTotal)}</span>
+                <span className="font-mono text-teal-700 print:text-black">{formatPKR(createdInvoice.netTotal)}</span>
               </div>
-              <div className="flex justify-between text-xs font-semibold text-emerald-600">
+              <div className="flex justify-between text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-400 print:text-emerald-800">
                 <span>Amount Paid:</span>
-                <span className="font-mono">{formatPKR(createdInvoice.paidAmount)}</span>
+                <span className="font-mono font-black">{formatPKR(createdInvoice.paidAmount)}</span>
               </div>
               {createdInvoice.outstandingBalance > 0 && (
-                <div className="flex justify-between text-xs font-bold text-rose-600 pt-1">
-                  <span>Balance (Udhaar):</span>
+                <div className="flex justify-between text-sm sm:text-base font-black text-rose-600 dark:text-rose-400 print:text-rose-800 pt-1 border-t border-dashed border-slate-300">
+                  <span>Balance (Baqaya Udhaar):</span>
                   <span className="font-mono">{formatPKR(createdInvoice.outstandingBalance)}</span>
                 </div>
               )}
             </div>
           </div>
 
+          {/* Official Signatures Section */}
+          <div className="pt-8 pb-3 grid grid-cols-2 gap-10 text-xs font-bold text-slate-700 print:text-black">
+            <div className="border-t-2 border-slate-400 pt-2 text-center">
+              <span>Received By (Customer Signature & Stamp)</span>
+            </div>
+            <div className="border-t-2 border-slate-400 pt-2 text-center">
+              <span>Authorized Signature & Stamp ({businessSettings?.brandName || "Noxderma Pharma"})</span>
+            </div>
+          </div>
+
           {/* Footer note */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 text-center">
-            {businessSettings?.invoiceFooter || "Thank you for partnering with Noxderma. Distributed with integrity."}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 text-center font-medium">
+            {businessSettings?.invoiceFooter || "Thank you for partnering with Noxderma. Quality healthcare distributed with integrity."}
           </div>
         </div>
       </div>
@@ -812,31 +889,45 @@ export function OfflineInvoiceCreator() {
                         : "border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40"
                     }`}
                   >
-                    {/* Medicine & Batch Selection */}
-                    <div className="sm:col-span-5">
-                      <label className="block text-xs font-bold uppercase text-slate-400 mb-1">
-                        Medicine & Batch ({line.productName})
-                      </label>
-                      {itemBatches.length > 1 ? (
-                        <select
-                          value={line.batchId}
-                          onChange={(e) => handleUpdateLine(idx, "batchId", e.target.value)}
-                          className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-sm"
-                        >
-                          {itemBatches.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.batchNumber} &bull; Exp: {formatKarachiDate(b.expiryDate)} &bull; Left: {b.remainingQuantity}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                          <span className="font-bold text-sm">{line.productName}</span>
-                          <span className="text-xs text-teal-600 font-mono font-bold">
-                            Batch: {line.batchNumber} (Stock: {line.availableQuantity})
-                          </span>
-                        </div>
-                      )}
+                    {/* Medicine & Batch Selection with Product Image */}
+                    <div className="sm:col-span-5 flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
+                        {line.imageUrl ? (
+                          <img
+                            src={line.imageUrl}
+                            alt={line.productName}
+                            className="w-full h-full object-contain p-0.5"
+                          />
+                        ) : (
+                          <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <label className="block text-xs font-bold uppercase text-slate-400 mb-1">
+                          Medicine & Batch ({line.productName})
+                        </label>
+                        {itemBatches.length > 1 ? (
+                          <select
+                            value={line.batchId}
+                            onChange={(e) => handleUpdateLine(idx, "batchId", e.target.value)}
+                            className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-sm"
+                          >
+                            {itemBatches.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.batchNumber} &bull; Exp: {formatKarachiDate(b.expiryDate)} &bull; Left: {b.remainingQuantity}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                            <span className="font-bold text-sm truncate">{line.productName}</span>
+                            <span className="text-xs text-teal-600 font-mono font-bold shrink-0 ml-2">
+                              Batch: {line.batchNumber} (Stock: {line.availableQuantity})
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Quantity */}
@@ -1211,8 +1302,28 @@ export function OfflineInvoiceCreator() {
                 </div>
               ) : (
                 modalProducts.map((prod) => {
-                  const pricing = pricings.find((p) => p.productId === prod.id);
-                  const price = pricing?.tradePricePerPack || pricing?.mrpPerPack || 0;
+                  const pricing = pricings.find(
+                    (p) => String(p.productId).trim() === String(prod.id).trim()
+                  );
+                  const pAny = prod as unknown as Record<string, unknown>;
+                  const price =
+                    Number(pricing?.tradePricePerPack) ||
+                    Number(pricing?.mrpPerPack) ||
+                    Number(pAny.tradePrice) ||
+                    Number(pAny.tradePricePerPack) ||
+                    Number(pAny.price) ||
+                    Number(pAny.mrp) ||
+                    Number(pAny.mrpPerPack) ||
+                    Number(pAny.salePrice) ||
+                    0;
+
+                  const prodImage =
+                    prod.images?.find((img) => img.isPrimary)?.url ||
+                    prod.images?.[0]?.url ||
+                    (typeof pAny.imageUrl === "string" ? pAny.imageUrl : "") ||
+                    (typeof pAny.image === "string" ? pAny.image : "") ||
+                    "";
+
                   const isAlreadyInInvoice = lines.some((l) => l.productId === prod.id);
 
                   // Find in-stock batches
@@ -1228,36 +1339,51 @@ export function OfflineInvoiceCreator() {
                     <div
                       key={prod.id}
                       onClick={() => handleSelectProduct(prod)}
-                      className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs sm:text-sm card-interactive active:scale-[0.99] min-h-[60px] ${
+                      className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs sm:text-sm card-interactive active:scale-[0.99] min-h-[64px] ${
                         isAlreadyInInvoice
                           ? "border-amber-300 dark:border-amber-700/80 bg-amber-50/30 dark:bg-amber-950/20 hover:border-amber-400"
                           : "border-slate-200/90 dark:border-slate-800 hover:border-teal-500 hover:bg-teal-50/20 dark:hover:bg-teal-950/20"
                       }`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-base text-slate-900 dark:text-slate-100">
-                            {prod.name}
-                          </span>
-                          <span className="text-xs text-slate-400 font-mono font-medium">
-                            {prod.packSize || "1 Pack"}
-                          </span>
-                          {isAlreadyInInvoice && (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-amber-600" />
-                              Pehle se Shamil Hai (In Bill)
-                            </span>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {/* Product Image Thumbnail */}
+                        <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
+                          {prodImage ? (
+                            <img
+                              src={prodImage}
+                              alt={prod.name}
+                              className="w-full h-full object-contain p-0.5"
+                            />
+                          ) : (
+                            <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
                           )}
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          {prod.genericName || prod.categoryName} &bull; SKU: {prod.sku}
-                        </div>
-                        {prodBatches.length > 0 && (
-                          <div className="text-xs text-teal-600 dark:text-teal-400 mt-1 font-mono font-semibold">
-                            Earliest Batch: {prodBatches[0].batchNumber} (Exp:{" "}
-                            {formatKarachiDate(prodBatches[0].expiryDate)})
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-base text-slate-900 dark:text-slate-100">
+                              {prod.name}
+                            </span>
+                            <span className="text-xs text-slate-400 font-mono font-medium">
+                              {prod.packSize || "1 Pack"}
+                            </span>
+                            {isAlreadyInInvoice && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-amber-600" />
+                                Pehle se Shamil Hai (In Bill)
+                              </span>
+                            )}
                           </div>
-                        )}
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {prod.genericName || prod.categoryName} &bull; SKU: {prod.sku}
+                          </div>
+                          {prodBatches.length > 0 && (
+                            <div className="text-xs text-teal-600 dark:text-teal-400 mt-1 font-mono font-semibold">
+                              Earliest Batch: {prodBatches[0].batchNumber} (Exp:{" "}
+                              {formatKarachiDate(prodBatches[0].expiryDate)})
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="text-right shrink-0">

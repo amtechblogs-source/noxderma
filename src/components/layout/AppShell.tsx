@@ -101,14 +101,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         {/* Main Content Area */}
         <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
           isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
-        }`}>
+        } print:pl-0`}>
           <Header
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             currentUser={currentUser}
             onLogout={logout}
           />
 
-          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-24 lg:pb-8">
+          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-24 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0">
             {children}
           </main>
         </div>
@@ -117,7 +117,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       {/* Modern Ergonomic Mobile Bottom Navigation Bar */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-2 py-1.5 transition-colors"
+        className="no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-2 py-1.5 transition-colors"
       >
         <div className="max-w-md mx-auto grid grid-cols-5 items-center justify-items-center">
           {/* 1. Dashboard */}

@@ -236,23 +236,79 @@ body {
   background: #334155;
 }
 
-/* Print Styles for Invoices */
+/* Print Styles for Standard A4 Invoices & Vouchers */
+@page {
+  size: A4 portrait;
+  margin: 8mm 10mm;
+}
+
 @media print {
+  /* 1. Hide All Navigation Chrome, Headers, Floating Bars & UI Controls */
+  nav,
+  header,
+  aside,
+  footer,
+  #offline-banner,
+  .no-print,
+  button:not(.print-allow) {
+    display: none !important;
+  }
+
+  /* 2. Reset Document Canvas for Clean A4 Output */
+  html,
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 12pt;
   }
-  .no-print, header, aside, #offline-banner {
-    display: none !important;
+
+  /* Reset layout constraints and side paddings */
+  div[class*="lg:pl-"],
+  div[class*="pl-"] {
+    padding-left: 0 !important;
   }
-  .print-only {
-    display: block !important;
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
   }
+
+  /* 3. A4 Printable Page Container */
   .print-page {
     width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
-    padding: 10mm !important;
+    padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
+    background: #ffffff !important;
+  }
+
+  /* 4. Table Print Rules */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 }

@@ -35,6 +35,7 @@ export interface InvoiceLine {
   productId: string;
   productName: string;
   packSize: string;
+  imageUrl?: string;
   quantity: number;
   unitPrice: number; // in PKR
   lineDiscountPercentage: number;
