@@ -14,7 +14,6 @@ import {
   RefreshCw,
   ArrowUpRight,
   ShieldAlert,
-  Calendar,
   CheckCircle,
 } from "lucide-react";
 import {
@@ -159,16 +158,6 @@ export function DashboardView() {
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
             Daily Business Overview
           </h1>
-          <p className="text-xs md:text-sm text-slate-500 flex items-center gap-2 mt-0.5">
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-teal-600" />
-              {formatKarachiDate(new Date(), true)} (PKT)
-            </span>
-            <span>•</span>
-            <span>Currency: PKR (₨)</span>
-            <span>•</span>
-            <span className="text-teal-600 font-medium">Nearest Expiry Stock Sold First</span>
-          </p>
         </div>
 
         {/* Quick Action Toolbar */}
