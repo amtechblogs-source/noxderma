@@ -4,7 +4,7 @@
   "private": true,
   "description": "Offline-first Enterprise ERP, CRM, and Supply Chain Management for Pharmaceutical Distribution",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

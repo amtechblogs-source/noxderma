@@ -229,7 +229,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
         >
           {/* Mobile: Always Full Brand | Desktop: Full Brand when !isCollapsed */}
           <div className={`${isCollapsed ? "flex lg:hidden" : "flex"} items-center gap-2.5 min-w-0 flex-1`}>
-            <Link href="/" className="flex items-center gap-2.5 min-w-0" onClick={onClose}>
+            <Link href="/" prefetch={false} className="flex items-center gap-2.5 min-w-0" onClick={onClose}>
               {uiLogo ? (
                 <img
                   src={uiLogo}
@@ -255,7 +255,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           {/* Desktop Compact Brand Icon when isCollapsed */}
           {isCollapsed && (
             <div className="hidden lg:flex items-center justify-center w-full">
-              <Link href="/" onClick={onClose} title={`${brandName} - Pharma ERP`}>
+              <Link href="/" prefetch={false} onClick={onClose} title={`${brandName} - Pharma ERP`}>
                 {uiLogo ? (
                   <img
                     src={uiLogo}
@@ -310,6 +310,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                     <Link
                       key={item.href}
                       href={item.href}
+                      prefetch={false}
                       onClick={onClose}
                       title={item.name}
                       className={`flex items-center rounded-xl text-sm font-medium min-h-[44px] transition-all btn-interactive relative group ${

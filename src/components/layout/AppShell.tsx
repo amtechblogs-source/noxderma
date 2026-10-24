@@ -123,6 +123,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 1. Dashboard */}
           <Link
             href="/"
+            prefetch={false}
             className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
               isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
@@ -138,6 +139,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 2. Invoices List */}
           <Link
             href="/sales/invoices"
+            prefetch={false}
             className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
               isExactActive("/sales/invoices")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
@@ -153,6 +155,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 3. Center Elevated Quick Make Bill Action */}
           <Link
             href="/sales/invoices/new"
+            prefetch={false}
             aria-label="Make New Bill"
             className="flex flex-col items-center justify-center -mt-5 group"
           >
@@ -167,6 +170,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 4. Stock Batches */}
           <Link
             href="/inventory/batches"
+            prefetch={false}
             className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
               isPrefixActive("/inventory")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
@@ -182,6 +186,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 5. Khata / Credit */}
           <Link
             href="/finance/credit"
+            prefetch={false}
             className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
               isPrefixActive("/finance")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
@@ -201,16 +206,31 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    // Register Service Worker for PWA offline caching
+    // Service Worker handling
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then((reg) => {
-          console.log("Noxderma Service Worker registered successfully:", reg.scope);
-        })
-        .catch((err) => {
-          console.warn("Service Worker registration failed:", err);
+      const isLocalhost =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname.endsWith(".local");
+
+      if (isLocalhost) {
+        // In local development, unregister any active service worker to prevent stale webpack chunk lockups
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const reg of registrations) {
+            reg.unregister();
+          }
         });
+      } else {
+        // Register in production for full offline-first PWA caching
+        navigator.serviceWorker
+          .register("/sw.js")
+          .then((reg) => {
+            console.log("Noxderma Service Worker registered successfully:", reg.scope);
+          })
+          .catch((err) => {
+            console.warn("Service Worker registration failed:", err);
+          });
+      }
     }
   }, []);
 
