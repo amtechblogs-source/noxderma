@@ -168,6 +168,25 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
     return () => window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
   }, []);
 
+  // Close on Escape key and lock background scroll on mobile
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   // Filter navigation items according to user permissions
   const visibleSections = ALL_NAV_SECTIONS.map((section) => ({
     ...section,
@@ -181,27 +200,31 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
 
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
+      {/* Mobile Backdrop Overlay - Click outside to close drawer */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden transition-opacity animate-in fade-in duration-200 cursor-pointer"
           onClick={onClose}
+          aria-label="Close navigation overlay"
         />
       )}
 
-      {/* Sidebar Aside */}
+      {/* Sidebar Aside Drawer */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        } ${
-          isCollapsed ? "w-72 lg:w-20" : "w-72"
+        className={`no-print print:hidden fixed top-0 bottom-0 left-0 z-50 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 ${
+          isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+        } w-72 sm:w-80 max-w-[85vw] ${
+          isCollapsed ? "lg:w-20" : "lg:w-72"
         }`}
       >
         {/* Brand Header */}
-        <div className={`flex items-center justify-between h-16 border-b border-slate-800 shrink-0 transition-all ${
-          isCollapsed ? "px-2.5 lg:justify-center" : "px-4 sm:px-5"
-        }`}>
-          {!isCollapsed ? (
+        <div
+          className={`flex items-center justify-between h-16 border-b border-slate-800 shrink-0 transition-all px-4 sm:px-5 ${
+            isCollapsed ? "lg:px-2.5 lg:justify-center" : ""
+          }`}
+        >
+          {/* Mobile: Always Full Brand | Desktop: Full Brand when !isCollapsed */}
+          <div className={`${isCollapsed ? "flex lg:hidden" : "flex"} items-center gap-2.5 min-w-0 flex-1`}>
             <Link href="/" className="flex items-center gap-2.5 min-w-0" onClick={onClose}>
               {uiLogo ? (
                 <img
@@ -223,8 +246,11 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                 </span>
               </div>
             </Link>
-          ) : (
-            <div className="hidden lg:flex items-center justify-center gap-1.5 w-full">
+          </div>
+
+          {/* Desktop Compact Brand Icon when isCollapsed */}
+          {isCollapsed && (
+            <div className="hidden lg:flex items-center justify-center w-full">
               <Link href="/" onClick={onClose} title={`${brandName} - Pharma ERP`}>
                 {uiLogo ? (
                   <img
@@ -241,27 +267,36 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
             </div>
           )}
 
-          {/* Mobile Close Button */}
+          {/* Mobile Close Button (X) */}
           <button
             onClick={onClose}
             aria-label="Close navigation"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 lg:hidden"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 lg:hidden shrink-0 ml-2 btn-interactive"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Navigation Sections */}
-        <div className={`flex-1 overflow-y-auto ${isCollapsed ? "px-2 py-4 space-y-3" : "px-3 py-4 space-y-6"}`}>
+        <div
+          className={`flex-1 overflow-y-auto px-3 py-4 space-y-6 ${
+            isCollapsed ? "lg:px-2 lg:py-4 lg:space-y-3" : ""
+          } pb-safe`}
+        >
           {visibleSections.map((section, sIdx) => (
             <div key={section.title} className="space-y-1">
-              {!isCollapsed ? (
-                <h3 className="px-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  {section.title}
-                </h3>
-              ) : (
-                sIdx > 0 && <div className="h-px bg-slate-800/80 mx-2 my-2" />
+              {/* Section Title: Always visible on mobile; hidden on desktop only when collapsed */}
+              <h3
+                className={`px-3 text-xs font-bold uppercase tracking-wider text-slate-400 ${
+                  isCollapsed ? "block lg:hidden" : "block"
+                }`}
+              >
+                {section.title}
+              </h3>
+              {isCollapsed && sIdx > 0 && (
+                <div className="hidden lg:block h-px bg-slate-800/80 mx-2 my-2" />
               )}
+
               <div className="space-y-1 pt-1">
                 {section.items.map((item) => {
                   const Icon = item.icon;
@@ -272,10 +307,10 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                       key={item.href}
                       href={item.href}
                       onClick={onClose}
-                      title={isCollapsed ? item.name : undefined}
+                      title={item.name}
                       className={`flex items-center rounded-xl text-sm font-medium min-h-[44px] transition-all btn-interactive relative group ${
                         isCollapsed
-                          ? "justify-center px-0 py-2.5 mx-auto w-11 h-11"
+                          ? "gap-3 px-3.5 py-2.5 lg:justify-center lg:px-0 lg:w-11 lg:h-11 lg:mx-auto"
                           : "gap-3 px-3.5 py-2.5"
                       } ${
                         isActive
@@ -283,8 +318,19 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                           : "text-slate-300 hover:text-white hover:bg-slate-800/80 active:bg-slate-800"
                       }`}
                     >
-                      <Icon className={`w-5 h-5 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
-                      {!isCollapsed && <span className="truncate">{item.name}</span>}
+                      <Icon
+                        className={`w-5 h-5 shrink-0 ${
+                          isActive ? "text-white" : "text-slate-400"
+                        }`}
+                      />
+                      {/* Item label: Always visible on mobile, hidden on desktop only when collapsed */}
+                      <span
+                        className={`truncate ${
+                          isCollapsed ? "inline lg:hidden" : "inline"
+                        }`}
+                      >
+                        {item.name}
+                      </span>
 
                       {/* Tooltip on desktop hover in collapsed mode */}
                       {isCollapsed && (
@@ -300,43 +346,31 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           ))}
         </div>
 
-        {/* Expand / Collapse Toggle Button Footer */}
-        <div className="p-2.5 border-t border-slate-800/80 bg-slate-950/60 pb-safe sm:pb-3">
-          {onToggleCollapse && (
-            <div className="hidden lg:block">
-              {!isCollapsed ? (
-                <button
-                  onClick={onToggleCollapse}
-                  title="Collapse sidebar (Sidebar chota kijiye)"
-                  aria-label="Collapse sidebar"
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-slate-400 hover:text-teal-400 hover:bg-slate-800/60 border border-slate-800/80 transition-all btn-interactive"
-                >
-                  <span className="text-xs font-semibold text-slate-300">Collapse Sidebar</span>
-                  <PanelLeftClose className="w-4 h-4 text-teal-400 shrink-0" />
-                </button>
-              ) : (
-                <button
-                  onClick={onToggleCollapse}
-                  title="Expand sidebar (Sidebar bara kijiye)"
-                  aria-label="Expand sidebar"
-                  className="w-full p-2.5 text-slate-400 hover:text-teal-400 hover:bg-slate-800/60 border border-slate-800/80 rounded-xl transition-all min-h-[40px] flex items-center justify-center btn-interactive"
-                >
-                  <PanelLeftOpen className="w-4 h-4 text-teal-400 shrink-0" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Mobile Drawer Close Button */}
-          <button
-            onClick={onClose}
-            aria-label="Close menu"
-            className="lg:hidden w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-slate-400 hover:text-white bg-slate-800/40 border border-slate-800 text-xs font-semibold transition-all btn-interactive"
-          >
-            <PanelLeftClose className="w-4 h-4 text-teal-400 shrink-0" />
-            <span>Close Navigation</span>
-          </button>
-        </div>
+        {/* Desktop-Only Expand / Collapse Toggle Button Footer (Hidden on Mobile) */}
+        {onToggleCollapse && (
+          <div className="hidden lg:block p-2.5 border-t border-slate-800/80 bg-slate-950/60 shrink-0">
+            {!isCollapsed ? (
+              <button
+                onClick={onToggleCollapse}
+                title="Collapse sidebar (Sidebar chota kijiye)"
+                aria-label="Collapse sidebar"
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-slate-400 hover:text-teal-400 hover:bg-slate-800/60 border border-slate-800/80 transition-all btn-interactive"
+              >
+                <span className="text-xs font-semibold text-slate-300">Collapse Sidebar</span>
+                <PanelLeftClose className="w-4 h-4 text-teal-400 shrink-0" />
+              </button>
+            ) : (
+              <button
+                onClick={onToggleCollapse}
+                title="Expand sidebar (Sidebar bara kijiye)"
+                aria-label="Expand sidebar"
+                className="w-full p-2.5 text-slate-400 hover:text-teal-400 hover:bg-slate-800/60 border border-slate-800/80 rounded-xl transition-all min-h-[40px] flex items-center justify-center btn-interactive"
+              >
+                <PanelLeftOpen className="w-4 h-4 text-teal-400 shrink-0" />
+              </button>
+            )}
+          </div>
+        )}
       </aside>
     </>
   );
