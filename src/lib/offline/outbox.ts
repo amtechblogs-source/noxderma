@@ -2,6 +2,17 @@ import { offlineDb } from "./db";
 import { getDeviceId, generateIdempotencyKey } from "./device";
 import type { OutboxOperation, OutboxEntityType, OutboxActionType, SyncConflict } from "@/types";
 
+type OutboxEnqueueListener = () => void;
+const enqueueListeners: OutboxEnqueueListener[] = [];
+
+export function onOutboxEnqueued(listener: OutboxEnqueueListener): () => void {
+  enqueueListeners.push(listener);
+  return () => {
+    const idx = enqueueListeners.indexOf(listener);
+    if (idx !== -1) enqueueListeners.splice(idx, 1);
+  };
+}
+
 export async function enqueueOperation(
   entityType: OutboxEntityType,
   entityId: string,
@@ -30,13 +41,23 @@ export async function enqueueOperation(
   };
 
   await offlineDb.outboxQueue.add(operation);
+
+  // Trigger immediate background sync
+  for (const listener of enqueueListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn("Failed to notify outbox listener:", err);
+    }
+  }
+
   return operation;
 }
 
 export async function getPendingOperations(): Promise<OutboxOperation[]> {
   return await offlineDb.outboxQueue
     .where("status")
-    .equals("pending")
+    .anyOf(["pending", "failed", "processing"])
     .sortBy("timestamp");
 }
 

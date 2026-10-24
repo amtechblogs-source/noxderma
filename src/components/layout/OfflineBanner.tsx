@@ -22,10 +22,22 @@ export function OfflineBanner() {
     };
   }, []);
 
+  // Automatically trigger sync in background whenever online and entries exist
+  useEffect(() => {
+    if (isOnline && pendingCount > 0 && !isSyncing) {
+      syncManager.syncNow().then((result) => {
+        if (result.syncedCount > 0 || result.conflictCount > 0) {
+          setLastSyncResult(result);
+          setTimeout(() => setLastSyncResult(null), 3500);
+        }
+      });
+    }
+  }, [isOnline, pendingCount, isSyncing]);
+
   const handleSyncNow = async () => {
     const result = await syncManager.syncNow();
     setLastSyncResult(result);
-    setTimeout(() => setLastSyncResult(null), 5000);
+    setTimeout(() => setLastSyncResult(null), 4000);
   };
 
   if (isOnline && pendingCount === 0 && !lastSyncResult) {
@@ -36,7 +48,7 @@ export function OfflineBanner() {
     <aside
       id="offline-banner"
       aria-label="Network and synchronization status"
-      className={`w-full px-4 py-2 text-xs md:text-sm font-medium transition-colors border-b ${
+      className={`w-full px-4 py-2 text-xs md:text-sm font-medium transition-all duration-300 border-b ${
         !isOnline
           ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200"
           : pendingCount > 0
@@ -50,14 +62,14 @@ export function OfflineBanner() {
             <>
               <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 animate-pulse" />
               <span>
-                <strong>Internet Band Hai (Offline):</strong> Fikar na karein, aap k bills computer me mehfooz hain. Internet aate hi server pe save ho jayein gy.
+                <strong>Internet Band Hai (Offline Mode):</strong> Fikar na karein, bills computer me mehfooz hain. Internet aate hi server pe <strong>khud-ba-khud (automatically)</strong> save ho jayein gy.
               </span>
             </>
           ) : pendingCount > 0 ? (
             <>
-              <RefreshCw className={`w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+              <RefreshCw className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0 animate-spin" />
               <span>
-                <strong>Internet Chalu Hai:</strong> Aap k <strong>{pendingCount}</strong> bills/entries server pe upload hone k muntazir hain.
+                <strong>Cloud Sync Active:</strong> <strong>{pendingCount}</strong> entry server pe khud-ba-khud (automatically) save ho rahi hain...
               </span>
             </>
           ) : (
@@ -79,13 +91,15 @@ export function OfflineBanner() {
           <button
             onClick={handleSyncNow}
             disabled={isSyncing}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-semibold shadow-sm transition-all disabled:opacity-60"
+            title="Auto-sync background me chalu hai, click kr k bhi foran sync kr skte hain"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Uploading Data..." : "Upload to Server Now"}
+            {isSyncing ? "Auto Syncing..." : "Sync Now"}
           </button>
         )}
       </div>
     </aside>
   );
 }
+

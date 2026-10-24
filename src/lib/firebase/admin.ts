@@ -29,6 +29,13 @@ function getFirebaseAdminApp(): admin.app.App {
   });
 }
 
+export function isFirebaseAdminReady(): boolean {
+  return Boolean(
+    process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS
+  );
+}
+
 export const adminApp = getFirebaseAdminApp();
 export const adminDb = admin.firestore(adminApp);
 export const adminAuth = admin.auth(adminApp);

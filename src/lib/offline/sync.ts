@@ -5,6 +5,7 @@ import {
   markOperationConflict,
   markOperationFailed,
   getPendingOutboxCount,
+  onOutboxEnqueued,
 } from "./outbox";
 import type { OutboxOperation } from "@/types";
 
@@ -22,15 +23,42 @@ class SynchronizationManager {
 
   constructor() {
     if (typeof window !== "undefined") {
+      // 1. Automatically attempt synchronization when internet reconnects
       window.addEventListener("online", () => {
         this.notifyListeners();
-        // Automatically attempt synchronization when internet reconnects
         this.syncNow();
       });
 
       window.addEventListener("offline", () => {
         this.notifyListeners();
       });
+
+      // 2. Automatically sync whenever any new item is enqueued into outbox
+      onOutboxEnqueued(() => {
+        if (this.isOnline() && !this.isSyncing) {
+          this.syncNow();
+        }
+      });
+
+      // 3. Periodic background sync polling every 15 seconds to ensure queue is always cleared
+      setInterval(() => {
+        if (this.isOnline() && !this.isSyncing) {
+          getPendingOutboxCount()
+            .then((count) => {
+              if (count > 0) {
+                this.syncNow();
+              }
+            })
+            .catch(() => {});
+        }
+      }, 15000);
+
+      // 4. Initial startup background check
+      setTimeout(() => {
+        if (this.isOnline() && !this.isSyncing) {
+          this.syncNow();
+        }
+      }, 1000);
     }
   }
 
