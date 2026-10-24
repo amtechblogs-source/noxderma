@@ -149,7 +149,7 @@ export default function CreditManagementPage() {
           </div>
           <div className="mt-3.5">
             <span className="text-2xl sm:text-3xl font-extrabold font-mono text-sky-600 dark:text-sky-400">
-              {formatPKR(distributorReceivables || 63500)}
+              {formatPKR(distributorReceivables)}
             </span>
             <p className="text-xs text-slate-500 mt-1">
               Udhaar balance owed to us by wholesale distributors.
@@ -169,7 +169,7 @@ export default function CreditManagementPage() {
           </div>
           <div className="mt-3.5">
             <span className="text-2xl sm:text-3xl font-extrabold font-mono text-teal-600 dark:text-teal-400">
-              {formatPKR(pharmacyReceivables || 185000)}
+              {formatPKR(pharmacyReceivables)}
             </span>
             <p className="text-xs text-slate-500 mt-1">
               Udhaar balance owed to us by retail medical stores and pharmacies.
@@ -191,7 +191,7 @@ export default function CreditManagementPage() {
               Within Due Date
             </span>
             <p className="text-lg sm:text-xl font-extrabold font-mono text-emerald-800 dark:text-emerald-300 mt-1">
-              {formatPKR(notDue || 120000)}
+              {formatPKR(notDue)}
             </p>
           </div>
 
@@ -200,7 +200,7 @@ export default function CreditManagementPage() {
               1 to 30 Days Late
             </span>
             <p className="text-lg sm:text-xl font-extrabold font-mono text-amber-800 dark:text-amber-300 mt-1">
-              {formatPKR(overdue1to30 || 78500)}
+              {formatPKR(overdue1to30)}
             </p>
           </div>
 
@@ -209,7 +209,7 @@ export default function CreditManagementPage() {
               31 to 60 Days Late
             </span>
             <p className="text-lg sm:text-xl font-extrabold font-mono text-orange-800 dark:text-orange-300 mt-1">
-              {formatPKR(overdue31to60 || 35000)}
+              {formatPKR(overdue31to60)}
             </p>
           </div>
 
@@ -218,7 +218,7 @@ export default function CreditManagementPage() {
               Over 2 Months Late
             </span>
             <p className="text-lg sm:text-xl font-extrabold font-mono text-rose-800 dark:text-rose-300 mt-1">
-              {formatPKR(overdueOver60 || 15000)}
+              {formatPKR(overdueOver60)}
             </p>
           </div>
         </div>
