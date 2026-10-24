@@ -34,7 +34,6 @@ import {
   Settings,
   Database,
   X,
-  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -125,7 +124,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
 
 export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
-  const { currentUser, hasPermission, logout } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
   const [uiLogo, setUiLogo] = useState<string | null>(null);
   const [brandName, setBrandName] = useState<string>("NOXDERMA");
 
@@ -301,63 +300,42 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           ))}
         </div>
 
-        {/* User Session & Collapse/Expand Footer */}
+        {/* Expand / Collapse Toggle Button Footer */}
         <div className="p-2.5 border-t border-slate-800/80 bg-slate-950/60 pb-safe sm:pb-3">
-          {!isCollapsed ? (
-            <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-slate-800/40 border border-slate-800">
-              <div className="min-w-0">
-                <div className="font-bold text-white truncate text-xs">
-                  {currentUser?.displayName || "System Administrator"}
-                </div>
-                <div className="text-xs text-teal-400 truncate font-mono">
-                  {currentUser?.email || "admin@noxderma.com"}
-                </div>
-              </div>
-
-              {/* Desktop: Collapse Button in place of logout */}
-              {onToggleCollapse && (
+          {onToggleCollapse && (
+            <div className="hidden lg:block">
+              {!isCollapsed ? (
                 <button
                   onClick={onToggleCollapse}
                   title="Collapse sidebar (Sidebar chota kijiye)"
                   aria-label="Collapse sidebar"
-                  className="hidden lg:flex p-2 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-xl transition-colors shrink-0 min-h-[38px] min-w-[38px] items-center justify-center btn-interactive"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-slate-400 hover:text-teal-400 hover:bg-slate-800/60 border border-slate-800/80 transition-all btn-interactive"
                 >
-                  <PanelLeftClose className="w-4 h-4 text-teal-400" />
+                  <span className="text-xs font-semibold text-slate-300">Collapse Sidebar</span>
+                  <PanelLeftClose className="w-4 h-4 text-teal-400 shrink-0" />
                 </button>
-              )}
-
-              {/* Mobile: Logout button */}
-              <button
-                onClick={() => logout()}
-                title="Logout / Sign Out"
-                aria-label="Logout"
-                className="lg:hidden p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center btn-interactive"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-2">
-              <div
-                className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-white"
-                title={`${currentUser?.displayName || "Admin User"} (${currentUser?.email || "admin@noxderma.com"})`}
-              >
-                {currentUser?.displayName ? currentUser.displayName[0].toUpperCase() : "A"}
-              </div>
-
-              {/* Desktop: Expand Button in collapsed mode */}
-              {onToggleCollapse && (
+              ) : (
                 <button
                   onClick={onToggleCollapse}
                   title="Expand sidebar (Sidebar bara kijiye)"
                   aria-label="Expand sidebar"
-                  className="hidden lg:flex p-2 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-xl transition-colors min-h-[36px] min-w-[36px] items-center justify-center btn-interactive"
+                  className="w-full p-2.5 text-slate-400 hover:text-teal-400 hover:bg-slate-800/60 border border-slate-800/80 rounded-xl transition-all min-h-[40px] flex items-center justify-center btn-interactive"
                 >
-                  <PanelLeftOpen className="w-4 h-4 text-teal-400" />
+                  <PanelLeftOpen className="w-4 h-4 text-teal-400 shrink-0" />
                 </button>
               )}
             </div>
           )}
+
+          {/* Mobile Drawer Close Button */}
+          <button
+            onClick={onClose}
+            aria-label="Close menu"
+            className="lg:hidden w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-slate-400 hover:text-white bg-slate-800/40 border border-slate-800 text-xs font-semibold transition-all btn-interactive"
+          >
+            <PanelLeftClose className="w-4 h-4 text-teal-400 shrink-0" />
+            <span>Close Navigation</span>
+          </button>
         </div>
       </aside>
     </>
