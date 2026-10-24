@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users2,
@@ -127,6 +127,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
 ];
 
 export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
+  const router = useRouter();
   const pathname = usePathname();
   const { currentUser, hasPermission } = useAuth();
   const [uiLogo, setUiLogo] = useState<string | null>(null);
@@ -136,6 +137,26 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
   useEffect(() => {
     setHoveredTooltip(null);
   }, [isCollapsed]);
+
+  // Pre-warm the most frequent application routes for instant client-side transitions
+  useEffect(() => {
+    const coreRoutes = [
+      "/",
+      "/sales/invoices",
+      "/sales/invoices/new",
+      "/products",
+      "/inventory/batches",
+      "/inventory",
+      "/customers",
+      "/finance/credit",
+      "/purchases",
+    ];
+    coreRoutes.forEach((route) => {
+      try {
+        router.prefetch(route);
+      } catch {}
+    });
+  }, [router]);
 
   useEffect(() => {
     async function loadBrandLogo() {
@@ -196,16 +217,18 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
     };
   }, [isOpen, onClose]);
 
-  // Filter navigation items according to user permissions
-  const visibleSections = ALL_NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => {
-      if (!item.requiredPermission) return true;
-      if (!currentUser) return false;
-      if (currentUser.role === "admin") return true;
-      return hasPermission(item.requiredPermission);
-    }),
-  })).filter((section) => section.items.length > 0);
+  // Filter navigation items according to user permissions (Memoized to prevent unnecessary re-filtering)
+  const visibleSections = useMemo(() => {
+    return ALL_NAV_SECTIONS.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!item.requiredPermission) return true;
+        if (!currentUser) return false;
+        if (currentUser.role === "admin") return true;
+        return hasPermission(item.requiredPermission);
+      }),
+    })).filter((section) => section.items.length > 0);
+  }, [currentUser, hasPermission]);
 
   return (
     <>
@@ -220,7 +243,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
 
       {/* Sidebar Aside Drawer */}
       <aside
-        className={`no-print print:hidden fixed top-0 bottom-0 left-0 z-50 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 ${
+        className={`no-print print:hidden fixed top-0 bottom-0 left-0 z-50 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 overflow-x-hidden ${
           isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         } w-72 sm:w-80 max-w-[85vw] ${
           isCollapsed ? "lg:w-20" : "lg:w-72"
@@ -234,7 +257,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
         >
           {/* Mobile: Always Full Brand | Desktop: Full Brand when !isCollapsed */}
           <div className={`${isCollapsed ? "flex lg:hidden" : "flex"} items-center gap-2.5 min-w-0 flex-1`}>
-            <Link href="/" prefetch={false} className="flex items-center gap-2.5 min-w-0" onClick={onClose}>
+            <Link href="/" prefetch={true} className="flex items-center gap-2.5 min-w-0" onClick={onClose}>
               {uiLogo ? (
                 <img
                   src={uiLogo}
@@ -260,7 +283,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           {/* Desktop Compact Brand Icon when isCollapsed */}
           {isCollapsed && (
             <div className="hidden lg:flex items-center justify-center w-full">
-              <Link href="/" prefetch={false} onClick={onClose} title={`${brandName} - Pharma ERP`}>
+              <Link href="/" prefetch={true} onClick={onClose} title={`${brandName} - Pharma ERP`}>
                 {uiLogo ? (
                   <img
                     src={uiLogo}
@@ -286,9 +309,12 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           </button>
         </div>
 
-        {/* Navigation Sections */}
+        {/* Navigation Sections with custom slim bareek vertical scrollbar and strictly no horizontal scroll */}
         <div
-          className={`flex-1 overflow-y-auto px-3 py-4 space-y-6 ${
+          onScroll={() => {
+            if (hoveredTooltip) setHoveredTooltip(null);
+          }}
+          className={`flex-1 sidebar-scrollbar overflow-y-auto overflow-x-hidden px-3 py-4 space-y-6 ${
             isCollapsed ? "lg:px-2 lg:py-4 lg:space-y-3" : ""
           } pb-safe`}
         >
@@ -315,9 +341,26 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                     <Link
                       key={item.href}
                       href={item.href}
-                      prefetch={false}
+                      prefetch={true}
                       onClick={onClose}
                       title={item.name}
+                      onMouseEnter={(e) => {
+                        router.prefetch(item.href);
+                        if (!isCollapsed) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoveredTooltip({
+                          text: item.name,
+                          top: rect.top + rect.height / 2,
+                        });
+                      }}
+                      onTouchStart={() => {
+                        router.prefetch(item.href);
+                      }}
+                      onMouseLeave={() => {
+                        if (isCollapsed) {
+                          setHoveredTooltip(null);
+                        }
+                      }}
                       className={`flex items-center rounded-xl text-sm font-medium min-h-[44px] transition-all btn-interactive relative group ${
                         isCollapsed
                           ? "gap-3 px-3.5 py-2.5 lg:justify-center lg:px-0 lg:w-11 lg:h-11 lg:mx-auto"
@@ -341,13 +384,6 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                       >
                         {item.name}
                       </span>
-
-                      {/* Tooltip on desktop hover in collapsed mode */}
-                      {isCollapsed && (
-                        <div className="hidden lg:group-hover:flex absolute left-full ml-3 px-3 py-1.5 rounded-xl bg-slate-800 text-white text-xs font-semibold whitespace-nowrap shadow-2xl border border-slate-700 z-50 pointer-events-none items-center gap-1.5 animate-in fade-in duration-100">
-                          <span>{item.name}</span>
-                        </div>
-                      )}
                     </Link>
                   );
                 })}
@@ -382,6 +418,16 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
           </div>
         )}
       </aside>
+
+      {/* Floating Tooltip in Desktop Collapsed Mode (Rendered outside scroll container to prevent horizontal scrollbars and clipping) */}
+      {isCollapsed && hoveredTooltip && (
+        <div
+          style={{ top: `${hoveredTooltip.top}px` }}
+          className="hidden lg:flex fixed left-[84px] -translate-y-1/2 px-3 py-1.5 rounded-xl bg-slate-800 text-white text-xs font-semibold whitespace-nowrap shadow-2xl border border-slate-700 z-[60] pointer-events-none items-center gap-1.5 animate-in fade-in zoom-in-95 duration-100"
+        >
+          <span>{hoveredTooltip.text}</span>
+        </div>
+      )}
     </>
   );
 }

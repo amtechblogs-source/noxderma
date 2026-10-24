@@ -21,7 +21,28 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const { currentUser, logout } = useAuth();
+
+  // Reset top progress bar on route complete
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
+
+  // Global instantaneous tactile route transition indicator
+  useEffect(() => {
+    const handleLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest("a");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (href && href.startsWith("/") && href !== pathname && !href.startsWith("/#") && !anchor.target) {
+        setIsNavigating(true);
+      }
+    };
+
+    document.addEventListener("click", handleLinkClick);
+    return () => document.removeEventListener("click", handleLinkClick);
+  }, [pathname]);
 
   useEffect(() => {
     try {
@@ -91,6 +112,15 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
+      {/* Instant Ultra-Slim Top Route Progress Bar */}
+      {isNavigating && (
+        <div
+          role="progressbar"
+          aria-label="Loading page"
+          className="fixed top-0 left-0 right-0 h-[2.5px] z-[9999] bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-500 animate-pulse shadow-sm shadow-teal-500/50"
+        />
+      )}
+
       {/* Offline and Sync Banner */}
       <OfflineBanner />
 
@@ -128,8 +158,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 1. Dashboard */}
           <Link
             href="/"
-            prefetch={false}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
+            prefetch={true}
+            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
               isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -144,8 +174,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 2. Invoices List */}
           <Link
             href="/sales/invoices"
-            prefetch={false}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
+            prefetch={true}
+            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
               isExactActive("/sales/invoices")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -160,9 +190,9 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 3. Center Elevated Quick Make Bill Action */}
           <Link
             href="/sales/invoices/new"
-            prefetch={false}
+            prefetch={true}
             aria-label="Make New Bill"
-            className="flex flex-col items-center justify-center -mt-5 group"
+            className="flex flex-col items-center justify-center -mt-5 group btn-interactive"
           >
             <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900">
               <Plus className="w-7 h-7 stroke-[2.5]" />
@@ -175,8 +205,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 4. Stock Batches */}
           <Link
             href="/inventory/batches"
-            prefetch={false}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
+            prefetch={true}
+            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
               isPrefixActive("/inventory")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -191,8 +221,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 5. Khata / Credit */}
           <Link
             href="/finance/credit"
-            prefetch={false}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all ${
+            prefetch={true}
+            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
               isPrefixActive("/finance")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"

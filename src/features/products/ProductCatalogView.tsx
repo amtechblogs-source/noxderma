@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   PackageCheck,
@@ -413,19 +413,21 @@ export function ProductCatalogView() {
   };
 
   // Complete Category Data Isolation:
-  const filtered = products.filter((p) => {
-    if (selectedCategoryId !== "all" && p.categoryId !== selectedCategoryId) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        (p.barcode && p.barcode.includes(q)) ||
-        p.brand.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return products.filter((p) => {
+      if (selectedCategoryId !== "all" && p.categoryId !== selectedCategoryId) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          p.name.toLowerCase().includes(q) ||
+          p.sku.toLowerCase().includes(q) ||
+          (p.barcode && p.barcode.includes(q)) ||
+          p.brand.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [products, selectedCategoryId, searchQuery]);
 
   // Selection helpers
   const isAllSelected = filtered.length > 0 && filtered.every((p) => selectedProductIds.includes(p.id));

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { offlineDb } from "@/lib/offline/db";
 import {
@@ -105,138 +105,141 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (
-    email: string,
-    password?: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = (password || "").trim();
+  const login = useCallback(
+    async (
+      email: string,
+      password?: string
+    ): Promise<{ success: boolean; error?: string }> => {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPass = (password || "").trim();
 
-    try {
-      // 1. Check default admin credentials
-      if (
-        cleanEmail === DEFAULT_ADMIN_USER.email.toLowerCase() &&
-        (cleanPass === "admin" || cleanPass === "admin123" || !cleanPass)
-      ) {
-        const adminSession: AuthenticatedUser = {
-          ...DEFAULT_ADMIN_USER,
+      try {
+        // 1. Check default admin credentials
+        if (
+          cleanEmail === DEFAULT_ADMIN_USER.email.toLowerCase() &&
+          (cleanPass === "admin" || cleanPass === "admin123" || !cleanPass)
+        ) {
+          const adminSession: AuthenticatedUser = {
+            ...DEFAULT_ADMIN_USER,
+            lastLoginAt: new Date().toISOString(),
+          };
+          setCurrentUser(adminSession);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(adminSession));
+          }
+          return { success: true };
+        }
+
+        // 2. Look up user in offlineDb
+        const dbUsers: UserProfile[] = (await (offlineDb as any).users?.toArray()) || [];
+        const user = dbUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+
+        if (!user) {
+          // Also check localStorage users
+          const localSaved = localStorage.getItem("noxderma_users");
+          if (localSaved) {
+            try {
+              const parsed = JSON.parse(localSaved) as UserProfile[];
+              const localUser = parsed.find((u) => u.email.toLowerCase() === cleanEmail);
+              if (localUser) {
+                if (!localUser.active) {
+                  return { success: false, error: "Yeh account deactivate kar diya gaya hai. Admin se rabta karein." };
+                }
+                if (localUser.password && cleanPass && localUser.password !== cleanPass) {
+                  return { success: false, error: "Ghalat Password darj kiya gaya hai." };
+                }
+
+                const resolvedPerms =
+                  localUser.permissions && localUser.permissions.length > 0
+                    ? localUser.permissions
+                    : ROLE_PERMISSIONS[localUser.role] || [];
+
+                const authSession: AuthenticatedUser = {
+                  ...localUser,
+                  permissions: resolvedPerms,
+                  lastLoginAt: new Date().toISOString(),
+                };
+
+                setCurrentUser(authSession);
+                if (typeof window !== "undefined") {
+                  localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(authSession));
+                }
+                return { success: true };
+              }
+            } catch {}
+          }
+
+          return {
+            success: false,
+            error: "Email address system ma darj nahi hai. Admin se account banwayen.",
+          };
+        }
+
+        if (!user.active) {
+          return {
+            success: false,
+            error: "Yeh account deactivate hai. Administrator se rabta karein.",
+          };
+        }
+
+        if (user.password && cleanPass && user.password !== cleanPass) {
+          return { success: false, error: "Ghalat Password darj kiya gaya hai." };
+        }
+
+        const permissions =
+          user.permissions && user.permissions.length > 0
+            ? user.permissions
+            : ROLE_PERMISSIONS[user.role] || [];
+
+        const sessionUser: AuthenticatedUser = {
+          ...user,
+          permissions,
           lastLoginAt: new Date().toISOString(),
         };
-        setCurrentUser(adminSession);
+
+        setCurrentUser(sessionUser);
         if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(adminSession));
+          localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(sessionUser));
         }
+
+        // Update last login in db
+        try {
+          await (offlineDb as any).users?.update(user.id, {
+            lastLoginAt: sessionUser.lastLoginAt,
+          });
+        } catch {}
+
         return { success: true };
+      } catch (err: any) {
+        console.error("Login attempt failed:", err);
+        return { success: false, error: err.message || "Login karne ma khata hui." };
       }
+    },
+    []
+  );
 
-      // 2. Look up user in offlineDb
-      const dbUsers: UserProfile[] = (await (offlineDb as any).users?.toArray()) || [];
-      const user = dbUsers.find((u) => u.email.toLowerCase() === cleanEmail);
-
-      if (!user) {
-        // Also check localStorage users
-        const localSaved = localStorage.getItem("noxderma_users");
-        if (localSaved) {
-          try {
-            const parsed = JSON.parse(localSaved) as UserProfile[];
-            const localUser = parsed.find((u) => u.email.toLowerCase() === cleanEmail);
-            if (localUser) {
-              if (!localUser.active) {
-                return { success: false, error: "Yeh account deactivate kar diya gaya hai. Admin se rabta karein." };
-              }
-              if (localUser.password && cleanPass && localUser.password !== cleanPass) {
-                return { success: false, error: "Ghalat Password darj kiya gaya hai." };
-              }
-
-              const resolvedPerms =
-                localUser.permissions && localUser.permissions.length > 0
-                  ? localUser.permissions
-                  : ROLE_PERMISSIONS[localUser.role] || [];
-
-              const authSession: AuthenticatedUser = {
-                ...localUser,
-                permissions: resolvedPerms,
-                lastLoginAt: new Date().toISOString(),
-              };
-
-              setCurrentUser(authSession);
-              if (typeof window !== "undefined") {
-                localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(authSession));
-              }
-              return { success: true };
-            }
-          } catch {}
-        }
-
-        return {
-          success: false,
-          error: "Email address system ma darj nahi hai. Admin se account banwayen.",
-        };
-      }
-
-      if (!user.active) {
-        return {
-          success: false,
-          error: "Yeh account deactivate hai. Administrator se rabta karein.",
-        };
-      }
-
-      if (user.password && cleanPass && user.password !== cleanPass) {
-        return { success: false, error: "Ghalat Password darj kiya gaya hai." };
-      }
-
-      const permissions =
-        user.permissions && user.permissions.length > 0
-          ? user.permissions
-          : ROLE_PERMISSIONS[user.role] || [];
-
-      const sessionUser: AuthenticatedUser = {
-        ...user,
-        permissions,
-        lastLoginAt: new Date().toISOString(),
-      };
-
-      setCurrentUser(sessionUser);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(sessionUser));
-      }
-
-      // Update last login in db
-      try {
-        await (offlineDb as any).users?.update(user.id, {
-          lastLoginAt: sessionUser.lastLoginAt,
-        });
-      } catch {}
-
-      return { success: true };
-    } catch (err: any) {
-      console.error("Login attempt failed:", err);
-      return { success: false, error: err.message || "Login karne ma khata hui." };
-    }
-  };
-
-  const logout = () => {
+  const logout = useCallback(() => {
     setCurrentUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
     }
     router.push("/login");
-  };
+  }, [router]);
 
-  const hasPermission = (permission: Permission): boolean => {
+  const hasPermission = useCallback((permission: Permission): boolean => {
     if (!currentUser) return false;
     if (currentUser.role === "admin") return true;
     return (currentUser.permissions || []).includes(permission);
-  };
+  }, [currentUser]);
 
-  const hasAnyPermission = (permissions: Permission[]): boolean => {
+  const hasAnyPermission = useCallback((permissions: Permission[]): boolean => {
     if (!currentUser) return false;
     if (currentUser.role === "admin") return true;
     const userPerms = currentUser.permissions || [];
     return permissions.some((p) => userPerms.includes(p));
-  };
+  }, [currentUser]);
 
-  const hasModuleAccess = (moduleKey: string): boolean => {
+  const hasModuleAccess = useCallback((moduleKey: string): boolean => {
     if (!currentUser) return false;
     if (currentUser.role === "admin") return true;
 
@@ -267,20 +270,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       default:
         return true;
     }
-  };
+  }, [currentUser, hasAnyPermission, hasPermission]);
+
+  const authContextValue = useMemo(() => ({
+    currentUser,
+    loading,
+    login,
+    logout,
+    hasPermission,
+    hasAnyPermission,
+    hasModuleAccess,
+  }), [currentUser, loading, login, logout, hasPermission, hasAnyPermission, hasModuleAccess]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        currentUser,
-        loading,
-        login,
-        logout,
-        hasPermission,
-        hasAnyPermission,
-        hasModuleAccess,
-      }}
-    >
+    <AuthContext.Provider value={authContextValue}>
       {children}
     </AuthContext.Provider>
   );

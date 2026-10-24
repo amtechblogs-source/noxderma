@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { offlineDb } from "@/lib/offline/db";
 
 export type ThemeId = "teal" | "indigo" | "violet" | "rose" | "amber";
@@ -234,7 +234,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty("--theme-accent-dark-bg", themeObj.darkAccentBg);
   };
 
-  const setTheme = async (id: ThemeId) => {
+  const setTheme = useCallback(async (id: ThemeId) => {
     setThemeIdState(id);
     if (typeof window !== "undefined") {
       localStorage.setItem(THEME_STORAGE_KEY, id);
@@ -263,19 +263,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ colorTheme: id }),
       }).catch(() => {});
     } catch {}
-  };
+  }, []);
 
-  const currentTheme = COLOR_THEMES.find((t) => t.id === themeId) || COLOR_THEMES[0];
+  const currentTheme = useMemo(() => {
+    return COLOR_THEMES.find((t) => t.id === themeId) || COLOR_THEMES[0];
+  }, [themeId]);
+
+  const themeContextValue = useMemo(() => ({
+    currentTheme,
+    themeId,
+    setTheme,
+    availableThemes: COLOR_THEMES,
+  }), [currentTheme, themeId, setTheme]);
 
   return (
-    <ThemeContext.Provider
-      value={{
-        currentTheme,
-        themeId,
-        setTheme,
-        availableThemes: COLOR_THEMES,
-      }}
-    >
+    <ThemeContext.Provider value={themeContextValue}>
       {children}
     </ThemeContext.Provider>
   );

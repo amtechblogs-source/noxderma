@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { offlineDb } from "@/lib/offline/db";
 import type { DynamicCategory } from "@/types";
 
@@ -55,35 +55,36 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const setSelectedCategoryId = (id: string) => {
+  const setSelectedCategoryId = useCallback((id: string) => {
     setSelectedCategoryIdState(id);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, id);
       window.dispatchEvent(new CustomEvent("noxderma_category_changed", { detail: id }));
     }
-  };
+  }, []);
 
-  const selectedCategory =
-    selectedCategoryId === "all"
+  const selectedCategory = useMemo(() => {
+    return selectedCategoryId === "all"
       ? null
       : categories.find((c) => c.id === selectedCategoryId) || null;
+  }, [selectedCategoryId, categories]);
 
-  const filterProductsByCategory = <T extends { categoryId?: string }>(items: T[]): T[] => {
+  const filterProductsByCategory = useCallback(<T extends { categoryId?: string }>(items: T[]): T[] => {
     if (selectedCategoryId === "all") return items;
     return items.filter((item) => item.categoryId === selectedCategoryId);
-  };
+  }, [selectedCategoryId]);
+
+  const categoryContextValue = useMemo(() => ({
+    selectedCategoryId,
+    selectedCategory,
+    categories,
+    setSelectedCategoryId,
+    refreshCategories,
+    filterProductsByCategory,
+  }), [selectedCategoryId, selectedCategory, categories, setSelectedCategoryId, refreshCategories, filterProductsByCategory]);
 
   return (
-    <CategoryContext.Provider
-      value={{
-        selectedCategoryId,
-        selectedCategory,
-        categories,
-        setSelectedCategoryId,
-        refreshCategories,
-        filterProductsByCategory,
-      }}
-    >
+    <CategoryContext.Provider value={categoryContextValue}>
       {children}
     </CategoryContext.Provider>
   );
