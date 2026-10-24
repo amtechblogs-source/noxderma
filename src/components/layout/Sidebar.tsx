@@ -34,6 +34,7 @@ import {
   Settings,
   Database,
   Calculator,
+  Ticket,
   X,
   PanelLeftClose,
   PanelLeftOpen,
@@ -109,6 +110,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     title: "Promotions & WhatsApp",
     items: [
       { name: "Special Offers & Schemes", href: "/marketing", icon: Megaphone, requiredPermission: "marketing:manage" },
+      { name: "Customer Coupon Codes", href: "/marketing/coupons", icon: Ticket, requiredPermission: "marketing:manage" },
       { name: "Create WhatsApp Offer Card", href: "/marketing/whatsapp", icon: Share2, requiredPermission: "marketing:manage" },
     ],
   },

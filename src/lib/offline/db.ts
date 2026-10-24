@@ -14,6 +14,7 @@ import type {
   Payment,
   OutboxOperation,
   SyncConflict,
+  CouponCode,
 } from "@/types";
 
 export interface PendingImageRecord {
@@ -66,6 +67,7 @@ export class NoxdermaDexieDB extends Dexie {
   marketingCampaigns!: Table<any, string>;
   employeeTargets!: Table<any, string>;
   users!: Table<any, string>;
+  coupons!: Table<CouponCode, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -103,6 +105,10 @@ export class NoxdermaDexieDB extends Dexie {
     this.version(3).stores({
       inventoryBatches: "id, productId, batchNumber, expiryDate, remainingQuantity, status",
       users: "id, email, role, active",
+    });
+
+    this.version(4).stores({
+      coupons: "id, code, customerId, status, discountPercent, validUntil, createdAt",
     });
   }
 }

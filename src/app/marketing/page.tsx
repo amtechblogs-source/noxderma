@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Clock,
   ArrowRight,
+  Ticket,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";

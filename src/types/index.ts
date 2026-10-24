@@ -8,3 +8,4 @@ export * from "./finance";
 export * from "./offline";
 export * from "./crm";
 export * from "./pricing";
+export * from "./coupons";
