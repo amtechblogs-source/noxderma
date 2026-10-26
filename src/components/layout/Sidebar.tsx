@@ -38,6 +38,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { offlineDb } from "@/lib/offline/db";
@@ -103,7 +104,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Company Khata (Money to Pay)", href: "/finance/ledgers/manufacturers", icon: BookOpen, requiredPermission: "finance:ledgers" },
       { name: "Customer Khata (Money to Receive)", href: "/finance/ledgers/customers", icon: Scale, requiredPermission: "finance:ledgers" },
       { name: "Profit & Loss Report (Kamai)", href: "/finance/pnl", icon: TrendingUp, requiredPermission: "finance:pnl" },
-      { name: "Download Reports & Excel", href: "/reports", icon: FileSpreadsheet, requiredPermission: "finance:aging" },
+      { name: "Download Reports", href: "/reports", icon: FileSpreadsheet, requiredPermission: "finance:aging" },
     ],
   },
   {
@@ -117,6 +118,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
   {
     title: "System & Settings",
     items: [
+      { name: "Action History & Logs (Owner)", href: "/audit", icon: History, requiredPermission: "audit:view" },
       { name: "Save Offline Data to Cloud", href: "/sync", icon: Database, requiredPermission: "sync:reconcile" },
       { name: "Staff Accounts & Logins", href: "/users", icon: UserCog, requiredPermission: "users:manage" },
       { name: "Alert Messages & Reminders", href: "/notifications", icon: BellRing },
@@ -222,9 +224,12 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
     return ALL_NAV_SECTIONS.map((section) => ({
       ...section,
       items: section.items.filter((item) => {
-        if (!item.requiredPermission) return true;
         if (!currentUser) return false;
-        if (currentUser.role === "admin") return true;
+        if (item.href === "/audit") {
+          return currentUser.role === "owner" || currentUser.role === "admin" || hasPermission("audit:view");
+        }
+        if (!item.requiredPermission) return true;
+        if (currentUser.role === "admin" || currentUser.role === "owner") return true;
         return hasPermission(item.requiredPermission);
       }),
     })).filter((section) => section.items.length > 0);
@@ -274,7 +279,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                   {brandName}
                 </span>
                 <span className="text-[10px] font-semibold text-teal-400 tracking-wider uppercase truncate">
-                  Pharma ERP &bull; {currentUser?.role === "admin" ? "Admin" : currentUser?.role?.replace("_", " ")}
+                  Pharma ERP &bull; {currentUser?.role === "owner" ? "Owner" : currentUser?.role === "admin" ? "Admin" : currentUser?.role?.replace("_", " ")}
                 </span>
               </div>
             </Link>

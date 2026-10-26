@@ -232,6 +232,12 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     module: "System",
     keywords: "sync offline online backup cloud pending queue storage dexie indexeddb status",
   },
+  {
+    name: "Action History & Audit Logs (Owner)",
+    path: "/audit",
+    module: "Owner / Security",
+    keywords: "audit logs history tracker who did what undo activity logs owner changes delete revert restore roll back khata",
+  },
 ];
 
 export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) {
@@ -347,12 +353,15 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
     const timer = setTimeout(async () => {
       try {
         // 1. Navigation items matching
-        const matchedNav = APP_NAVIGATION_SEARCH_ITEMS.filter(
-          (item) =>
+        const isOwnerOrAdmin = currentUser?.role === "owner" || currentUser?.role === "admin";
+        const matchedNav = APP_NAVIGATION_SEARCH_ITEMS.filter((item) => {
+          if (item.path === "/audit" && !isOwnerOrAdmin) return false;
+          return (
             item.name.toLowerCase().includes(q) ||
             item.keywords.toLowerCase().includes(q) ||
             item.module.toLowerCase().includes(q)
-        ).slice(0, 10);
+          );
+        }).slice(0, 10);
 
         // 2. Database records matching
         const [allProds, allCusts, allInvs, allBatches] = await Promise.all([
@@ -425,7 +434,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, currentUser]);
 
   // Sync state subscription
   useEffect(() => {

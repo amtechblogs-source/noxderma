@@ -294,6 +294,7 @@ export default function UserManagementPage() {
             className="w-full sm:w-auto min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
           >
             <option value="all">All Roles</option>
+            <option value="owner">Company Owner</option>
             <option value="admin">Administrator (Admin)</option>
             <option value="manager">Manager</option>
             <option value="accountant">Accountant</option>
@@ -327,7 +328,9 @@ export default function UserManagementPage() {
                   </div>
                   <span
                     className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase ${
-                      user.role === "admin"
+                      user.role === "owner"
+                        ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/30"
+                        : user.role === "admin"
                         ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
                         : user.role === "manager"
                         ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
@@ -338,7 +341,7 @@ export default function UserManagementPage() {
                         : "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
                     }`}
                   >
-                    {user.role.replace("_", " ")}
+                    {user.role === "owner" ? "Owner" : user.role.replace("_", " ")}
                   </span>
                 </div>
 
@@ -346,7 +349,7 @@ export default function UserManagementPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500 font-medium">Modular Permissions:</span>
                     <span className="font-bold text-teal-600 dark:text-teal-400">
-                      {user.role === "admin" ? "All (Full Access)" : `${userPermCount} Selected`}
+                      {user.role === "owner" || user.role === "admin" ? "All (Full Access)" : `${userPermCount} Selected`}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -429,7 +432,9 @@ export default function UserManagementPage() {
                     <td className="py-3.5 px-3">
                       <span
                         className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase ${
-                          user.role === "admin"
+                          user.role === "owner"
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/30"
+                            : user.role === "admin"
                             ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
                             : user.role === "manager"
                             ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
@@ -440,18 +445,18 @@ export default function UserManagementPage() {
                             : "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
                         }`}
                       >
-                        {user.role.replace("_", " ")}
+                        {user.role === "owner" ? "Owner" : user.role.replace("_", " ")}
                       </span>
                     </td>
 
                     <td className="py-3.5 px-3">
                       <div className="flex items-center gap-1.5">
                         <span className="px-2.5 py-1 rounded-md font-bold font-mono text-xs bg-slate-100 dark:bg-slate-800 text-teal-600 dark:text-teal-400">
-                          {user.role === "admin" ? "All (Full Access)" : `${userPermCount} Selected`}
+                          {user.role === "owner" || user.role === "admin" ? "All (Full Access)" : `${userPermCount} Selected`}
                         </span>
                         <span className="text-xs text-slate-400">
-                          {user.role === "admin"
-                            ? "Unrestricted"
+                          {user.role === "owner" || user.role === "admin"
+                            ? "Master Unrestricted"
                             : user.permissions
                             ? "Customized"
                             : "Role Default"}
@@ -591,6 +596,7 @@ export default function UserManagementPage() {
                     onChange={(e) => handleRoleChange(e.target.value as UserRole)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
+                    <option value="owner">Company Owner (Master Access & Audit Undo)</option>
                     <option value="admin">System Administrator (Full All Modules)</option>
                     <option value="manager">Operations Manager (Sales, Stock, Khata)</option>
                     <option value="accountant">Accountant / Cashier (Khata, Payments, P&L)</option>

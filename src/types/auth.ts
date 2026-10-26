@@ -1,4 +1,5 @@
 export type UserRole =
+  | "owner"
   | "admin"
   | "manager"
   | "accountant"
@@ -57,6 +58,7 @@ export type Permission =
   | "marketing:manage"
   // Audit & Sync
   | "audit:view"
+  | "audit:undo"
   | "sync:reconcile";
 
 export const PERMISSION_GROUPS: {
@@ -124,6 +126,7 @@ export const PERMISSION_GROUPS: {
       { key: "settings:manage", label: "Company Settings & Themes", desc: "Change business name, logos, themes" },
       { key: "sync:reconcile", label: "Cloud Sync & Backups", desc: "Sync data to cloud database" },
       { key: "audit:view", label: "View Audit Logs", desc: "Inspect who did what and when" },
+      { key: "audit:undo", label: "Undo Staff Actions", desc: "Revert / rollback changes made by any user" },
     ],
   },
 ];
@@ -133,6 +136,7 @@ export const ALL_PERMISSIONS: Permission[] = PERMISSION_GROUPS.flatMap((g) =>
 );
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
+  owner: ALL_PERMISSIONS,
   admin: ALL_PERMISSIONS,
   manager: [
     "products:view",

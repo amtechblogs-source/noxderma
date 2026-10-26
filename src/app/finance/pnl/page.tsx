@@ -10,6 +10,7 @@ import {
   AlertOctagon,
   Percent,
   Download,
+  Printer,
   Info,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
@@ -68,8 +69,8 @@ export default function ProfitAndLossPage() {
   const netProfitMargin = netSales > 0 ? ((netOperatingProfit / netSales) * 100).toFixed(1) : "0.0";
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
+    <div className="max-w-4xl mx-auto space-y-6 print:max-w-none print:w-full print:m-0 print:p-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800 no-print print:hidden">
         <div>
           <Link
             href="/"
@@ -89,15 +90,15 @@ export default function ProfitAndLossPage() {
 
         <button
           onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold hover:bg-slate-100"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm transition-colors"
         >
-          <Download className="w-3.5 h-3.5" />
+          <Printer className="w-3.5 h-3.5" />
           Print Report
         </button>
       </div>
 
       {/* Accounting Compliance Banner */}
-      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1">
+      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1 no-print print:hidden">
         <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
           <Info className="w-4 h-4 text-teal-600" />
           <span>How Profit is Calculated:</span>
@@ -111,15 +112,17 @@ export default function ProfitAndLossPage() {
       </div>
 
       {/* Structured P&L Statement Card */}
-      <div className="p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-6 text-xs md:text-sm">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-6 text-xs md:text-sm print:border-none print:shadow-none print:p-0 print:space-y-4 print:text-xs">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-800 print:border-slate-900">
           <div>
-            <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+            <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 print:text-black">
               Noxderma Pharmaceuticals Ltd.
             </h2>
-            <p className="text-xs text-slate-500">Business Profit & Loss Report</p>
+            <p className="text-xs text-slate-500 print:text-slate-600">
+              Business Profit & Loss Report • Generated: {formatKarachiDate(new Date(), true)}
+            </p>
           </div>
-          <span className="font-mono text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
+          <span className="font-mono text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 print:bg-slate-100 print:text-black print:border print:border-slate-300">
             Currency: Pakistani Rupee (PKR ₨)
           </span>
         </div>
@@ -207,20 +210,39 @@ export default function ProfitAndLossPage() {
         </div>
 
         {/* 4. Net Profit */}
-        <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex justify-between items-center">
+        <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex justify-between items-center print:bg-slate-50 print:border-slate-300">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300">
+            <span className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 print:text-black">
               Final Net Profit (Asli Kamai / Saaf Munafa)
             </span>
-            <p className="text-xs text-slate-500">Remaining profit in hand after all costs, expenses, and broken stock</p>
+            <p className="text-xs text-slate-500 print:text-slate-600">Remaining profit in hand after all costs, expenses, and broken stock</p>
           </div>
           <div className="text-right">
-            <span className="text-xl md:text-2xl font-extrabold text-teal-700 dark:text-teal-300">
+            <span className="text-xl md:text-2xl font-extrabold text-teal-700 dark:text-teal-300 print:text-black">
               {formatPKR(netOperatingProfit)}
             </span>
-            <span className="block text-xs font-bold text-teal-600 mt-0.5">
+            <span className="block text-xs font-bold text-teal-600 print:text-black mt-0.5">
               Profit Percentage: {netProfitMargin}%
             </span>
+          </div>
+        </div>
+
+        {/* Print Sign-Offs */}
+        <div className="hidden print:grid grid-cols-3 gap-6 pt-8 mt-6 border-t border-slate-300 text-center text-[10px]">
+          <div>
+            <div className="border-b border-slate-400 pb-8 mb-1"></div>
+            <p className="font-bold text-black">Prepared By</p>
+            <p className="text-slate-500">Accounts Officer</p>
+          </div>
+          <div>
+            <div className="border-b border-slate-400 pb-8 mb-1"></div>
+            <p className="font-bold text-black">Audited By</p>
+            <p className="text-slate-500">Internal Audit</p>
+          </div>
+          <div>
+            <div className="border-b border-slate-400 pb-8 mb-1"></div>
+            <p className="font-bold text-black">Approved By</p>
+            <p className="text-slate-500">Chief Executive Officer</p>
           </div>
         </div>
       </div>

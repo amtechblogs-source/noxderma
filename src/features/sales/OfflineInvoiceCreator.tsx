@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Receipt,
   Plus,
@@ -27,12 +27,14 @@ import {
   Pill,
   MapPin,
   Mail,
+  Pencil,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { generateCollisionSafeInvoiceReference, getDeviceId } from "@/lib/offline/device";
 import { enqueueOperation } from "@/lib/offline/outbox";
 import { syncManager } from "@/lib/offline/sync";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type {
@@ -131,10 +133,23 @@ export function getProductDefaultPrice(
   return 0;
 }
 
-export function OfflineInvoiceCreator() {
+export interface OfflineInvoiceCreatorProps {
+  editInvoiceId?: string;
+}
+
+export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvoiceCreatorProps = {}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editInvoiceId = propEditId || searchParams?.get("id") || searchParams?.get("editId") || undefined;
+  const initialCustomerId = searchParams?.get("customerId") || undefined;
+
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const { currentUser } = useAuth();
+
+  // Edit Mode State
+  const [originalInvoice, setOriginalInvoice] = useState<Invoice | null>(null);
+  const [isLoadingInvoice, setIsLoadingInvoice] = useState<boolean>(!!editInvoiceId);
+  const [invoiceNotFound, setInvoiceNotFound] = useState<boolean>(false);
 
   // Master Data State
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -184,6 +199,21 @@ export function OfflineInvoiceCreator() {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
 
+  // Helper to compute effective available quantity for a batch, accounting for already-allocated items in edit mode
+  const getBatchEffectiveAvailable = (batchId: string, currentBatchRem: number) => {
+    let extra = 0;
+    if (originalInvoice) {
+      for (const l of originalInvoice.lines || []) {
+        for (const a of l.batchAllocations || []) {
+          if (a.batchId === batchId) {
+            extra += Number(a.quantity || 0);
+          }
+        }
+      }
+    }
+    return currentBatchRem + extra;
+  };
+
   // Load available local records safely
   const loadMasterData = async () => {
     try {
@@ -196,11 +226,85 @@ export function OfflineInvoiceCreator() {
       ]);
 
       setCustomers(custList || []);
-      // Filter batches with remainingQuantity > 0 safely in-memory
-      const validBatches = (allBatches || []).filter((b) => Number(b.remainingQuantity || 0) > 0);
-      setBatches(validBatches);
       setProducts(prodList || []);
       setPricings(pricingList || []);
+
+      let invToEdit: Invoice | null = null;
+      if (editInvoiceId) {
+        setIsLoadingInvoice(true);
+        const existing = await offlineDb.invoices.get(editInvoiceId);
+        if (existing) {
+          invToEdit = existing;
+          setOriginalInvoice(existing);
+          setSelectedCustomerId(existing.customerId || "");
+          setCustomCustomerName(existing.customerName || "");
+          setCustomCustomerCategory(existing.customerCategory || "pharmacy");
+          setCustomCustomerPhone(existing.customerPhone || "");
+          setCustomCustomerAddress(existing.customerAddress || "");
+          setPaymentMethod(existing.paymentMethod === "split" ? "credit" : (existing.paymentMethod || "credit"));
+          setPaidAmount(existing.paidAmount || 0);
+          setDeliveryCharge(existing.deliveryCharge || 0);
+          setNotes(existing.notes || "");
+
+          if (existing.invoiceDiscountPercentage && existing.invoiceDiscountPercentage > 0) {
+            setDiscountType("percentage");
+            setDiscountPercent(existing.invoiceDiscountPercentage);
+            setInvoiceDiscount(0);
+          } else {
+            setDiscountType("fixed");
+            setDiscountPercent(0);
+            setInvoiceDiscount(existing.invoiceDiscountAmount || 0);
+          }
+
+          // Populate lines with effective available quantities
+          const mappedLines = (existing.lines || []).map((l) => {
+            const alloc = l.batchAllocations?.[0];
+            const batchId = alloc?.batchId || "";
+            const batch = (allBatches || []).find((b) => b.id === batchId);
+            const currentRem = Number(batch?.remainingQuantity || 0);
+            const allocatedOnThisInvoice = Number(alloc?.quantity || l.quantity || 0);
+            const effectiveAvail = currentRem + allocatedOnThisInvoice;
+
+            return {
+              productId: l.productId,
+              productName: l.productName,
+              imageUrl: l.imageUrl || getProductImageUrl((prodList || []).find((p) => p.id === l.productId)),
+              packSize: l.packSize || "1 Pack",
+              batchId: batchId || `bch_${l.productId}`,
+              batchNumber: alloc?.batchNumber || "BATCH",
+              expiryDate: alloc?.expiryDate || "",
+              availableQuantity: effectiveAvail > 0 ? effectiveAvail : 999,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+              discountPercent: l.lineDiscountPercentage || 0,
+            };
+          });
+          setLines(mappedLines);
+        } else {
+          setInvoiceNotFound(true);
+        }
+        setIsLoadingInvoice(false);
+      } else if (initialCustomerId) {
+        // Pre-select customer if customerId passed in query
+        const found = custList?.find((c) => c.id === initialCustomerId);
+        if (found) {
+          setSelectedCustomerId(found.id);
+          setCustomCustomerName(found.name || "");
+          setCustomCustomerPhone(found.phone || "");
+          setCustomCustomerAddress(found.address || "");
+          setCustomCustomerCategory(found.category || "pharmacy");
+        }
+      }
+
+      // Filter batches: batches with remainingQuantity > 0 OR allocated in the invoice being edited
+      const validBatches = (allBatches || []).filter((b) => {
+        const isAllocatedInEdit = invToEdit?.lines?.some((l) =>
+          l.batchAllocations?.some((a) => a.batchId === b.id)
+        );
+        return Number(b.remainingQuantity || 0) > 0 || !!isAllocatedInEdit;
+      });
+      setBatches(validBatches);
+
       if (settingsRecord) {
         setBusinessSettings(settingsRecord);
       } else {
@@ -217,12 +321,13 @@ export function OfflineInvoiceCreator() {
       }
     } catch (err) {
       console.error("Failed to load master data in OfflineInvoiceCreator:", err);
+      setIsLoadingInvoice(false);
     }
   };
 
   useEffect(() => {
     loadMasterData();
-  }, []);
+  }, [editInvoiceId]);
 
   // Category isolation
   const categoryProductIds = new Set(
@@ -273,7 +378,11 @@ export function OfflineInvoiceCreator() {
 
     // 1. Find batches for this product (FEFO)
     const prodBatches = batches
-      .filter((b) => b.productId === prod.id && Number(b.remainingQuantity || 0) > 0)
+      .filter((b) => {
+        if (b.productId !== prod.id) return false;
+        const eff = getBatchEffectiveAvailable(b.id, Number(b.remainingQuantity || 0));
+        return eff > 0;
+      })
       .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
 
     const chosenBatch = specificBatch || prodBatches[0];
@@ -287,7 +396,9 @@ export function OfflineInvoiceCreator() {
     const expiryDate = chosenBatch
       ? chosenBatch.expiryDate
       : new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10);
-    const availableQty = chosenBatch ? Number(chosenBatch.remainingQuantity) : 999;
+    const availableQty = chosenBatch
+      ? getBatchEffectiveAvailable(chosenBatch.id, Number(chosenBatch.remainingQuantity || 0))
+      : 999;
 
     setLines([
       ...lines,
@@ -322,11 +433,12 @@ export function OfflineInvoiceCreator() {
     if (field === "batchId") {
       const selectedBatch = batches.find((b) => b.id === value);
       if (selectedBatch) {
+        const effAvail = getBatchEffectiveAvailable(selectedBatch.id, Number(selectedBatch.remainingQuantity || 0));
         current.batchId = selectedBatch.id;
         current.batchNumber = selectedBatch.batchNumber;
         current.expiryDate = selectedBatch.expiryDate;
-        current.availableQuantity = Number(selectedBatch.remainingQuantity || 0);
-        if (current.quantity > current.availableQuantity) {
+        current.availableQuantity = effAvail;
+        if (current.quantity > current.availableQuantity && effAvail > 0) {
           current.quantity = Math.max(1, current.availableQuantity);
         }
       }
@@ -422,6 +534,219 @@ export function OfflineInvoiceCreator() {
       const currentUserId = currentUser?.id || "usr_admin";
       const currentUserName = currentUser?.displayName || "System Administrator";
 
+      if (originalInvoice) {
+        // ==========================================
+        // EDIT MODE: UPDATE ALREADY SAVED INVOICE
+        // ==========================================
+        const updatedInvoice: Invoice = {
+          ...originalInvoice,
+          customerId: selectedCustomerId || "cust_guest",
+          customerName: finalCustomerName,
+          customerCategory: selectedCust ? selectedCust.category : customCustomerCategory,
+          customerPhone: finalCustomerPhone,
+          customerAddress: finalCustomerAddress,
+          lines: invoiceLines,
+          subtotal,
+          invoiceDiscountAmount: totalDiscount,
+          invoiceDiscountPercentage: discountType === "percentage" ? discountPercent : undefined,
+          deliveryCharge,
+          grossTotal: subtotal,
+          netTotal,
+          paidAmount: effectivePaid,
+          outstandingBalance,
+          paymentStatus: outstandingBalance === 0 ? "paid" : effectivePaid > 0 ? "partially_paid" : "unpaid",
+          paymentMethod,
+          notes,
+          salesRepId: currentUserId,
+          salesRepName: currentUserName,
+          syncStatus: "pending_sync",
+          updatedAt: now.toISOString(),
+        };
+
+        await offlineDb.transaction(
+          "rw",
+          [
+            offlineDb.invoices,
+            offlineDb.inventoryBatches,
+            offlineDb.stockMovements,
+            offlineDb.customers,
+            offlineDb.payments,
+            offlineDb.outboxQueue,
+          ],
+          async () => {
+            // 1. Revert previous inventory allocations from originalInvoice
+            for (const oldLine of originalInvoice.lines || []) {
+              for (const alloc of oldLine.batchAllocations || []) {
+                if (alloc.batchId) {
+                  const b = await offlineDb.inventoryBatches.get(alloc.batchId);
+                  if (b) {
+                    const restoredQty = Number(b.remainingQuantity || 0) + Number(alloc.quantity || 0);
+                    await offlineDb.inventoryBatches.update(alloc.batchId, {
+                      remainingQuantity: restoredQty,
+                      updatedAt: now.toISOString(),
+                    });
+
+                    await offlineDb.stockMovements.add({
+                      id: `mov_rev_${Date.now()}_${alloc.batchId}_${Math.random().toString(36).slice(2, 6)}`,
+                      productId: oldLine.productId,
+                      productName: oldLine.productName,
+                      batchId: alloc.batchId,
+                      batchNumber: alloc.batchNumber || b.batchNumber,
+                      type: "sales_return",
+                      quantityChange: Number(alloc.quantity || 0),
+                      balanceAfter: restoredQty,
+                      referenceId: originalInvoice.id,
+                      referenceType: "invoice",
+                      userId: currentUserId,
+                      userName: currentUserName,
+                      reason: `Reverted allocation for invoice edit: ${originalInvoice.provisionalReference}`,
+                      timestamp: now.toISOString(),
+                    });
+                  }
+                }
+              }
+            }
+
+            // 2. Revert previous customer outstanding balance
+            if (originalInvoice.customerId && originalInvoice.outstandingBalance > 0) {
+              const oldCust = await offlineDb.customers.get(originalInvoice.customerId);
+              if (oldCust) {
+                const revertedBal = Math.max(0, (oldCust.currentOutstandingBalance || 0) - originalInvoice.outstandingBalance);
+                await offlineDb.customers.update(originalInvoice.customerId, {
+                  currentOutstandingBalance: revertedBal,
+                  updatedAt: now.toISOString(),
+                });
+              }
+            }
+
+            // 3. Deduct new inventory batches and log movements
+            for (const newLine of lines) {
+              const b = await offlineDb.inventoryBatches.get(newLine.batchId);
+              if (b) {
+                const newRemaining = Math.max(0, Number(b.remainingQuantity || 0) - newLine.quantity);
+                await offlineDb.inventoryBatches.update(newLine.batchId, {
+                  remainingQuantity: newRemaining,
+                  updatedAt: now.toISOString(),
+                });
+
+                await offlineDb.stockMovements.add({
+                  id: `mov_new_${Date.now()}_${newLine.batchId}_${Math.random().toString(36).slice(2, 6)}`,
+                  productId: newLine.productId,
+                  productName: newLine.productName,
+                  batchId: newLine.batchId,
+                  batchNumber: newLine.batchNumber || b.batchNumber,
+                  type: "sales_deduction",
+                  quantityChange: -newLine.quantity,
+                  balanceAfter: newRemaining,
+                  referenceId: originalInvoice.id,
+                  referenceType: "invoice",
+                  userId: currentUserId,
+                  userName: currentUserName,
+                  reason: `Deducted for updated invoice: ${originalInvoice.provisionalReference}`,
+                  timestamp: now.toISOString(),
+                });
+              }
+            }
+
+            // 4. Apply new customer balance
+            const targetCustomerId = selectedCustomerId || "cust_guest";
+            if (targetCustomerId && outstandingBalance > 0) {
+              const targetCust = await offlineDb.customers.get(targetCustomerId);
+              if (targetCust) {
+                const updatedBal = (targetCust.currentOutstandingBalance || 0) + outstandingBalance;
+                await offlineDb.customers.update(targetCustomerId, {
+                  currentOutstandingBalance: updatedBal,
+                  updatedAt: now.toISOString(),
+                });
+              }
+            }
+
+            // 5. Update or record payment if collected
+            if (effectivePaid > 0) {
+              const payMethodMapped = paymentMethod === "credit" ? "cash" : paymentMethod;
+              const existingPayments = await offlineDb.payments
+                .where("referenceNumber")
+                .equals(originalInvoice.provisionalReference)
+                .toArray();
+
+              if (existingPayments && existingPayments.length > 0) {
+                await offlineDb.payments.update(existingPayments[0].id, {
+                  amount: effectivePaid,
+                  customerId: targetCustomerId,
+                  customerName: finalCustomerName,
+                  paymentMethod: payMethodMapped,
+                  allocations: [
+                    {
+                      invoiceId: originalInvoice.id,
+                      invoiceReference: originalInvoice.provisionalReference,
+                      amountAllocated: effectivePaid,
+                    },
+                  ],
+                  notes: `Updated on bill edit (${paymentMethod})`,
+                });
+              } else {
+                await offlineDb.payments.add({
+                  id: `pay_${Date.now()}`,
+                  customerId: targetCustomerId,
+                  customerName: finalCustomerName,
+                  amount: effectivePaid,
+                  paymentDate: now.toISOString().slice(0, 10),
+                  paymentMethod: payMethodMapped,
+                  referenceNumber: originalInvoice.provisionalReference,
+                  allocations: [
+                    {
+                      invoiceId: originalInvoice.id,
+                      invoiceReference: originalInvoice.provisionalReference,
+                      amountAllocated: effectivePaid,
+                    },
+                  ],
+                  unallocatedAmount: 0,
+                  recordedByUserId: currentUserId,
+                  notes: `Payment recorded on bill edit (${paymentMethod})`,
+                  syncStatus: "local_only",
+                  createdAt: now.toISOString(),
+                });
+              }
+            }
+
+            // 6. Put updated invoice
+            await offlineDb.invoices.put(updatedInvoice);
+
+            // 7. Enqueue update outbox sync
+            await enqueueOperation(
+              "invoice",
+              originalInvoice.id,
+              "update",
+              updatedInvoice as unknown as Record<string, unknown>,
+              currentUserId,
+              currentUserName
+            );
+          }
+        );
+
+        setCreatedInvoice(updatedInvoice);
+        await recordActivity({
+          userId: currentUserId,
+          userName: currentUserName,
+          userRole: currentUser?.role || "admin",
+          userEmail: currentUser?.email,
+          action: "update",
+          entityType: "invoice",
+          entityId: originalInvoice.id,
+          entityTitle: `Bill #${originalInvoice.provisionalReference}`,
+          details: `Updated bill for "${finalCustomerName}". Total: PKR ${netTotal.toLocaleString()} (Paid: PKR ${effectivePaid.toLocaleString()}, Baqaya: PKR ${outstandingBalance.toLocaleString()})`,
+          snapshotBefore: originalInvoice,
+          snapshotAfter: updatedInvoice,
+          canUndo: true,
+        });
+        await loadMasterData();
+        syncManager.syncNow();
+        return;
+      }
+
+      // ==========================================
+      // CREATE MODE: BRAND NEW INVOICE
+      // ==========================================
       const newInvoice: Invoice = {
         id: invoiceId,
         provisionalReference: provisionalRef,
@@ -548,6 +873,19 @@ export function OfflineInvoiceCreator() {
       );
 
       setCreatedInvoice(newInvoice);
+      await recordActivity({
+        userId: currentUserId,
+        userName: currentUserName,
+        userRole: currentUser?.role || "admin",
+        userEmail: currentUser?.email,
+        action: "create",
+        entityType: "invoice",
+        entityId: invoiceId,
+        entityTitle: `Bill #${provisionalRef}`,
+        details: `Issued new sale invoice for "${finalCustomerName}" with ${invoiceLines.length} medicine(s) totaling PKR ${netTotal.toLocaleString()}`,
+        snapshotAfter: newInvoice,
+        canUndo: true,
+      });
       await loadMasterData();
       syncManager.syncNow();
     } catch (err) {
@@ -558,18 +896,52 @@ export function OfflineInvoiceCreator() {
     }
   };
 
-  // If invoice is successfully created, render printable Enterprise Receipt view
-  // If invoice is successfully created, render printable Enterprise Receipt view
+  // Guard 1: Loading state when fetching invoice to edit
+  if (isLoadingInvoice) {
+    return (
+      <div className="max-w-md mx-auto p-12 text-center text-slate-500 space-y-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-soft">
+        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="font-bold text-sm text-slate-700 dark:text-slate-300">Loading invoice for editing...</p>
+        <p className="text-xs text-slate-400">Bill ka data IndexedDB se load ho raha hai...</p>
+      </div>
+    );
+  }
+
+  // Guard 2: Invoice not found
+  if (invoiceNotFound) {
+    return (
+      <div className="max-w-md mx-auto p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-center space-y-4 shadow-soft">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center mx-auto">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+          Bill Not Found (بل نہیں ملا)
+        </h2>
+        <p className="text-xs text-slate-500">
+          Yeh bill offline database mein dastyab nahi hai ya shayad delete ho chuka hai.
+        </p>
+        <Link
+          href="/sales/invoices"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Customer Bills (بلز کی لسٹ)
+        </Link>
+      </div>
+    );
+  }
+
+  // If invoice is successfully created or updated, render printable Enterprise Receipt view
   if (createdInvoice) {
     return (
       <div className="max-w-4xl mx-auto space-y-6 print:max-w-none print:w-full print:m-0 print:p-0 print:space-y-0 print:bg-white">
         <div className="flex items-center justify-between no-print">
           <Link
-            href="/"
+            href="/sales/invoices"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
+            Back to Customer Bills
           </Link>
 
           <div className="flex items-center gap-2">
@@ -580,13 +952,26 @@ export function OfflineInvoiceCreator() {
               <Printer className="w-4 h-4" />
               Print Invoice Now
             </button>
+            <Link
+              href="/sales/invoices"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold shadow-sm transition-all btn-interactive"
+            >
+              <Receipt className="w-4 h-4" />
+              All Bills (بلز کی لسٹ)
+            </Link>
             <button
               onClick={() => {
                 setCreatedInvoice(null);
+                setOriginalInvoice(null);
                 setLines([]);
                 setInvoiceDiscount(0);
                 setDiscountPercent(0);
                 setDiscountType("fixed");
+                setSelectedCustomerId("");
+                setCustomCustomerName("");
+                setCustomCustomerPhone("");
+                setCustomCustomerAddress("");
+                router.push("/sales/invoices/new");
               }}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-bold shadow-sm transition-all btn-interactive"
             >
@@ -600,8 +985,15 @@ export function OfflineInvoiceCreator() {
         <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs sm:text-sm no-print flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
           <div>
-            <strong>Bill Saved Offline Successfully!</strong> Bill No:{" "}
-            <span className="font-mono font-bold">{createdInvoice.provisionalReference}</span>. Stock deducted immediately.
+            <strong>
+              {originalInvoice
+                ? "Bill Updated Successfully! (بل کامیابی سے تبدیل اور اپ ڈیٹ ہو گیا)"
+                : "Bill Saved Offline Successfully! (بل کامیابی سے محفوظ ہو گیا)"}
+            </strong>{" "}
+            Bill No: <span className="font-mono font-bold">{createdInvoice.provisionalReference}</span>.
+            {originalInvoice
+              ? " Inventory allocations and customer balance have been re-calculated."
+              : " Stock deducted immediately."}
           </div>
         </div>
 
@@ -822,7 +1214,7 @@ export function OfflineInvoiceCreator() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-3">
         <div>
           <Link
             href="/sales/invoices"
@@ -831,12 +1223,21 @@ export function OfflineInvoiceCreator() {
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to Customer Bills
           </Link>
-          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Receipt className="w-6 h-6 text-teal-600" />
-            Make Customer Bill (Invoice)
-          </h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Receipt className="w-6 h-6 text-teal-600" />
+              {originalInvoice ? "Edit Customer Bill (بل تبدیل کریں)" : "Make Customer Bill (Invoice)"}
+            </h1>
+            {originalInvoice && (
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                Bill #{originalInvoice.provisionalReference || originalInvoice.id}
+              </span>
+            )}
+          </div>
           <p className="text-xs md:text-sm text-slate-500">
-            Works 100% offline without internet. Real-time warehouse inventory and FEFO batch selection.
+            {originalInvoice
+              ? "Saved bill mein items, prices, discounts ya customer details tabdeel karein. Stock aur baqaya khata khud ba khud adjust hoga."
+              : "Works 100% offline without internet. Real-time warehouse inventory and FEFO batch selection."}
           </p>
         </div>
       </div>
@@ -1332,14 +1733,20 @@ export function OfflineInvoiceCreator() {
             href="/sales/invoices"
             className="px-5 py-3 min-h-[48px] rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm text-center flex items-center justify-center btn-interactive"
           >
-            Cancel
+            Cancel (منسوخ کریں)
           </Link>
           <button
             type="submit"
             disabled={isSubmitting || lines.length === 0}
             className="px-8 py-3 min-h-[48px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-extrabold text-sm sm:text-base shadow-xl shadow-teal-600/30 transition-all disabled:opacity-50 btn-interactive flex items-center justify-center"
           >
-            {isSubmitting ? "Saving Bill Offline..." : "Create & Save Bill (Invoice)"}
+            {isSubmitting
+              ? originalInvoice
+                ? "Updating Bill Offline..."
+                : "Saving Bill Offline..."
+              : originalInvoice
+              ? "Update & Save Bill (بل تبدیل کریں)"
+              : "Create & Save Bill (Invoice)"}
           </button>
         </div>
       </form>

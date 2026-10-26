@@ -21,8 +21,10 @@ import {
   Share2,
   DollarSign,
   UserCheck,
+  Printer,
+  Pencil,
 } from "lucide-react";
-import { formatPKR, formatNumber } from "@/lib/formatting";
+import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type {
   Customer,
@@ -32,6 +34,7 @@ import type {
   LedgerEntry,
 } from "@/types";
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
+import { recordActivity } from "@/lib/audit/auditTracker";
 
 /**
  * Static-export friendly: the customer id is read from `?id=` at runtime
@@ -172,6 +175,19 @@ function CustomerDetailContent() {
         updatedAt: now,
       });
 
+      await recordActivity({
+        userId: "usr_admin",
+        userName: "System Administrator",
+        userRole: "admin",
+        action: "create",
+        entityType: "payment",
+        entityId: paymentId,
+        entityTitle: `Payment PKR ${payAmount.toLocaleString()} (${customer.name})`,
+        details: `Received payment of PKR ${payAmount.toLocaleString()} via ${payMethod} from ${customer.name}. New outstanding balance: PKR ${newBalance.toLocaleString()}`,
+        snapshotAfter: paymentRecord,
+        canUndo: true,
+      });
+
       // Reset form & reload
       setPayAmount(0);
       setPayRef("");
@@ -246,12 +262,34 @@ function CustomerDetailContent() {
 
   return (
     <div className="space-y-6">
+      {/* Official Print-Only Header */}
+      <div className="hidden print:flex justify-between items-start border-b-2 border-slate-900 pb-3">
+        <div>
+          <h1 className="text-base font-black tracking-tight text-black uppercase">
+            NOXDERMA PHARMACEUTICALS
+          </h1>
+          <p className="text-[10px] text-slate-600 font-medium">Derma & Healthcare Solutions</p>
+          <p className="text-[10px] text-slate-600 mt-0.5">Suite # 402, Trade Heights, Karachi, Pakistan</p>
+        </div>
+        <div className="text-right">
+          <span className="inline-block px-3 py-1 rounded bg-slate-100 border border-slate-400 text-[11px] font-black uppercase tracking-wider text-black mb-1">
+            Customer Statement
+          </span>
+          <p className="text-[10px] text-slate-600">
+            <strong>Printed:</strong> {formatKarachiDate(new Date(), true)}
+          </p>
+          <p className="text-[10px] text-slate-600">
+            <strong>Customer:</strong> {customer.name} ({customer.city})
+          </p>
+        </div>
+      </div>
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
             href="/customers"
-            className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+            className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors no-print print:hidden"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
@@ -268,7 +306,7 @@ function CustomerDetailContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 no-print print:hidden">
           <a
             href={`https://wa.me/${customer.whatsappNumber || customer.phone.replace(/[^0-9]/g, "")}`}
             target="_blank"
@@ -287,15 +325,15 @@ function CustomerDetailContent() {
       </div>
 
       {/* Credit Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3 print:gap-2">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
             Total Udhaar (Baqaya)
           </span>
           <span
             className={`text-2xl font-black font-mono ${
               isOverLimit ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-slate-100"
-            }`}
+            } print:text-black`}
           >
             {formatPKR(customer.currentOutstandingBalance)}
           </span>
@@ -304,14 +342,14 @@ function CustomerDetailContent() {
           </span>
         </div>
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
             Maximum Udhaar Limit
           </span>
-          <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
+          <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
             {formatPKR(customer.creditLimit)}
           </span>
-          <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden">
+          <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden print:hidden">
             <div
               className={`h-full ${
                 isOverLimit
@@ -325,11 +363,11 @@ function CustomerDetailContent() {
           </div>
         </div>
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
             Remaining Udhaar Space
           </span>
-          <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+          <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 print:text-black">
             {formatPKR(Math.max(0, customer.creditLimit - customer.currentOutstandingBalance))}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -339,7 +377,7 @@ function CustomerDetailContent() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-2 overflow-x-auto text-xs font-bold">
+      <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-2 overflow-x-auto text-xs font-bold no-print print:hidden">
         {[
           { id: "overview", label: "Shop Info", icon: Building2 },
           { id: "invoices", label: `Bills (${invoices.length})`, icon: Receipt },
@@ -470,6 +508,7 @@ function CustomerDetailContent() {
                     <th className="p-2.5 text-right">Paid</th>
                     <th className="p-2.5 text-right">Baqaya</th>
                     <th className="p-2.5 text-center">Status</th>
+                    <th className="p-2.5 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -512,6 +551,16 @@ function CustomerDetailContent() {
                             ? "HALF PAID"
                             : "UNPAID"}
                         </span>
+                      </td>
+                      <td className="p-2.5 text-right">
+                        <Link
+                          href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[11px] font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                          title="Edit Bill (بل تبدیل کریں)"
+                        >
+                          <Pencil className="w-3 h-3 text-amber-600" />
+                          <span>Edit</span>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -605,60 +654,79 @@ function CustomerDetailContent() {
 
       {/* Tab 4: Ledger Statement */}
       {activeTab === "ledger" && (
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:border-none print:shadow-none print:p-0">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 print:text-black">
                 Customer Khata Statement
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 print:text-slate-600">
                 Full history of bills, cash payments received, and remaining balance
               </p>
             </div>
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 no-print print:hidden flex items-center gap-1.5"
             >
-              Print Khata
+              <Printer className="w-3.5 h-3.5" /> Print Khata
             </button>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
+            <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
                 <tr>
-                  <th className="p-2.5">Date</th>
-                  <th className="p-2.5">Bill / Receipt #</th>
-                  <th className="p-2.5">Details</th>
-                  <th className="p-2.5 text-right">Bill Amount (+)</th>
-                  <th className="p-2.5 text-right">Cash Received (-)</th>
-                  <th className="p-2.5 text-right">Remaining Balance (Baqaya)</th>
+                  <th className="p-2.5 print:p-1.5 print:border-r print:border-slate-300">Date</th>
+                  <th className="p-2.5 print:p-1.5 print:border-r print:border-slate-300">Bill / Receipt #</th>
+                  <th className="p-2.5 print:p-1.5 print:border-r print:border-slate-300">Details</th>
+                  <th className="p-2.5 print:p-1.5 print:border-r print:border-slate-300 text-right">Bill Amount (+)</th>
+                  <th className="p-2.5 print:p-1.5 print:border-r print:border-slate-300 text-right">Cash Received (-)</th>
+                  <th className="p-2.5 print:p-1.5 text-right">Remaining Balance (Baqaya)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
                 {computedLedger.map((row) => (
                   <tr
                     key={row.id}
-                    className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                    className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors print:border-b print:border-slate-200"
                   >
-                    <td className="p-2.5 font-mono text-slate-500">{row.date}</td>
-                    <td className="p-2.5 font-mono font-bold text-teal-600 dark:text-teal-400">
+                    <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{row.date}</td>
+                    <td className="p-2.5 print:p-1.5 font-mono font-bold text-teal-600 dark:text-teal-400 print:text-black print:border-r print:border-slate-200">
                       {row.reference}
                     </td>
-                    <td className="p-2.5 text-slate-700 dark:text-slate-300">{row.description}</td>
-                    <td className="p-2.5 text-right font-mono font-semibold text-rose-600">
+                    <td className="p-2.5 print:p-1.5 text-slate-700 dark:text-slate-300 print:text-slate-700 print:border-r print:border-slate-200">{row.description}</td>
+                    <td className="p-2.5 print:p-1.5 text-right font-mono font-semibold text-rose-600 print:text-black print:border-r print:border-slate-200">
                       {row.debit > 0 ? formatPKR(row.debit) : "-"}
                     </td>
-                    <td className="p-2.5 text-right font-mono font-semibold text-emerald-600">
+                    <td className="p-2.5 print:p-1.5 text-right font-mono font-semibold text-emerald-600 print:text-black print:border-r print:border-slate-200">
                       {row.credit > 0 ? formatPKR(row.credit) : "-"}
                     </td>
-                    <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                    <td className="p-2.5 print:p-1.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100 print:text-black">
                       {formatPKR(row.runningBalance)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Print-Only Sign-off Block */}
+          <div className="hidden print:grid grid-cols-3 gap-6 pt-6 mt-6 border-t border-slate-300 text-center text-[10px]">
+            <div>
+              <div className="border-b border-slate-400 pb-8 mb-1"></div>
+              <p className="font-bold text-black">Prepared By</p>
+              <p className="text-slate-500">Billing Officer</p>
+            </div>
+            <div>
+              <div className="border-b border-slate-400 pb-8 mb-1"></div>
+              <p className="font-bold text-black">Audited By</p>
+              <p className="text-slate-500">Credit Controller</p>
+            </div>
+            <div>
+              <div className="border-b border-slate-400 pb-8 mb-1"></div>
+              <p className="font-bold text-black">Approved By</p>
+              <p className="text-slate-500">Accounts Manager</p>
+            </div>
           </div>
         </div>
       )}

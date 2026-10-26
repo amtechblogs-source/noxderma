@@ -6,8 +6,8 @@
   "appLogoUrl": "/brand/logo.svg",
   "invoiceLogoUrl": "/brand/invoice-logo.svg",
   "faviconUrl": "/favicon.ico",
-  "address": "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan",
-  "website": "https://noxderma.web.app",
+  "address": "Hs # 63 (GROUND FLOOR), Naqshabani Bazar, Daroghawala, Lahore.",
+  "website": "https://noxderma.com",
   "contactPhone": "+92 300 1234567",
   "whatsappNumber": "+92 300 1234567",
   "email": "info@noxderma.com",
@@ -17,7 +17,7 @@
   "dateFormat": "dd/MM/yyyy",
   "numberFormat": "en-PK",
   "invoicePrefix": "NXD",
-  "invoiceFooter": "Thank you for partnering with Noxderma. Quality healthcare distributed with integrity.",
+  "invoiceFooter": "EXPIRY CLAIMS WILL BE ACCEPTED SIX(6) MONTHS BEFORE EXPIRY    Form 2A (See Rules 19 & 30)    Warranty Under Section 23(1)(x) of the Drug Act 1976. I Muhammad Afzal being a person resident in Pakistan carrying on business at H.NO 63 (GROUND FLOOR)",
   "paymentInstructions": "Bank: Meezan Bank | A/C Title: Noxderma Pharma | IBAN: PK00MEZN0001234567890123",
   "defaultCreditTermsDays": 30,
   "defaultDeliverySettings": {
@@ -34,7 +34,7 @@
   "samplePolicy": "expense_at_cost",
   "damagedStockPolicy": "write_off_loss",
   "taxRateDefault": 0,
-  "updatedAt": "2026-10-26T04:26:31.606Z",
+  "updatedAt": "2026-10-26T07:43:22.066Z",
   "updatedBy": "usr_admin",
-  "colorTheme": "violet"
+  "colorTheme": "indigo"
 }

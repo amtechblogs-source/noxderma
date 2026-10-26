@@ -21,6 +21,8 @@ import {
   Trash2,
   Check,
   Eye,
+  UserCheck,
+  Loader2,
 } from "lucide-react";
 import { DEFAULT_BUSINESS_SETTINGS, type BusinessSettings } from "@/types";
 import { offlineDb } from "@/lib/offline/db";
@@ -152,54 +154,55 @@ export default function BusinessSettingsPage() {
         updatedBy: "usr_admin",
       };
 
-      // 1. Save to local Dexie IndexedDB for instant offline-first access
+      // 1. Instantly save to local Dexie IndexedDB (< 5ms)
       await offlineDb.settings.put(updated);
       setSettings(updated);
 
-      // 2. Save directly to Server Database (/api/settings)
-      try {
-        const res = await fetch("/api/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updated),
-        });
-        if (!res.ok) {
-          console.warn("Server settings write returned status:", res.status);
-        }
-      } catch (netErr) {
-        console.warn("Offline: enqueued settings for automatic cloud synchronization:", netErr);
-        // 3. If offline, enqueue operation into outbox queue
-        await enqueueOperation(
-          "settings",
-          "primary",
-          "update",
-          updated as unknown as Record<string, unknown>,
-          "usr_admin",
-          "Administrator"
-        );
-      }
-
-      // 4. Also try direct Firebase Firestore write
-      try {
-        const { db } = await import("@/lib/firebase/config");
-        const { doc, setDoc } = await import("firebase/firestore");
-        await setDoc(doc(db, "organizationSettings", "primary"), updated, { merge: true });
-      } catch (firestoreErr) {
-        console.warn("Client Firestore notice:", firestoreErr);
-      }
-
-      setIsSaved(true);
-
-      // Notify Sidebar and Header to immediately re-render logos
+      // 2. Immediately notify Sidebar, Header, Reports, and other modules
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("noxderma_settings_updated"));
       }
 
-      setTimeout(() => setIsSaved(false), 4000);
+      // 3. Quick, crisp visual feedback (150ms) so user feels instant response
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      setIsSaved(true);
+      setIsSaving(false);
+      setTimeout(() => setIsSaved(false), 3000);
+
+      // 4. Background Sync: Server Database & Cloud Firestore (Completely non-blocking)
+      (async () => {
+        try {
+          const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updated),
+          });
+          if (!res.ok) {
+            console.warn("Server settings write returned status:", res.status);
+          }
+        } catch (netErr) {
+          console.warn("Offline: enqueued settings for automatic cloud synchronization:", netErr);
+          await enqueueOperation(
+            "settings",
+            "primary",
+            "update",
+            updated as unknown as Record<string, unknown>,
+            "usr_admin",
+            "Administrator"
+          );
+        }
+
+        try {
+          const { db } = await import("@/lib/firebase/config");
+          const { doc, setDoc } = await import("firebase/firestore");
+          setDoc(doc(db, "organizationSettings", "primary"), updated, { merge: true }).catch((err) => {
+            console.warn("Background Firestore sync note:", err);
+          });
+        } catch {}
+      })();
     } catch (err) {
       console.error("Failed to save settings:", err);
       alert("Error saving settings.");
-    } finally {
       setIsSaving(false);
     }
   };
@@ -234,66 +237,129 @@ export default function BusinessSettingsPage() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Section 1: Color Themes (Dark Mode Compatible) */}
+        {/* Section 1: Color Themes (Visual Palette) */}
         <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
               <Palette className="w-4 h-4 text-teal-600" />
-              1. Color Themes (5 Options &bull; Dark Mode Compatible)
+              Theme Color
             </h2>
-            <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">
-              Active: {currentTheme.name}
-            </span>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <span
+                className="w-2.5 h-2.5 rounded-full shadow-sm"
+                style={{ backgroundColor: currentTheme.primaryColor }}
+              />
+              <span>{currentTheme.name.split(" ")[0]}</span>
+            </div>
           </div>
 
-          <p className="text-xs text-slate-500">
-            Aap apni pasand ka color theme chun saktay hain jo poori app, buttons, badges aur dark mode ma khubsurat nazar aayega.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {availableThemes.map((t) => {
               const isSelected = themeId === t.id;
+              const shortName =
+                t.id === "teal"
+                  ? "Emerald"
+                  : t.id === "indigo"
+                  ? "Sapphire"
+                  : t.id === "violet"
+                  ? "Violet"
+                  : t.id === "rose"
+                  ? "Ruby"
+                  : "Amber";
+
               return (
-                <div
+                <button
                   key={t.id}
+                  type="button"
                   onClick={() => setTheme(t.id)}
-                  className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                  className={`group text-left p-3 rounded-xl border-2 transition-all relative flex flex-col gap-2.5 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                     isSelected
-                      ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20 shadow-md"
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40"
+                      ? "bg-teal-50/20 dark:bg-teal-950/20 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40 hover:-translate-y-0.5"
                   }`}
+                  style={isSelected ? { borderColor: t.primaryColor } : undefined}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                  {/* Top Bar: Color Dot, Short Name & Selection Check */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span
-                        className="w-4 h-4 rounded-full shadow-sm"
+                        className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm transition-transform group-hover:scale-110"
                         style={{ backgroundColor: t.primaryColor }}
                       />
-                      <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
-                        {t.name}
+                      <span className="font-extrabold text-xs text-slate-900 dark:text-slate-100 truncate">
+                        {shortName}
                       </span>
                     </div>
-                    {isSelected && (
-                      <span className="w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px]">
-                        <Check className="w-3 h-3" />
-                      </span>
-                    )}
-                  </div>
 
-                  <p className="text-[10px] text-slate-400 mb-3">{t.description}</p>
-
-                  <div className="flex items-center gap-2 text-[10px] font-mono">
                     <span
-                      className="px-2 py-0.5 rounded font-bold text-white shadow-sm"
-                      style={{ backgroundColor: t.primaryColor }}
+                      className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                        isSelected
+                          ? "text-white shadow-xs"
+                          : "border border-slate-300 dark:border-slate-600"
+                      }`}
+                      style={isSelected ? { backgroundColor: t.primaryColor } : undefined}
                     >
-                      Button Primary
-                    </span>
-                    <span className="px-2 py-0.5 rounded font-semibold text-slate-500 bg-slate-100 dark:bg-slate-700">
-                      {t.nameUrdu}
+                      {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                     </span>
                   </div>
-                </div>
+
+                  {/* Visual Mini UI Window Preview */}
+                  <div className="w-full h-18 rounded-lg overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-slate-100/70 dark:bg-slate-900/90 flex flex-col p-1.5 gap-1.5 shadow-inner select-none pointer-events-none">
+                    {/* Mini Header Strip */}
+                    <div className="flex items-center justify-between px-0.5">
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: t.primaryColor }} />
+                        <span className="w-6 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
+                      </div>
+                      <span className="w-3 h-1 rounded-full bg-slate-200 dark:bg-slate-800" />
+                    </div>
+
+                    {/* Mini App Body */}
+                    <div className="flex-1 flex gap-1 min-h-0">
+                      {/* Mini Sidebar */}
+                      <div className="w-3.5 rounded bg-slate-200/80 dark:bg-slate-800 flex flex-col items-center py-1 gap-0.5 shrink-0">
+                        <span className="w-1.5 h-0.5 rounded-xs" style={{ backgroundColor: t.primaryColor }} />
+                        <span className="w-1.5 h-0.5 rounded-xs bg-slate-300 dark:bg-slate-700" />
+                        <span className="w-1.5 h-0.5 rounded-xs bg-slate-300 dark:bg-slate-700" />
+                      </div>
+
+                      {/* Mini Card & Buttons */}
+                      <div className="flex-1 flex flex-col justify-between p-1 rounded bg-white dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50">
+                        <div className="flex items-center justify-between">
+                          <span className="w-5 h-1 rounded bg-slate-200 dark:bg-slate-700" />
+                          <span
+                            className="w-2.5 h-1 rounded-full"
+                            style={{ backgroundColor: t.primaryColor, opacity: 0.3 }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span
+                            className="h-2.5 px-1.5 rounded-xs flex items-center justify-center shadow-xs"
+                            style={{ backgroundColor: t.primaryColor }}
+                          >
+                            <span className="w-2 h-0.5 rounded-full bg-white" />
+                          </span>
+                          <span
+                            className="h-2.5 flex-1 rounded-xs border"
+                            style={{
+                              backgroundColor: t.accentBg,
+                              borderColor: t.primaryColor,
+                              opacity: 0.8,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual Color Bar Strip */}
+                    <div
+                      className="h-1 w-full rounded-full"
+                      style={{
+                        background: `linear-gradient(to right, ${t.primaryColor}, ${t.darkPrimaryColor}, ${t.accentBg})`,
+                      }}
+                    />
+                  </div>
+                </button>
               );
             })}
           </div>
@@ -465,6 +531,36 @@ export default function BusinessSettingsPage() {
               />
             </div>
 
+            <div>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-teal-600" />
+                Company Owner / Proprietor Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Muhammad Farhan"
+                value={settings.ownerName || ""}
+                onChange={(e) => setSettings({ ...settings, ownerName: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Prints as "Prepared by: [Name] (Owner)" on Price Estimator and official sheets
+              </span>
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                Owner Role / Designation
+              </label>
+              <input
+                type="text"
+                placeholder="Owner"
+                value={settings.ownerRole || "Owner"}
+                onChange={(e) => setSettings({ ...settings, ownerRole: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+              />
+            </div>
+
             <div className="md:col-span-2">
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
@@ -591,10 +687,28 @@ export default function BusinessSettingsPage() {
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs md:text-sm font-bold shadow-lg shadow-teal-600/30 transition-all disabled:opacity-50"
+            className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold shadow-lg transition-all disabled:opacity-50 ${
+              isSaved
+                ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30"
+                : "bg-teal-600 hover:bg-teal-700 shadow-teal-600/30"
+            }`}
           >
-            <Save className="w-4 h-4" />
-            {isSaving ? "Saving..." : "Save Settings (Mehfooz Karein)"}
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : isSaved ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                Settings Saved!
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Save Settings
+              </>
+            )}
           </button>
         </div>
       </form>

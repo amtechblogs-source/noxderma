@@ -21,14 +21,18 @@ import {
   Trash2,
   X,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { getProductImageUrl } from "@/features/sales/OfflineInvoiceCreator";
 import type { Invoice, Product, BusinessSettings } from "@/types";
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
+import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 
 export default function SalesInvoicesListPage() {
+  const { currentUser } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
@@ -172,6 +176,19 @@ export default function SalesInvoicesListPage() {
       );
       setSelectedInvoiceIds((prev) => prev.filter((id) => id !== inv.id));
       setDeletingInvoice(null);
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "System Administrator",
+        userRole: currentUser?.role || "admin",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "invoice",
+        entityId: inv.id,
+        entityTitle: `Bill #${inv.provisionalReference || inv.id}`,
+        details: `Deleted customer bill #${inv.provisionalReference || inv.id} for "${inv.customerName}" (Total: PKR ${(inv.netTotal || 0).toLocaleString()}). Stock returned to batches.`,
+        snapshotBefore: inv,
+        canUndo: true,
+      });
       await loadData();
       setSuccessNotice(`Bill "${inv.provisionalReference || inv.id}" kamyabi se delete ho gaya aur stock wapas restore ho gaya!`);
       setTimeout(() => setSuccessNotice(null), 4000);
@@ -206,6 +223,24 @@ export default function SalesInvoicesListPage() {
           }
         }
       );
+      for (const id of selectedInvoiceIds) {
+        const inv = invoices.find((i) => i.id === id);
+        if (inv) {
+          await recordActivity({
+            userId: currentUser?.id || "usr_admin",
+            userName: currentUser?.displayName || "System Administrator",
+            userRole: currentUser?.role || "admin",
+            userEmail: currentUser?.email,
+            action: "delete",
+            entityType: "invoice",
+            entityId: inv.id,
+            entityTitle: `Bill #${inv.provisionalReference || inv.id}`,
+            details: `Bulk-deleted customer bill #${inv.provisionalReference || inv.id} for "${inv.customerName}" (Total: PKR ${(inv.netTotal || 0).toLocaleString()}). Stock returned.`,
+            snapshotBefore: inv,
+            canUndo: true,
+          });
+        }
+      }
       setSelectedInvoiceIds([]);
       setIsBulkDeleting(false);
       await loadData();
@@ -501,7 +536,15 @@ export default function SalesInvoicesListPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 gap-2">
+                    <div className="flex items-center justify-between pt-1 gap-1.5 flex-wrap">
+                      <Link
+                        href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold text-xs min-h-[40px] hover:bg-amber-100 dark:hover:bg-amber-900/50 btn-interactive"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Edit Bill</span>
+                      </Link>
+
                       <button
                         onClick={() => handlePrint(inv)}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs min-h-[40px] hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive"
@@ -636,6 +679,13 @@ export default function SalesInvoicesListPage() {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
+                              title="Edit Bill (بل تبدیل کریں)"
+                              className="p-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 text-amber-600 dark:text-amber-400 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Link>
                             <button
                               onClick={() => handlePrint(inv)}
                               title="Print Bill"

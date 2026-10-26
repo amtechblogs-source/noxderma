@@ -82,13 +82,15 @@ export async function POST(request: Request) {
     // 1. Persist to server disk database
     writeLocalSettings(updated);
 
-    // 2. Persist to Cloud Firestore if ready
+    // 2. Persist to Cloud Firestore if ready (non-blocking background write)
     if (isFirebaseAdminReady()) {
       try {
         const docRef = adminDb.collection("organizationSettings").doc("primary");
-        await docRef.set(updated, { merge: true });
+        docRef.set(updated, { merge: true }).catch((cloudErr) => {
+          console.warn("Could not save settings to Cloud Firestore:", cloudErr);
+        });
       } catch (cloudErr) {
-        console.warn("Could not save settings to Cloud Firestore:", cloudErr);
+        console.warn("Could not initiate Cloud Firestore save:", cloudErr);
       }
     }
 

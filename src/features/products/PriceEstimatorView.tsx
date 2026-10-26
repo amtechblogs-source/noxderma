@@ -30,6 +30,9 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  MapPin,
+  Phone,
+  Mail,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -106,7 +109,28 @@ export function PriceEstimatorView() {
       } catch {}
     }
     loadSettings();
+
+    const handleUpdate = () => loadSettings();
+    window.addEventListener("noxderma_settings_updated", handleUpdate);
+    return () => window.removeEventListener("noxderma_settings_updated", handleUpdate);
   }, []);
+
+  const preparerName = useMemo(() => {
+    if (businessSettings?.ownerName && String(businessSettings.ownerName).trim()) {
+      return String(businessSettings.ownerName).trim();
+    }
+    if (currentUser?.displayName) {
+      return currentUser.displayName.replace(/\s*\((?:Admin|Owner)\)/gi, "").trim();
+    }
+    return "Muhammad Farhan";
+  }, [businessSettings, currentUser]);
+
+  const preparerRole = useMemo(() => {
+    if (businessSettings?.ownerRole && String(businessSettings.ownerRole).trim()) {
+      return String(businessSettings.ownerRole).trim();
+    }
+    return "Owner";
+  }, [businessSettings]);
 
   // Load existing products on mount
   useEffect(() => {
@@ -1523,47 +1547,59 @@ export function PriceEstimatorView() {
 
     {/* Dedicated A4 Printable Costing & Feasibility Sheet */}
     <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-5">
-      {/* Document Header */}
-      <div className="flex justify-between items-start pb-4 border-b-2 border-black gap-4">
-        <div className="flex items-start gap-3">
+      {/* Document Header with Invoice-Style Icons & Layout */}
+      <div className="flex justify-between items-start pb-5 border-b-2 border-black gap-4">
+        <div className="flex items-start gap-3.5">
           {businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl ? (
             <img
               src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
               alt="Logo"
-              className="h-14 w-auto max-w-[140px] object-contain shrink-0"
+              className="h-16 w-auto max-w-[160px] object-contain shrink-0"
             />
           ) : (
-            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-lg shrink-0">
+            <div className="w-14 h-14 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-lg shrink-0">
               ND
             </div>
           )}
           <div>
-            <h1 className="text-xl font-black tracking-tight text-black leading-tight uppercase">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-black leading-tight uppercase">
               {businessSettings?.brandName || "NOXDERMA PHARMA"}
             </h1>
             <p className="text-[11px] font-bold text-slate-700">
               Pharmaceutical Product Costing & Commercial Feasibility Sheet
             </p>
-            <div className="mt-1 text-[10px] text-slate-600 space-x-2">
-              <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
-              <span>&bull;</span>
-              <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
-              <span>&bull;</span>
-              <span>{businessSettings?.email || "info@noxderma.com"}</span>
+            <div className="mt-1.5 space-y-0.5 text-xs font-semibold text-slate-800">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-black shrink-0" />
+                <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-black shrink-0" />
+                <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-black shrink-0" />
+                <span>{businessSettings?.email || "info@noxderma.com"}</span>
+              </div>
             </div>
           </div>
         </div>
 
         <div className="text-right shrink-0">
-          <span className="inline-block px-2.5 py-0.5 rounded text-[10px] font-black border border-black bg-slate-100 tracking-wider uppercase">
+          <span className="inline-block px-3 py-1 rounded text-xs font-black border border-black text-black bg-slate-100 tracking-wider uppercase">
             COSTING SHEET
           </span>
-          <p className="font-mono text-xs font-bold text-black mt-1">
+          <p className="font-mono text-xs sm:text-sm font-bold text-black mt-1.5">
             Date: {formatKarachiDate(new Date())}
           </p>
-          <p className="text-[10px] text-slate-700">
-            Prepared by: <strong>{currentUser?.displayName || "Administrator"}</strong>
-          </p>
+          <div className="mt-2 text-right">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
+              Prepared by:
+            </span>
+            <span className="text-xs sm:text-sm font-black text-black block mt-0.5">
+              {preparerName} ({preparerRole})
+            </span>
+          </div>
         </div>
       </div>
 

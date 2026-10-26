@@ -34,12 +34,22 @@ export interface LocalAuditLog {
   id: string;
   userId: string;
   userName: string;
-  deviceId: string;
+  userRole?: string;
+  userEmail?: string;
+  deviceId?: string;
   action: string;
   entityType: string;
   entityId: string;
+  entityTitle?: string;
   details: string;
   timestamp: string;
+  snapshotBefore?: any;
+  snapshotAfter?: any;
+  canUndo?: boolean;
+  isUndone?: boolean;
+  undoneAt?: string;
+  undoneBy?: string;
+  undoneDetails?: string;
 }
 
 export class NoxdermaDexieDB extends Dexie {
@@ -109,6 +119,10 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(4).stores({
       coupons: "id, code, customerId, status, discountPercent, validUntil, createdAt",
+    });
+
+    this.version(5).stores({
+      auditLogs: "id, userId, timestamp, action, entityType, entityId, isUndone",
     });
   }
 }

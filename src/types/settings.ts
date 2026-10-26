@@ -7,6 +7,8 @@ export interface BusinessSettings {
   invoiceLogoUrl: string;
   faviconUrl: string;
   colorTheme?: string;
+  ownerName?: string;
+  ownerRole?: string;
   address: string;
   website: string;
   contactPhone: string;
@@ -43,6 +45,8 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
   appLogoUrl: "/brand/logo.svg",
   invoiceLogoUrl: "/brand/invoice-logo.svg",
   faviconUrl: "/favicon.ico",
+  ownerName: "Muhammad Farhan",
+  ownerRole: "Owner",
   address: "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan",
   website: "https://noxderma.web.app",
   contactPhone: "+92 300 1234567",

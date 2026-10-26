@@ -32,8 +32,8 @@ const ACTIVE_USER_STORAGE_KEY = "noxderma_active_user_session";
 export const DEFAULT_ADMIN_USER: AuthenticatedUser = {
   id: "usr_admin",
   email: "admin@noxderma.com",
-  displayName: "System Administrator (Admin)",
-  role: "admin",
+  displayName: "System Administrator (Owner)",
+  role: "owner",
   password: "admin",
   permissions: ALL_PERMISSIONS,
   active: true,
@@ -238,24 +238,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermission = useCallback((permission: Permission): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === "admin") return true;
+    if (currentUser.role === "admin" || currentUser.role === "owner") return true;
     return (currentUser.permissions || []).includes(permission);
   }, [currentUser]);
 
   const hasAnyPermission = useCallback((permissions: Permission[]): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === "admin") return true;
+    if (currentUser.role === "admin" || currentUser.role === "owner") return true;
     const userPerms = currentUser.permissions || [];
     return permissions.some((p) => userPerms.includes(p));
   }, [currentUser]);
 
   const hasModuleAccess = useCallback((moduleKey: string): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === "admin") return true;
+    if (currentUser.role === "admin" || currentUser.role === "owner") return true;
 
     switch (moduleKey) {
       case "dashboard":
         return true;
+      case "audit":
+      case "logs":
+        return hasPermission("audit:view");
       case "sales":
       case "invoices":
         return hasAnyPermission(["invoices:create", "invoices:view", "invoices:edit", "invoices:reverse"]);
