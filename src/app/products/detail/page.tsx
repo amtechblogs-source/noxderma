@@ -27,6 +27,7 @@ import {
   EyeOff,
   Percent,
   Edit2,
+  Copy,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -315,7 +316,13 @@ function ProductDetailContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link
+            href={`/products?cloneId=${encodeURIComponent(product.id)}`}
+            className="px-3.5 py-2 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1.5 transition-colors"
+          >
+            <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Clone Product
+          </Link>
           <button
             onClick={openEditProductModal}
             className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
@@ -981,21 +988,30 @@ function ProductDetailContent() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingProduct(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 flex-wrap">
+                <Link
+                  href={`/products?cloneId=${encodeURIComponent(product.id)}`}
+                  className="px-3.5 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1.5 transition-colors"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingProductEdit}
-                  className="px-6 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20 disabled:opacity-50"
-                >
-                  {isSavingProductEdit ? "Saving Changes..." : "Save Changes (Update Karein)"}
-                </button>
+                  <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Clone as New Medicine
+                </Link>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProduct(false)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingProductEdit}
+                    className="px-6 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20 disabled:opacity-50"
+                  >
+                    {isSavingProductEdit ? "Saving Changes..." : "Save Changes (Update Karein)"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

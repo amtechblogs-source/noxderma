@@ -34,7 +34,7 @@
   "samplePolicy": "expense_at_cost",
   "damagedStockPolicy": "write_off_loss",
   "taxRateDefault": 0,
-  "updatedAt": "2026-10-24T11:58:02.655Z",
-  "updatedBy": "system",
-  "colorTheme": "amber"
+  "updatedAt": "2026-10-24T14:44:52.058Z",
+  "updatedBy": "usr_admin",
+  "colorTheme": "violet"
 }

@@ -24,10 +24,13 @@ import {
   RefreshCw,
   Trash2,
   Calculator,
+  Copy,
+  Crop,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { imageStorageService } from "@/lib/image-storage/service";
+import { ImageCropModal } from "@/components/common/ImageCropModal";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type { Product, ProductPricing, DynamicCategory, ProductImage } from "@/types";
@@ -73,8 +76,11 @@ export function ProductCatalogView() {
   const { currentUser } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
+  const [pricingMap, setPricingMap] = useState<Record<string, ProductPricing>>({});
+  const [stockMap, setStockMap] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isAdding, setIsAdding] = useState<boolean>(false);
+  const [clonedFromProduct, setClonedFromProduct] = useState<Product | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   // Add Product Form State
@@ -102,10 +108,22 @@ export function ProductCatalogView() {
   const [initialBatchNumber, setInitialBatchNumber] = useState<string>("");
   const [initialExpiryDate, setInitialExpiryDate] = useState<string>("");
 
-  // Uploaded Images
+  // Uploaded Images & Crop Modal State
   const [uploadedImages, setUploadedImages] = useState<ProductImage[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [cropModalState, setCropModalState] = useState<{
+    isOpen: boolean;
+    imageSrc: string;
+    fileName: string;
+    mode: "create" | "edit";
+    targetImageId?: string;
+  }>({
+    isOpen: false,
+    imageSrc: "",
+    fileName: "",
+    mode: "create",
+  });
 
   // --- EDIT PRODUCT MODAL STATE ---
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -133,8 +151,27 @@ export function ProductCatalogView() {
   const [isDeletingLoading, setIsDeletingLoading] = useState<boolean>(false);
 
   const refreshCatalog = async () => {
-    const prodList = await offlineDb.products.toArray();
+    const [prodList, pricingList, batchList] = await Promise.all([
+      offlineDb.products.toArray(),
+      offlineDb.productPricing.toArray(),
+      offlineDb.inventoryBatches.toArray(),
+    ]);
+
     setProducts(prodList);
+
+    const pMap: Record<string, ProductPricing> = {};
+    for (const pr of pricingList) {
+      pMap[pr.productId] = pr;
+    }
+    setPricingMap(pMap);
+
+    const sMap: Record<string, number> = {};
+    for (const b of batchList) {
+      if (b.status === "active") {
+        sMap[b.productId] = (sMap[b.productId] || 0) + (b.remainingQuantity || 0);
+      }
+    }
+    setStockMap(sMap);
 
     if (categories.length > 0 && !categoryId) {
       setCategoryId(categories[0].id);
@@ -147,69 +184,214 @@ export function ProductCatalogView() {
 
   // Auto-generate SKU when Add modal is opened or when category changes
   useEffect(() => {
-    if (isAdding) {
+    if (isAdding && !clonedFromProduct) {
       if (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-")) {
         const nextSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
         setSku(nextSku);
       }
     }
-  }, [isAdding, categoryId]);
+  }, [isAdding, categoryId, clonedFromProduct]);
 
-  // Handle direct ImageKit upload for new product
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingImage(true);
-    setUploadError(null);
-
+  // Clone an existing product into the Add Product form
+  const handleCloneProduct = async (prod: Product) => {
+    // Load pricing rates for the cloned product
+    let pricing: ProductPricing | undefined;
     try {
-      const storedImage = await imageStorageService.saveProductImage({
-        file,
-        productId: sku || "new_product",
-        isPrimary: uploadedImages.length === 0,
-      });
+      pricing = await offlineDb.productPricing.get(prod.id);
+    } catch (err) {
+      console.warn("Could not load pricing for cloned product:", err);
+    }
 
-      setUploadedImages((prev) => [
-        ...prev,
-        {
-          ...storedImage,
-          isPrimary: prev.length === 0,
-        },
-      ]);
-    } catch (err: any) {
-      setUploadError(err.message || "Failed to upload image.");
-    } finally {
-      setIsUploadingImage(false);
+    const clonedName = `${prod.name} (Copy)`;
+    const freshSku = generateAutoSku(clonedName, prod.categoryId, products, categories);
+
+    setName(clonedName);
+    setGenericName(prod.genericName || "");
+    setBrand(prod.brand || "");
+    setManufacturerId(prod.manufacturerId || "");
+    setManufacturerName(prod.manufacturerName || "");
+    setCategoryId(prod.categoryId);
+    setSku(freshSku);
+    setBarcode(""); // Clear barcode to avoid barcode collision
+    setPackSize(prod.packSize || "");
+    setUnitsPerPack(prod.unitsPerPack || 1);
+    setUnitOfMeasure(prod.unitOfMeasure || "pack");
+    setReorderThreshold(prod.reorderThreshold || 10);
+    setDescription(prod.description || "");
+
+    // Duplicate product images
+    if (prod.images && prod.images.length > 0) {
+      setUploadedImages(prod.images.map((img) => ({ ...img })));
+    } else {
+      setUploadedImages([]);
+    }
+
+    // Commercial pricing rates
+    setPurchaseCost(pricing?.purchaseCostPerPack || 0);
+    setTradePrice(pricing?.tradePricePerPack || 0);
+    setMrp(pricing?.mrpPerPack || 0);
+
+    // Reset opening warehouse stock for safety
+    setInitialStock(0);
+    setInitialBatchNumber("");
+    setInitialExpiryDate("");
+
+    setClonedFromProduct(prod);
+    setIsAdding(true);
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
-  // Handle image upload for editing product
-  const handleEditImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !editingProduct) return;
+  // Cross-page clone support (e.g. from detail page /products?cloneId=...)
+  useEffect(() => {
+    if (typeof window === "undefined" || products.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const cloneId = params.get("cloneId");
+    if (cloneId) {
+      const targetProd = products.find((p) => p.id === cloneId);
+      if (targetProd) {
+        handleCloneProduct(targetProd);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("cloneId");
+        window.history.replaceState({}, "", url.pathname + (url.search ? "?" + url.searchParams.toString() : ""));
+      }
+    }
+  }, [products]);
 
+  // Open ImageCropModal when a picture file is chosen
+  const handleImageFileSelected = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    mode: "create" | "edit"
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setCropModalState({
+        isOpen: true,
+        imageSrc: dataUrl,
+        fileName: file.name,
+        mode,
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // Re-crop an existing photo in the gallery
+  const handleReCropImage = (image: ProductImage, mode: "create" | "edit") => {
+    setUploadError(null);
+    setCropModalState({
+      isOpen: true,
+      imageSrc: image.url,
+      fileName: `recrop-${image.id}.jpg`,
+      mode,
+      targetImageId: image.id,
+    });
+  };
+
+  // Callback when crop is completed in ImageCropModal
+  const handleCropComplete = async (croppedFile: File, _previewDataUrl: string) => {
     setIsUploadingImage(true);
     setUploadError(null);
 
     try {
+      const mode = cropModalState.mode;
+      const targetId =
+        mode === "create"
+          ? sku || "new_product"
+          : editSku || editingProduct?.id || "product";
+
       const storedImage = await imageStorageService.saveProductImage({
-        file,
-        productId: editSku || editingProduct.id,
-        isPrimary: editImages.length === 0,
+        file: croppedFile,
+        productId: targetId,
+        isPrimary:
+          mode === "create"
+            ? uploadedImages.length === 0
+            : editImages.length === 0,
       });
 
-      setEditImages((prev) => [
-        ...prev,
-        {
-          ...storedImage,
-          isPrimary: prev.length === 0,
-        },
-      ]);
+      if (mode === "create") {
+        if (cropModalState.targetImageId) {
+          setUploadedImages((prev) =>
+            prev.map((img) =>
+              img.id === cropModalState.targetImageId
+                ? { ...storedImage, isPrimary: img.isPrimary }
+                : img
+            )
+          );
+        } else {
+          setUploadedImages((prev) => [
+            ...prev,
+            { ...storedImage, isPrimary: prev.length === 0 },
+          ]);
+        }
+      } else {
+        if (cropModalState.targetImageId) {
+          setEditImages((prev) =>
+            prev.map((img) =>
+              img.id === cropModalState.targetImageId
+                ? { ...storedImage, isPrimary: img.isPrimary }
+                : img
+            )
+          );
+        } else {
+          setEditImages((prev) => [
+            ...prev,
+            { ...storedImage, isPrimary: prev.length === 0 },
+          ]);
+        }
+      }
     } catch (err: any) {
-      setUploadError(err.message || "Failed to upload image.");
+      setUploadError(err.message || "Failed to process and save cropped image.");
     } finally {
       setIsUploadingImage(false);
+      setCropModalState((prev) => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  // Mark an image as primary
+  const setPrimaryImage = (imageId: string, mode: "create" | "edit") => {
+    if (mode === "create") {
+      setUploadedImages((prev) =>
+        prev.map((img) => ({
+          ...img,
+          isPrimary: img.id === imageId,
+        }))
+      );
+    } else {
+      setEditImages((prev) =>
+        prev.map((img) => ({
+          ...img,
+          isPrimary: img.id === imageId,
+        }))
+      );
+    }
+  };
+
+  // Remove image from gallery
+  const removeImage = (imageId: string, mode: "create" | "edit") => {
+    if (mode === "create") {
+      setUploadedImages((prev) => {
+        const remaining = prev.filter((img) => img.id !== imageId);
+        if (remaining.length > 0 && !remaining.some((img) => img.isPrimary)) {
+          remaining[0].isPrimary = true;
+        }
+        return remaining;
+      });
+    } else {
+      setEditImages((prev) => {
+        const remaining = prev.filter((img) => img.id !== imageId);
+        if (remaining.length > 0 && !remaining.some((img) => img.isPrimary)) {
+          remaining[0].isPrimary = true;
+        }
+        return remaining;
+      });
     }
   };
 
@@ -306,7 +488,9 @@ export function ProductCatalogView() {
     });
 
     await refreshCatalog();
+    const wasCloned = Boolean(clonedFromProduct);
     setIsAdding(false);
+    setClonedFromProduct(null);
     // Reset Form
     setName("");
     setSku("");
@@ -317,8 +501,13 @@ export function ProductCatalogView() {
     setInitialBatchNumber("");
     setInitialExpiryDate("");
     setUploadedImages([]);
+    setPurchaseCost(0);
+    setTradePrice(0);
+    setMrp(0);
     setSuccessNotice(
-      `Medicine "${newProduct.name}" shamil ho chuki hai!${hasOpeningStock ? ` (${initialStock} boxes stock shamil)` : ""}`
+      wasCloned
+        ? `Cloned medicine "${newProduct.name}" successfully created with unique SKU ${newProduct.sku}!`
+        : `Medicine "${newProduct.name}" shamil ho chuki hai!${hasOpeningStock ? ` (${initialStock} boxes stock shamil)` : ""}`
     );
     setTimeout(() => setSuccessNotice(null), 4000);
   };
@@ -529,9 +718,14 @@ export function ProductCatalogView() {
           <button
             onClick={() => {
               const nextAdding = !isAdding;
-              if (nextAdding && (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-"))) {
-                const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
-                setSku(freshSku);
+              if (nextAdding) {
+                setClonedFromProduct(null);
+                if (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-")) {
+                  const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
+                  setSku(freshSku);
+                }
+              } else {
+                setClonedFromProduct(null);
               }
               setIsAdding(nextAdding);
             }}
@@ -575,9 +769,53 @@ export function ProductCatalogView() {
           onSubmit={handleCreateProduct}
           className="p-5 md:p-6 rounded-2xl border border-teal-500/30 bg-white dark:bg-slate-900 shadow-card space-y-5 text-xs sm:text-sm animate-in fade-in"
         >
+          {/* Cloning Alert Banner */}
+          {clonedFromProduct && (
+            <div className="p-3.5 sm:p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm animate-in fade-in">
+              <div className="flex items-start sm:items-center gap-2.5 text-indigo-900 dark:text-indigo-200">
+                <Copy className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5 sm:mt-0" />
+                <div>
+                  <p className="font-bold">
+                    Cloning from: <span className="underline decoration-indigo-400">{clonedFromProduct.name}</span> ({clonedFromProduct.sku})
+                  </p>
+                  <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">
+                    All specifications, photos, and commercial rates pre-filled. A collision-free SKU has been generated. Opening stock & barcode are reset for safety.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setClonedFromProduct(null);
+                  setName("");
+                  setGenericName("");
+                  setBarcode("");
+                  setDescription("");
+                  setUploadedImages([]);
+                  setPurchaseCost(0);
+                  setTradePrice(0);
+                  setMrp(0);
+                  setSku(generateAutoSku("", categoryId || categories[0]?.id || "", products, categories));
+                }}
+                className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-200 font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs border border-indigo-200 dark:border-indigo-800 shadow-sm btn-interactive self-start sm:self-auto shrink-0"
+              >
+                Reset to Blank Form
+              </button>
+            </div>
+          )}
+
           <h2 className="text-sm sm:text-base font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Add New Medicine / Product
+            {clonedFromProduct ? (
+              <>
+                <Copy className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <span className="text-indigo-700 dark:text-indigo-300">Clone Medicine / Create Variant</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5" />
+                <span>Add New Medicine / Product</span>
+              </>
+            )}
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -820,36 +1058,109 @@ export function ProductCatalogView() {
             </div>
           </div>
 
-          {/* Image Upload Area */}
-          <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2.5">
-            <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
-              Product Photos
-            </label>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold text-sm btn-interactive">
+          {/* Image Upload Area with Cropper & Live Previews */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
+                  Product Photos & Packaging
+                </label>
+                <p className="text-[11px] text-slate-400">
+                  Upload pictures of the medicine box, bottle, or tube. Crop and preview them before saving.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800">
+                {uploadedImages.length} photo{uploadedImages.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {/* Thumbnail Preview Grid */}
+            {uploadedImages.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
+                {uploadedImages.map((img, idx) => (
+                  <div
+                    key={img.id || idx}
+                    className="group relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm aspect-square flex items-center justify-center transition-all hover:shadow-md"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.thumbnailUrl || img.url}
+                      alt="Product preview"
+                      className="w-full h-full object-cover"
+                    />
+
+                    {/* Primary Badge or Set Primary Action */}
+                    {img.isPrimary ? (
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-teal-600 text-white text-[10px] font-bold shadow-md flex items-center gap-1">
+                        <span>★ Main Photo</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPrimaryImage(img.id, "create")}
+                        className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 hover:bg-teal-600 text-white text-[10px] font-bold shadow-sm opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        Set Main
+                      </button>
+                    )}
+
+                    {/* Action Overlay */}
+                    <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/85 via-black/50 to-transparent flex items-center justify-end gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => handleReCropImage(img, "create")}
+                        title="Re-crop or Adjust framing"
+                        className="p-1.5 rounded-lg bg-white/95 hover:bg-white text-slate-800 text-xs font-bold shadow-sm flex items-center gap-1"
+                      >
+                        <Crop className="w-3.5 h-3.5 text-teal-600" />
+                        <span className="text-[10px]">Crop</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeImage(img.id, "create")}
+                        title="Remove photo"
+                        className="p-1.5 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white shadow-sm"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload Button */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <label className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 dark:text-teal-400 cursor-pointer font-bold text-sm btn-interactive">
                 <Upload className="w-4 h-4" />
-                {isUploadingImage ? "Uploading Image..." : "Upload Medicine Picture"}
+                {isUploadingImage
+                  ? "Processing & Saving..."
+                  : uploadedImages.length > 0
+                  ? "Upload Another Photo"
+                  : "Upload Medicine Picture (with Crop & Preview)"}
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={handleImageFileChange}
+                  onChange={(e) => handleImageFileSelected(e, "create")}
                   disabled={isUploadingImage}
                   className="hidden"
                 />
               </label>
               <span className="text-slate-400 text-xs">
-                {uploadedImages.length > 0
-                  ? `${uploadedImages.length} photo(s) attached`
-                  : "Photos will be saved and displayed on catalog & bills"}
+                Supports PNG, JPG, WebP. Real-time preview & framing controls.
               </span>
             </div>
+
             {uploadError && <p className="text-rose-600 text-xs font-semibold">{uploadError}</p>}
           </div>
 
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2.5 pt-2">
             <button
               type="button"
-              onClick={() => setIsAdding(false)}
+              onClick={() => {
+                setIsAdding(false);
+                setClonedFromProduct(null);
+              }}
               className="min-h-[44px] px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm btn-interactive"
             >
               Cancel
@@ -969,6 +1280,16 @@ export function ProductCatalogView() {
           filtered.map((prod) => {
             const primaryImg = prod.images.find((i) => i.isPrimary) || prod.images[0];
             const isSelected = selectedProductIds.includes(prod.id);
+            const pricing = pricingMap[prod.id];
+            const tradePrice = pricing?.tradePricePerPack ?? (prod as any).tradePricePerPack ?? 0;
+            const mrp = pricing?.mrpPerPack ?? (prod as any).mrpPerPack ?? 0;
+            const purchaseCost = pricing?.purchaseCostPerPack ?? (prod as any).purchaseCostPerPack ?? 0;
+            const currentStock = stockMap[prod.id] ?? 0;
+            const canViewCost =
+              !currentUser ||
+              currentUser.role === "admin" ||
+              currentUser.role === "manager" ||
+              currentUser.role === "accountant";
 
             return (
               <div
@@ -1035,31 +1356,82 @@ export function ProductCatalogView() {
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 text-xs sm:text-sm space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500 font-medium">Pack Details:</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{prod.packSize}</span>
+                  {/* Commercial Prices & Pack Specifications Preview Box */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 text-xs sm:text-sm space-y-2">
+                    {/* Price Rates Preview Grid */}
+                    <div className="grid grid-cols-2 gap-2 pb-2 border-b border-slate-200/80 dark:border-slate-700/60">
+                      <div className="bg-white dark:bg-slate-900/90 p-2 rounded-xl border border-teal-100 dark:border-teal-950/60 shadow-sm">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-teal-600 dark:text-teal-400 block truncate">
+                          Trade Price (T.P.)
+                        </span>
+                        <span className="font-mono font-extrabold text-sm sm:text-base text-teal-700 dark:text-teal-300 block truncate">
+                          {tradePrice > 0 ? formatPKR(tradePrice) : "PKR 0"}
+                        </span>
+                      </div>
+
+                      <div className="bg-white dark:bg-slate-900/90 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                          Retail (M.R.P.)
+                        </span>
+                        <span className="font-mono font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 block truncate">
+                          {mrp > 0 ? formatPKR(mrp) : "PKR 0"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
+
+                    {canViewCost && purchaseCost > 0 && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 font-medium">Buying Cost (Kharid):</span>
+                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                          {formatPKR(purchaseCost)}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500 font-medium">Pack Details:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{prod.packSize || "1 pack"}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
                       <span className="text-slate-500 font-medium">Items per Pack:</span>
                       <span className="font-bold text-slate-800 dark:text-slate-200">{prod.unitsPerPack}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center text-xs">
                       <span className="text-slate-500 font-medium">Low Stock Alert:</span>
-                      <span className="font-bold text-amber-600">{prod.reorderThreshold} packs</span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400">{prod.reorderThreshold} packs</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="pt-3.5 mt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                    IN STOCK
-                  </span>
+                  {currentStock <= 0 ? (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/40">
+                      OUT OF STOCK
+                    </span>
+                  ) : currentStock <= prod.reorderThreshold ? (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40">
+                      LOW STOCK ({currentStock} pk)
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
+                      IN STOCK ({currentStock} pk)
+                    </span>
+                  )}
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap justify-end">
                     <button
+                      type="button"
+                      onClick={() => handleCloneProduct(prod)}
+                      className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm btn-interactive"
+                      title={`Clone "${prod.name}" to create a new variant`}
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Clone
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => openEditModal(prod)}
-                      className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm btn-interactive"
+                      className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm btn-interactive"
                       title="Edit Product Details"
                     >
                       <Edit2 className="w-3.5 h-3.5" /> Edit
@@ -1067,7 +1439,7 @@ export function ProductCatalogView() {
 
                     <Link
                       href={`/products/detail?id=${encodeURIComponent(prod.id)}`}
-                      className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm btn-interactive"
+                      className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm btn-interactive"
                     >
                       <Eye className="w-3.5 h-3.5" /> Details
                     </Link>
@@ -1282,47 +1654,129 @@ export function ProductCatalogView() {
                 </div>
               </div>
 
-              {/* Photo Upload for Editing */}
-              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2">
-                <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
-                  Update Medicine Picture
-                </label>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="min-h-[40px] inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 cursor-pointer font-bold text-xs sm:text-sm btn-interactive">
+              {/* Photo Upload & Gallery for Editing */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
+                      Medicine Photos & Packaging
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Preview and crop product photos to ensure clear packaging display.
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800">
+                    {editImages.length} photo{editImages.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                {/* Edit Thumbnail Preview Grid */}
+                {editImages.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
+                    {editImages.map((img, idx) => (
+                      <div
+                        key={img.id || idx}
+                        className="group relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm aspect-square flex items-center justify-center transition-all hover:shadow-md"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.thumbnailUrl || img.url}
+                          alt="Medicine preview"
+                          className="w-full h-full object-cover"
+                        />
+
+                        {/* Primary Badge or Set Primary */}
+                        {img.isPrimary ? (
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-teal-600 text-white text-[10px] font-bold shadow-md flex items-center gap-1">
+                            <span>★ Main Photo</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setPrimaryImage(img.id, "edit")}
+                            className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 hover:bg-teal-600 text-white text-[10px] font-bold shadow-sm opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            Set Main
+                          </button>
+                        )}
+
+                        {/* Action Overlay */}
+                        <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/85 via-black/50 to-transparent flex items-center justify-end gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => handleReCropImage(img, "edit")}
+                            title="Re-crop or Adjust framing"
+                            className="p-1.5 rounded-lg bg-white/95 hover:bg-white text-slate-800 text-xs font-bold shadow-sm flex items-center gap-1"
+                          >
+                            <Crop className="w-3.5 h-3.5 text-teal-600" />
+                            <span className="text-[10px]">Crop</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeImage(img.id, "edit")}
+                            title="Remove photo"
+                            className="p-1.5 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white shadow-sm"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <label className="min-h-[40px] inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-dashed border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-teal-600 dark:text-teal-400 cursor-pointer font-bold text-xs sm:text-sm btn-interactive">
                     <Upload className="w-4 h-4" />
-                    {isUploadingImage ? "Uploading Image..." : "Upload New Photo"}
+                    {isUploadingImage ? "Processing..." : "Upload New Photo (with Crop)"}
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={handleEditImageFileChange}
+                      onChange={(e) => handleImageFileSelected(e, "edit")}
                       disabled={isUploadingImage}
                       className="hidden"
                     />
                   </label>
                   <span className="text-slate-400 text-xs">
-                    {editImages.length > 0
-                      ? `${editImages.length} photo(s) attached`
-                      : "No photo attached yet"}
+                    Choose and crop photos for catalog cards and print receipts.
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setEditingProduct(null)}
-                  className="min-h-[44px] px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm btn-interactive"
+                  onClick={() => {
+                    const toClone = editingProduct;
+                    setEditingProduct(null);
+                    if (toClone) {
+                      handleCloneProduct(toClone);
+                    }
+                  }}
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold flex items-center gap-2 text-xs sm:text-sm btn-interactive"
+                  title="Clone this medicine into a new variant"
                 >
-                  Cancel
+                  <Copy className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Clone as New Medicine</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSavingEdit}
-                  className="min-h-[44px] px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-2 text-sm shadow-soft shadow-teal-600/20 disabled:opacity-50 btn-interactive"
-                >
-                  <Save className="w-4 h-4" />
-                  {isSavingEdit ? "Saving Changes..." : "Save Changes (Update Karein)"}
-                </button>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProduct(null)}
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm btn-interactive"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingEdit}
+                    className="min-h-[44px] px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-2 text-sm shadow-soft shadow-teal-600/20 disabled:opacity-50 btn-interactive"
+                  >
+                    <Save className="w-4 h-4" />
+                    {isSavingEdit ? "Saving Changes..." : "Save Changes (Update Karein)"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1426,6 +1880,16 @@ export function ProductCatalogView() {
           </div>
         </div>
       )}
+
+      {/* Image Crop & Set Modal */}
+      <ImageCropModal
+        isOpen={cropModalState.isOpen}
+        imageSrc={cropModalState.imageSrc}
+        fileName={cropModalState.fileName}
+        initialAspectRatio="1:1"
+        onClose={() => setCropModalState((prev) => ({ ...prev, isOpen: false }))}
+        onCropComplete={handleCropComplete}
+      />
     </div>
   );
 }

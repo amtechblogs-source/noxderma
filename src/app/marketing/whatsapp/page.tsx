@@ -16,10 +16,12 @@ import {
   ArrowLeft,
   DollarSign,
   Layers,
+  Infinity as InfinityIcon,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Product, ProductPricing, BusinessSettings } from "@/types";
+import { openWhatsAppShare } from "@/lib/whatsapp/share";
 
 export default function WhatsAppMarketingPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -31,6 +33,7 @@ export default function WhatsAppMarketingPage() {
   >("bulk_discount");
   const [discountPercent, setDiscountPercent] = useState<number>(10);
   const [bonusSchemeText, setBonusSchemeText] = useState<string>("Buy 10 Packs, Get 1 Free!");
+  const [isNoExpiry, setIsNoExpiry] = useState<boolean>(false);
   const [validUntil, setValidUntil] = useState<string>(
     new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
   );
@@ -99,7 +102,7 @@ Special discount offer on:
           : "Volume Discount"
       }
 
-⏰ *Offer Last Date:* ${validUntil} (or till stock lasts).
+⏰ *Offer Last Date:* ${isNoExpiry || validUntil === "no_expiry" ? "Till Stock Lasts (No Fixed Expiry Date)" : `${validUntil} (or till stock lasts)`}.
 ✅ *Quality:* 100% Genuine, Fresh & Certified Stock.
 
 *To order now, contact us:*
@@ -111,6 +114,17 @@ ${web ? `🌐 Web: ${web}` : ""}
 
   const handleCopy = () => {
     navigator.clipboard.writeText(whatsappMessage);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!whatsappMessage) return;
+    await openWhatsAppShare({
+      phone: null,
+      rawText: whatsappMessage,
+      autoCopyFull: true,
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
@@ -225,15 +239,60 @@ ${web ? `🌐 Web: ${web}` : ""}
           )}
 
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Offer Last Date
-            </label>
-            <input
-              type="date"
-              value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                Offer Last Date
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-bold text-teal-600 dark:text-teal-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={isNoExpiry}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsNoExpiry(checked);
+                    if (checked) {
+                      setValidUntil("no_expiry");
+                    } else {
+                      setValidUntil(
+                        new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+                      );
+                    }
+                  }}
+                  className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                />
+                <span>No Expiry (Till Stock Lasts)</span>
+              </label>
+            </div>
+            {isNoExpiry ? (
+              <div className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <InfinityIcon className="w-4 h-4 text-teal-600" />
+                  No Fixed Expiry (Till stock lasts)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNoExpiry(false);
+                    setValidUntil(
+                      new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+                    );
+                  }}
+                  className="text-[10px] text-teal-700 dark:text-teal-300 underline font-semibold"
+                >
+                  Set Date
+                </button>
+              </div>
+            ) : (
+              <input
+                type="date"
+                value={validUntil === "no_expiry" ? "" : validUntil}
+                onChange={(e) => {
+                  setValidUntil(e.target.value);
+                  setIsNoExpiry(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+              />
+            )}
           </div>
 
           {/* Pricing Preview Pill */}
@@ -305,7 +364,9 @@ ${web ? `🌐 Web: ${web}` : ""}
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block">Offer Last Date:</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{validUntil}</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {isNoExpiry || validUntil === "no_expiry" ? "Till Stock Lasts (No Expiry)" : validUntil}
+                  </span>
                 </div>
               </div>
             </div>
@@ -322,14 +383,13 @@ ${web ? `🌐 Web: ${web}` : ""}
               >
                 <Copy className="w-3.5 h-3.5" /> Copy Message
               </button>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
                 className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
               >
                 <Share2 className="w-3.5 h-3.5" /> Send to WhatsApp
-              </a>
+              </button>
             </div>
           </div>
         </div>

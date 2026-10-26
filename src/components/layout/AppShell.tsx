@@ -9,6 +9,8 @@ import {
   Plus,
   Barcode,
   CreditCard,
+  MapPin,
+  Menu,
 } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -152,14 +154,16 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       {/* Modern Ergonomic Mobile Bottom Navigation Bar */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className="no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-2 py-1.5 transition-colors"
+        className={`no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-1 sm:px-2 py-1 transition-all duration-300 ease-in-out ${
+          sidebarOpen ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
+        }`}
       >
-        <div className="max-w-md mx-auto grid grid-cols-5 items-center justify-items-center">
+        <div className="max-w-md mx-auto grid grid-cols-7 items-center justify-items-center">
           {/* 1. Dashboard */}
           <Link
             href="/"
             prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
+            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
               isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -168,14 +172,30 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <div className={`p-1 rounded-lg transition-transform ${isExactActive("/") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
               <LayoutDashboard className="w-5 h-5" />
             </div>
-            <span className="text-[11px] tracking-tight mt-0.5">Home</span>
+            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Home</span>
           </Link>
 
-          {/* 2. Invoices List */}
+          {/* 2. Field Visits */}
+          <Link
+            href="/crm/visits"
+            prefetch={true}
+            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
+              isPrefixActive("/crm/visits")
+                ? "text-teal-600 dark:text-teal-400 font-bold"
+                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+            }`}
+          >
+            <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/crm/visits") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+              <MapPin className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Visits</span>
+          </Link>
+
+          {/* 3. Invoices List (Bills) */}
           <Link
             href="/sales/invoices"
             prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
+            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
               isExactActive("/sales/invoices")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -184,29 +204,29 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <div className={`p-1 rounded-lg transition-transform ${isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
               <Receipt className="w-5 h-5" />
             </div>
-            <span className="text-[11px] tracking-tight mt-0.5">Bills</span>
+            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Bills</span>
           </Link>
 
-          {/* 3. Center Elevated Quick Make Bill Action */}
+          {/* 4. Center Elevated Quick Make Bill Action */}
           <Link
             href="/sales/invoices/new"
             prefetch={true}
             aria-label="Make New Bill"
-            className="flex flex-col items-center justify-center -mt-5 group btn-interactive"
+            className="flex flex-col items-center justify-center -mt-4 group btn-interactive"
           >
-            <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900">
-              <Plus className="w-7 h-7 stroke-[2.5]" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900">
+              <Plus className="w-6 h-6 stroke-[2.5]" />
             </div>
-            <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 mt-1 uppercase tracking-wider">
-              + Bill
+            <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 mt-0.5 uppercase tracking-wider">
+              Bill
             </span>
           </Link>
 
-          {/* 4. Stock Batches */}
+          {/* 5. Stock Batches */}
           <Link
             href="/inventory/batches"
             prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
+            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
               isPrefixActive("/inventory")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -215,14 +235,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
               <Barcode className="w-5 h-5" />
             </div>
-            <span className="text-[11px] tracking-tight mt-0.5">Stock</span>
+            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Stock</span>
           </Link>
 
-          {/* 5. Khata / Credit */}
+          {/* 6. Khata / Credit */}
           <Link
             href="/finance/credit"
             prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-1 rounded-xl text-center transition-all btn-interactive ${
+            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
               isPrefixActive("/finance")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -231,8 +251,21 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/finance") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
               <CreditCard className="w-5 h-5" />
             </div>
-            <span className="text-[11px] tracking-tight mt-0.5">Khata</span>
+            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Khata</span>
           </Link>
+
+          {/* 7. Menu (Toggle Sidebar) */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            aria-label="Open Navigation Menu"
+            className="flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+          >
+            <div className="p-1 rounded-lg transition-transform hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Menu className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Menu</span>
+          </button>
         </div>
       </nav>
     </div>

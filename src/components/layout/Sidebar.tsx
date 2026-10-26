@@ -235,7 +235,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
       {/* Mobile Backdrop Overlay - Click outside to close drawer */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden transition-opacity animate-in fade-in duration-200 cursor-pointer"
+          className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm lg:hidden transition-opacity animate-in fade-in duration-200 cursor-pointer"
           onClick={onClose}
           aria-label="Close navigation overlay"
         />
@@ -243,7 +243,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
 
       {/* Sidebar Aside Drawer */}
       <aside
-        className={`no-print print:hidden fixed top-0 bottom-0 left-0 z-50 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 overflow-x-hidden ${
+        className={`no-print print:hidden fixed top-0 bottom-0 left-0 z-[70] bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 overflow-x-hidden ${
           isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         } w-72 sm:w-80 max-w-[85vw] ${
           isCollapsed ? "lg:w-20" : "lg:w-72"

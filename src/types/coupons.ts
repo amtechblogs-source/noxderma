@@ -21,7 +21,7 @@ export interface CouponCode {
   customerCategory?: string; // pharmacy, direct_clinic, distributor, online
   minOrderPkr: number; // e.g. Rs. 0 or Rs. 2,000
   maxDiscountPkr?: number; // optional discount cap
-  validUntil: string; // Expiry Date (YYYY-MM-DD)
+  validUntil: string; // Expiry Date (YYYY-MM-DD) or "no_expiry" (lifetime)
   usageLimit: CouponUsageLimit;
   usageCount: number;
   status: CouponStatus;

@@ -18,6 +18,7 @@ import {
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Invoice, Customer } from "@/types";
+import { openWhatsAppShare } from "@/lib/whatsapp/share";
 
 export default function CreditManagementPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -31,7 +32,7 @@ export default function CreditManagementPage() {
         offlineDb.manufacturers.toArray(),
       ]);
       setInvoices(invList);
-      const totalMfr = (mfrList || []).reduce((sum, m) => sum + (m.payableBalance || 0), 0);
+      const totalMfr = (mfrList || []).reduce((sum: number, m: any) => sum + (m.payableBalance || 0), 0);
       setMfrPayables(totalMfr);
     }
     loadCreditData();
@@ -87,11 +88,12 @@ export default function CreditManagementPage() {
   };
 
   const handleOpenWhatsApp = (inv: Invoice) => {
-    const cleanPhone = (inv.customerPhone || "").replace(/[^0-9]/g, "");
-    const text = encodeURIComponent(
-      `Assalam-o-Alaikum ${inv.customerName}, gentle payment reminder from Noxderma Pharma for Bill #${inv.officialReference || inv.provisionalReference}.\nRemaining Balance: ${formatPKR(inv.outstandingBalance)}\nDue Date: ${formatKarachiDate(inv.dueDate)}\n\nPlease arrange payment at your earliest convenience.\nBank: Meezan Bank • Account Title: Noxderma Pharma\nThank you!`
-    );
-    window.open(`https://wa.me/${cleanPhone}?text=${text}`, "_blank");
+    const message = `Assalam-o-Alaikum ${inv.customerName}, gentle payment reminder from Noxderma Pharma for Bill #${inv.officialReference || inv.provisionalReference}.\nRemaining Balance: ${formatPKR(inv.outstandingBalance)}\nDue Date: ${formatKarachiDate(inv.dueDate)}\n\nPlease arrange payment at your earliest convenience.\nBank: Meezan Bank • Account Title: Noxderma Pharma\nThank you!`;
+    openWhatsAppShare({
+      phone: inv.customerPhone,
+      rawText: message,
+      autoCopyFull: true,
+    });
   };
 
   return (

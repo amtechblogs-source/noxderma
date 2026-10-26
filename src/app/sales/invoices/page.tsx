@@ -18,11 +18,15 @@ import {
   Phone,
   MapPin,
   Mail,
+  Trash2,
+  X,
+  AlertCircle,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { getProductImageUrl } from "@/features/sales/OfflineInvoiceCreator";
 import type { Invoice, Product, BusinessSettings } from "@/types";
+import { openWhatsAppShare } from "@/lib/whatsapp/share";
 
 export default function SalesInvoicesListPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -33,6 +37,13 @@ export default function SalesInvoicesListPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [syncFilter, setSyncFilter] = useState("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  // Selection & Deletion State
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [isDeletingLoading, setIsDeletingLoading] = useState<boolean>(false);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -71,11 +82,162 @@ export default function SalesInvoicesListPage() {
   const totalNet = invoices.reduce((sum, i) => sum + (i.netTotal || 0), 0);
   const totalOutstanding = invoices.reduce((sum, i) => sum + (i.outstandingBalance || 0), 0);
 
+  const selectedInvoicesTotal = invoices
+    .filter((inv) => selectedInvoiceIds.includes(inv.id))
+    .reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
+
+  // Selection helpers
+  const handleToggleSelect = (id: string) => {
+    setSelectedInvoiceIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedInvoiceIds.length === filtered.length && filtered.length > 0) {
+      setSelectedInvoiceIds([]);
+    } else {
+      setSelectedInvoiceIds(filtered.map((inv) => inv.id));
+    }
+  };
+
+  // Revert stock, customer balance, and delete record
+  const deleteInvoiceRecord = async (inv: Invoice) => {
+    const now = new Date().toISOString();
+
+    // 1. Return items to respective inventory batches and record positive adjustment
+    for (const line of inv.lines || []) {
+      for (const alloc of line.batchAllocations || []) {
+        if (alloc.batchId) {
+          const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
+          if (batch) {
+            const restoredQty = (Number(batch.remainingQuantity) || 0) + (alloc.quantity || 0);
+            await offlineDb.inventoryBatches.update(alloc.batchId, {
+              remainingQuantity: restoredQty,
+              updatedAt: now,
+            });
+
+            await offlineDb.stockMovements.add({
+              id: `mov_del_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              productId: line.productId,
+              productName: line.productName,
+              batchId: alloc.batchId,
+              batchNumber: alloc.batchNumber || batch.batchNumber,
+              type: "sales_return",
+              quantityChange: alloc.quantity,
+              balanceAfter: restoredQty,
+              referenceId: inv.id,
+              referenceType: "invoice",
+              userId: "usr_admin",
+              userName: "Admin",
+              reason: `Invoice deleted: ${inv.provisionalReference || inv.id}`,
+              timestamp: now,
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Revert customer outstanding balance if invoice was pending
+    if (inv.customerId && inv.outstandingBalance > 0) {
+      const cust = await offlineDb.customers.get(inv.customerId);
+      if (cust) {
+        const newBal = Math.max(0, (cust.currentOutstandingBalance || 0) - inv.outstandingBalance);
+        await offlineDb.customers.update(inv.customerId, {
+          currentOutstandingBalance: newBal,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // 3. Delete invoice from Dexie offline database
+    await offlineDb.invoices.delete(inv.id);
+  };
+
+  // Single Delete Handler
+  const handleDeleteSingle = async (inv: Invoice) => {
+    setIsDeletingLoading(true);
+    try {
+      await offlineDb.transaction(
+        "rw",
+        [
+          offlineDb.invoices,
+          offlineDb.inventoryBatches,
+          offlineDb.stockMovements,
+          offlineDb.customers,
+        ],
+        async () => {
+          await deleteInvoiceRecord(inv);
+        }
+      );
+      setSelectedInvoiceIds((prev) => prev.filter((id) => id !== inv.id));
+      setDeletingInvoice(null);
+      await loadData();
+      setSuccessNotice(`Bill "${inv.provisionalReference || inv.id}" kamyabi se delete ho gaya aur stock wapas restore ho gaya!`);
+      setTimeout(() => setSuccessNotice(null), 4000);
+    } catch (err: any) {
+      console.error("Delete invoice error:", err);
+      alert("Bill delete karne mein masla hua: " + (err.message || "Unknown error"));
+    } finally {
+      setIsDeletingLoading(false);
+    }
+  };
+
+  // Bulk Delete Handler
+  const handleBulkDelete = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+    setIsDeletingLoading(true);
+    try {
+      const count = selectedInvoiceIds.length;
+      await offlineDb.transaction(
+        "rw",
+        [
+          offlineDb.invoices,
+          offlineDb.inventoryBatches,
+          offlineDb.stockMovements,
+          offlineDb.customers,
+        ],
+        async () => {
+          for (const id of selectedInvoiceIds) {
+            const inv = invoices.find((i) => i.id === id);
+            if (inv) {
+              await deleteInvoiceRecord(inv);
+            }
+          }
+        }
+      );
+      setSelectedInvoiceIds([]);
+      setIsBulkDeleting(false);
+      await loadData();
+      setSuccessNotice(`${count} bills kamyabi se delete ho gaye aur inventory stock restore ho gaya!`);
+      setTimeout(() => setSuccessNotice(null), 4000);
+    } catch (err: any) {
+      console.error("Bulk delete error:", err);
+      alert("Bulk delete mein masla hua: " + (err.message || "Unknown error"));
+    } finally {
+      setIsDeletingLoading(false);
+    }
+  };
+
   const handlePrint = (inv: Invoice) => {
     setSelectedInvoice(inv);
     setTimeout(() => {
       window.print();
     }, 200);
+  };
+
+  const handleShareInvoiceWhatsApp = (inv: Invoice) => {
+    const message = `*NOXDERMA PHARMA - BILL RECEIPT*\nBill No: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nTotal Bill: ${formatPKR(
+      inv.netTotal
+    )}\nRemaining Baqaya: ${formatPKR(
+      inv.outstandingBalance
+    )}\nDue Date: ${inv.dueDate || "30 Days"}\n\nThank you for your business!`;
+
+    openWhatsAppShare({
+      phone: inv.customerPhone,
+      rawText: message,
+      autoCopyFull: true,
+    });
   };
 
   return (
@@ -180,6 +342,60 @@ export default function SalesInvoicesListPage() {
         </div>
       </div>
 
+      {/* Success Notification Notice */}
+      {successNotice && (
+        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{successNotice}</span>
+          </div>
+          <button
+            onClick={() => setSuccessNotice(null)}
+            className="text-emerald-600 hover:text-emerald-800 dark:hover:text-emerald-200 p-1 rounded-lg"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Bulk Selection Actions Floating Toolbar */}
+      {selectedInvoiceIds.length > 0 && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-900 text-white shadow-xl border border-teal-700 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-teal-800 text-teal-200 flex items-center justify-center font-bold text-sm">
+              {selectedInvoiceIds.length}
+            </div>
+            <div>
+              <span className="font-extrabold text-sm block">
+                {selectedInvoiceIds.length} {selectedInvoiceIds.length === 1 ? "Bill Selected" : "Bills Selected"}
+              </span>
+              <span className="text-xs text-teal-200">
+                Total Value: <strong className="font-mono text-white">{formatPKR(selectedInvoicesTotal)}</strong>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={() => setSelectedInvoiceIds([])}
+              className="px-3.5 py-2 min-h-[38px] rounded-xl bg-teal-800 hover:bg-teal-700 active:bg-teal-800 text-teal-100 font-bold text-xs sm:text-sm btn-interactive"
+            >
+              Deselect All
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsBulkDeleting(true)}
+              className="px-4 py-2 min-h-[38px] rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm btn-interactive"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Selected ({selectedInvoiceIds.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Invoices Master Container */}
       <div className="space-y-4">
         {filtered.length === 0 ? (
@@ -197,85 +413,123 @@ export default function SalesInvoicesListPage() {
           <>
             {/* Mobile View: High Ergonomics Touch Cards */}
             <div className="grid grid-cols-1 gap-3 md:hidden">
-              {filtered.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive space-y-3"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                    <div>
-                      <span className="font-mono font-bold text-teal-600 dark:text-teal-400 text-sm block">
-                        {inv.provisionalReference || inv.id}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {inv.invoiceDate || inv.createdAt.slice(0, 10)} &bull; {inv.lines?.length || 1} item(s)
-                      </span>
+              {filtered.map((inv) => {
+                const isSelected = selectedInvoiceIds.includes(inv.id);
+                return (
+                  <div
+                    key={inv.id}
+                    className={`p-4 rounded-2xl border bg-white dark:bg-slate-900 shadow-soft card-interactive space-y-3 transition-all ${
+                      isSelected
+                        ? "border-teal-500 dark:border-teal-400 ring-2 ring-teal-500/20 bg-teal-50/10 dark:bg-teal-950/10"
+                        : "border-slate-200/80 dark:border-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <label
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-2 cursor-pointer select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(inv.id)}
+                            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                          />
+                        </label>
+                        <div>
+                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400 text-sm block">
+                            {inv.provisionalReference || inv.id}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {inv.invoiceDate || inv.createdAt.slice(0, 10)} &bull; {inv.lines?.length || 1} item(s)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                            inv.paymentStatus === "paid"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                              : inv.paymentStatus === "partially_paid"
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                              : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                          }`}
+                        >
+                          {inv.paymentStatus === "paid"
+                            ? "PAID"
+                            : inv.paymentStatus === "partially_paid"
+                            ? "PARTIAL"
+                            : "UNPAID"}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeletingInvoice(inv)}
+                          title="Delete Bill"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                        inv.paymentStatus === "paid"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : inv.paymentStatus === "partially_paid"
-                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                          : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                      }`}
-                    >
-                      {inv.paymentStatus === "paid" ? "PAID" : inv.paymentStatus === "partially_paid" ? "PARTIAL" : "UNPAID"}
-                    </span>
-                  </div>
 
-                  <div>
-                    <Link
-                      href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
-                      className="font-bold text-base text-slate-900 dark:text-slate-100 hover:text-teal-600 block truncate"
-                    >
-                      {inv.customerName}
-                    </Link>
-                    <span className="text-xs text-slate-400">{inv.customerPhone}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
                     <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Total Bill</span>
-                      <span className="text-base font-extrabold font-mono text-slate-900 dark:text-slate-100">
-                        {formatPKR(inv.netTotal)}
-                      </span>
+                      <Link
+                        href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
+                        className="font-bold text-base text-slate-900 dark:text-slate-100 hover:text-teal-600 block truncate"
+                      >
+                        {inv.customerName}
+                      </Link>
+                      <span className="text-xs text-slate-400">{inv.customerPhone}</span>
                     </div>
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-rose-500 block">Baqaya (Udhaar)</span>
-                      <span className="text-base font-extrabold font-mono text-rose-600">
-                        {formatPKR(inv.outstandingBalance)}
-                      </span>
+
+                    <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Total Bill</span>
+                        <span className="text-base font-extrabold font-mono text-slate-900 dark:text-slate-100">
+                          {formatPKR(inv.netTotal)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-rose-500 block">Baqaya (Udhaar)</span>
+                        <span className="text-base font-extrabold font-mono text-rose-600">
+                          {formatPKR(inv.outstandingBalance)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 gap-2">
+                      <button
+                        onClick={() => handlePrint(inv)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs min-h-[40px] hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive"
+                      >
+                        <Printer className="w-4 h-4 text-slate-500" />
+                        <span>Print Bill</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleShareInvoiceWhatsApp(inv)}
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs min-h-[40px] btn-interactive"
+                      >
+                        <Share2 className="w-4 h-4 text-emerald-600" />
+                        <span>WhatsApp</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeletingInvoice(inv)}
+                        title="Delete Bill"
+                        className="inline-flex items-center justify-center p-2 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 min-h-[40px] min-w-[40px] btn-interactive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-between pt-1 gap-2">
-                    <button
-                      onClick={() => handlePrint(inv)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs min-h-[40px] hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive"
-                    >
-                      <Printer className="w-4 h-4 text-slate-500" />
-                      <span>Print Bill</span>
-                    </button>
-
-                    <a
-                      href={`https://wa.me/${inv.customerPhone?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                        `*NOXDERMA PHARMA - BILL RECEIPT*\nBill No: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nTotal Bill: ${formatPKR(
-                          inv.netTotal
-                        )}\nRemaining Baqaya: ${formatPKR(
-                          inv.outstandingBalance
-                        )}\nDue Date: ${inv.dueDate || "30 Days"}\n\nThank you for your business!`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs min-h-[40px] btn-interactive"
-                    >
-                      <Share2 className="w-4 h-4 text-emerald-600" />
-                      <span>WhatsApp</span>
-                    </a>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Desktop View: Full Master Table */}
@@ -283,6 +537,16 @@ export default function SalesInvoicesListPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                   <tr>
+                    <th className="p-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={filtered.length > 0 && selectedInvoiceIds.length === filtered.length}
+                        onChange={handleToggleSelectAll}
+                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                        title="Select All Invoices"
+                        aria-label="Select All Invoices"
+                      />
+                    </th>
                     <th className="p-3">Bill No</th>
                     <th className="p-3">Customer / Store</th>
                     <th className="p-3">Date / Due Date</th>
@@ -294,100 +558,243 @@ export default function SalesInvoicesListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filtered.map((inv) => (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="p-3">
-                        <span className="font-mono font-bold text-teal-600 dark:text-teal-400 block text-sm">
-                          {inv.provisionalReference || inv.id}
-                        </span>
-                        <span className="text-xs text-slate-400 font-mono">
-                          {inv.lines?.length || 1} medicine(s)
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <Link
-                          href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
-                          className="font-bold text-slate-900 dark:text-slate-100 hover:underline block truncate max-w-[200px]"
-                        >
-                          {inv.customerName}
-                        </Link>
-                        <span className="text-xs text-slate-400">{inv.customerPhone}</span>
-                      </td>
-                      <td className="p-3 text-slate-600 dark:text-slate-400">
-                        <div>{inv.invoiceDate || inv.createdAt.slice(0, 10)}</div>
-                        <span className="text-xs text-slate-400">Due: {inv.dueDate || "30 Days"}</span>
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
-                        {formatPKR(inv.netTotal)}
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-rose-600">
-                        {formatPKR(inv.outstandingBalance)}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                            inv.paymentStatus === "paid"
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  {filtered.map((inv) => {
+                    const isSelected = selectedInvoiceIds.includes(inv.id);
+                    return (
+                      <tr
+                        key={inv.id}
+                        className={`transition-colors ${
+                          isSelected
+                            ? "bg-teal-50/20 dark:bg-teal-950/20"
+                            : "hover:bg-slate-50/60 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
+                        <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(inv.id)}
+                            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                            aria-label={`Select bill ${inv.provisionalReference || inv.id}`}
+                          />
+                        </td>
+                        <td className="p-3">
+                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400 block text-sm">
+                            {inv.provisionalReference || inv.id}
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {inv.lines?.length || 1} medicine(s)
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <Link
+                            href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
+                            className="font-bold text-slate-900 dark:text-slate-100 hover:underline block truncate max-w-[200px]"
+                          >
+                            {inv.customerName}
+                          </Link>
+                          <span className="text-xs text-slate-400">{inv.customerPhone}</span>
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-400">
+                          <div>{inv.invoiceDate || inv.createdAt.slice(0, 10)}</div>
+                          <span className="text-xs text-slate-400">Due: {inv.dueDate || "30 Days"}</span>
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                          {formatPKR(inv.netTotal)}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-rose-600">
+                          {formatPKR(inv.outstandingBalance)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                              inv.paymentStatus === "paid"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                : inv.paymentStatus === "partially_paid"
+                                ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                            }`}
+                          >
+                            {inv.paymentStatus === "paid"
+                              ? "PAID"
                               : inv.paymentStatus === "partially_paid"
-                              ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                              : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                          }`}
-                        >
-                          {inv.paymentStatus === "paid"
-                            ? "PAID"
-                            : inv.paymentStatus === "partially_paid"
-                            ? "HALF PAID"
-                            : "UNPAID"}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span
-                          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
-                            inv.syncStatus === "synced"
-                              ? "bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300"
-                              : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
-                          }`}
-                        >
-                          {inv.syncStatus === "synced" ? "ONLINE" : "OFFLINE"}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handlePrint(inv)}
-                            title="Print Bill"
-                            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                              ? "HALF PAID"
+                              : "UNPAID"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span
+                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
+                              inv.syncStatus === "synced"
+                                ? "bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300"
+                                : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
+                            }`}
                           >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                          <a
-                            href={`https://wa.me/${inv.customerPhone?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                              `*NOXDERMA PHARMA - BILL RECEIPT*\nBill No: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nTotal Bill: ${formatPKR(
-                                inv.netTotal
-                              )}\nRemaining Baqaya: ${formatPKR(
-                                inv.outstandingBalance
-                              )}\nDue Date: ${inv.dueDate || "30 Days"}\n\nThank you for your business!`
-                            )}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Send on WhatsApp"
-                            className="p-2 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 text-emerald-600 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
-                          >
-                            <Share2 className="w-4 h-4" />
-                          </a>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {inv.syncStatus === "synced" ? "ONLINE" : "OFFLINE"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handlePrint(inv)}
+                              title="Print Bill"
+                              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleShareInvoiceWhatsApp(inv)}
+                              title="Send on WhatsApp"
+                              className="p-2 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 text-emerald-600 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingInvoice(inv)}
+                              title="Delete Bill"
+                              className="p-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 hover:text-rose-700 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* INDIVIDUAL INVOICE DELETE CONFIRMATION MODAL                              */}
+      {/* ========================================================================= */}
+      {deletingInvoice && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">
+                Delete Customer Bill?
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Kya aap waqai Bill No{" "}
+                <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                  {deletingInvoice.provisionalReference || deletingInvoice.id}
+                </strong>{" "}
+                ({deletingInvoice.customerName}) delete karna chahte hain?
+              </p>
+
+              <div className="p-3 mt-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Bill Amount:</span>
+                  <span className="font-bold font-mono text-slate-900 dark:text-slate-100">
+                    {formatPKR(deletingInvoice.netTotal)}
+                  </span>
+                </div>
+                {deletingInvoice.outstandingBalance > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Remaining Udhaar:</span>
+                    <span className="font-bold font-mono text-rose-600">
+                      {formatPKR(deletingInvoice.outstandingBalance)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Medicines / Batches:</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    {deletingInvoice.lines?.length || 0} items
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 font-medium bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40 flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Is bill ki tamam items ka stock wapas batches mein jama (restore) ho jayega aur customer ka udhaar balance wapas adjust ho jayega.
+                </span>
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={() => setDeletingInvoice(null)}
+                className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={() => handleDeleteSingle(deletingInvoice)}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm shadow-rose-600/20 disabled:opacity-50 btn-interactive"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingLoading ? "Deleting..." : "Delete Bill"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* BULK INVOICES DELETE CONFIRMATION MODAL                                    */}
+      {/* ========================================================================= */}
+      {isBulkDeleting && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">
+                Delete {selectedInvoiceIds.length} Selected Bills?
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Aap ne <strong className="text-slate-800 dark:text-slate-200">{selectedInvoiceIds.length} bills</strong> muntakhib kiye hain jinki kul qeemat{" "}
+                <strong className="font-mono text-teal-600 dark:text-teal-400 font-bold">{formatPKR(selectedInvoicesTotal)}</strong> hai.
+              </p>
+
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 font-medium bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40 flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Tamam muntakhib bills delete ho jayenge aur unka stock wapas batches mein restore ho jayega.
+                </span>
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={() => setIsBulkDeleting(false)}
+                className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingLoading}
+                onClick={handleBulkDelete}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm shadow-rose-600/20 disabled:opacity-50 btn-interactive"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingLoading ? "Deleting..." : `Delete ${selectedInvoiceIds.length} Bills`}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
       {selectedInvoice && (

@@ -32,6 +32,7 @@ import {
   UserCheck,
   DollarSign,
   Info,
+  Infinity as InfinityIcon,
 } from "lucide-react";
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -50,6 +51,7 @@ import {
   exportCouponsForWebDevelopers,
   WhatsAppMessageTone,
 } from "@/lib/coupons/generator";
+import { openWhatsAppShare } from "@/lib/whatsapp/share";
 
 export function CouponManagerView() {
   // Navigation / View Tabs
@@ -71,6 +73,7 @@ export function CouponManagerView() {
   const [customerSearch, setCustomerSearch] = useState<string>("");
   const [minOrderPkr, setMinOrderPkr] = useState<number>(0);
   const [validDays, setValidDays] = useState<number>(30);
+  const [isNoExpiry, setIsNoExpiry] = useState<boolean>(false);
   const [validUntil, setValidUntil] = useState<string>(
     new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
   );
@@ -134,9 +137,16 @@ export function CouponManagerView() {
 
   // Recalculate expiry date when validDays changes
   const handleValidDaysChange = (days: number) => {
-    setValidDays(days);
-    const newDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
-    setValidUntil(newDate);
+    if (days === 0 || days === -1) {
+      setIsNoExpiry(true);
+      setValidDays(0);
+      setValidUntil("no_expiry");
+    } else {
+      setIsNoExpiry(false);
+      setValidDays(days);
+      const newDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      setValidUntil(newDate);
+    }
   };
 
   // Generate new random code
@@ -243,7 +253,7 @@ export function CouponManagerView() {
       customerCategory:
         assignedScope === "specific_customer" ? selectedCustomer?.category : undefined,
       minOrderPkr: Number(minOrderPkr) || 0,
-      validUntil: validUntil,
+      validUntil: isNoExpiry ? "no_expiry" : validUntil,
       usageLimit: usageLimit,
       usageCount: 0,
       status: "active",
@@ -295,7 +305,7 @@ export function CouponManagerView() {
   };
 
   // Direct WhatsApp Launcher
-  const handleOpenWhatsApp = (targetPhone?: string, customMsg?: string) => {
+  const handleOpenWhatsApp = async (targetPhone?: string, customMsg?: string) => {
     const phoneToUse = targetPhone || selectedCustomer?.whatsappNumber || selectedCustomer?.phone || "";
     const cleanNumber = normalizePhoneForWhatsApp(phoneToUse);
     const message = customMsg || currentWhatsAppMessage;
@@ -305,8 +315,13 @@ export function CouponManagerView() {
       return;
     }
 
-    const waUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, "_blank", "noopener,noreferrer");
+    await openWhatsAppShare({
+      phone: cleanNumber,
+      rawText: message,
+      autoCopyFull: true,
+    });
+    setSuccessToast("WhatsApp khul gaya! Emojis wala full message bhi clipboard par copy ho chuka hai (Ctrl+V).");
+    setTimeout(() => setSuccessToast(null), 4500);
   };
 
   // Copy to Clipboard helpers
@@ -661,11 +676,14 @@ export function CouponManagerView() {
                           <div>
                             <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                               <span>{cust.businessName || cust.name}</span>
-                              {cust.businessName && (
-                                <span className="text-[10px] text-slate-400 font-normal">
-                                  ({cust.name})
-                                </span>
-                              )}
+                              {cust.businessName &&
+                                cust.name &&
+                                cust.businessName.trim().toLowerCase() !==
+                                  cust.name.trim().toLowerCase() && (
+                                  <span className="text-[10px] text-slate-400 font-normal">
+                                    ({cust.name})
+                                  </span>
+                                )}
                             </div>
                             <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
                               <span className="capitalize">{cust.category}</span>
@@ -722,30 +740,92 @@ export function CouponManagerView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Expiry Date */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Expiry Date (Last Valid Date)
-                  </label>
-                  <input
-                    type="date"
-                    value={validUntil}
-                    onChange={(e) => setValidUntil(e.target.value)}
-                    className="w-full text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-1 focus:ring-teal-500"
-                  />
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    {[7, 14, 30, 60].map((d) => (
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Expiry Date (Last Valid Date)
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-bold text-teal-600 dark:text-teal-400 select-none">
+                      <input
+                        type="checkbox"
+                        checked={isNoExpiry}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setIsNoExpiry(checked);
+                          if (checked) {
+                            setValidUntil("no_expiry");
+                            setValidDays(0);
+                          } else {
+                            setValidDays(30);
+                            setValidUntil(
+                              new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+                            );
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                      />
+                      <span>No Expiry (Lifetime)</span>
+                    </label>
+                  </div>
+
+                  {isNoExpiry ? (
+                    <div className="w-full text-xs font-bold px-3 py-2 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-200 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <InfinityIcon className="w-4 h-4 text-teal-600" />
+                        No Expiry (Hamesha ke liye active rahe ga)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsNoExpiry(false);
+                          setValidDays(30);
+                          setValidUntil(
+                            new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+                          );
+                        }}
+                        className="text-[10px] text-teal-700 dark:text-teal-300 underline font-semibold"
+                      >
+                        Set Specific Date
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      type="date"
+                      value={validUntil === "no_expiry" ? "" : validUntil}
+                      onChange={(e) => {
+                        setValidUntil(e.target.value);
+                        setIsNoExpiry(false);
+                      }}
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-1 focus:ring-teal-500"
+                    />
+                  )}
+
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    {[7, 14, 30, 60, 90].map((d) => (
                       <button
                         key={d}
                         type="button"
                         onClick={() => handleValidDaysChange(d)}
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-                          validDays === d
-                            ? "bg-teal-600 text-white border-teal-600"
-                            : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all ${
+                          !isNoExpiry && validDays === d
+                            ? "bg-teal-600 text-white border-teal-600 shadow-sm"
+                            : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                         }`}
                       >
                         +{d} Days
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      onClick={() => handleValidDaysChange(0)}
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border flex items-center gap-1 transition-all ${
+                        isNoExpiry
+                          ? "bg-teal-600 text-white border-teal-600 shadow-sm"
+                          : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/60"
+                      }`}
+                    >
+                      <InfinityIcon className="w-3 h-3" />
+                      No Expiry
+                    </button>
                   </div>
                 </div>
 
@@ -908,7 +988,12 @@ export function CouponManagerView() {
                   </div>
 
                   <div className="flex justify-between text-[10px] text-slate-300">
-                    <span>Valid until: <strong>{validUntil}</strong></span>
+                    <span>
+                      Valid until:{" "}
+                      <strong>
+                        {isNoExpiry || validUntil === "no_expiry" ? "Lifetime (No Expiry)" : validUntil}
+                      </strong>
+                    </span>
                     <span>Website: <strong>noxderma.com</strong></span>
                   </div>
                 </div>
@@ -1066,11 +1151,14 @@ export function CouponManagerView() {
                         <span className="font-bold text-slate-900 dark:text-slate-100">
                           {c.customerBusinessName || c.customerName || "All Customers"}
                         </span>
-                        {c.customerBusinessName && c.customerName && (
-                          <span className="block text-[10px] text-slate-400">
-                            Attn: {c.customerName}
-                          </span>
-                        )}
+                        {c.customerBusinessName &&
+                          c.customerName &&
+                          c.customerBusinessName.trim().toLowerCase() !==
+                            c.customerName.trim().toLowerCase() && (
+                            <span className="block text-[10px] text-slate-400">
+                              Attn: {c.customerName}
+                            </span>
+                          )}
                       </td>
 
                       {/* Phone */}
@@ -1083,7 +1171,13 @@ export function CouponManagerView() {
                       {/* Valid Until */}
                       <td className="py-3 px-3">
                         <span className="text-slate-700 dark:text-slate-300">
-                          {c.validUntil}
+                          {c.validUntil === "no_expiry" || !c.validUntil ? (
+                            <span className="inline-flex items-center gap-1 font-bold text-teal-600 dark:text-teal-400">
+                              <InfinityIcon className="w-3.5 h-3.5" /> No Expiry
+                            </span>
+                          ) : (
+                            c.validUntil
+                          )}
                         </span>
                       </td>
 
@@ -1214,7 +1308,8 @@ export function CouponManagerView() {
                   <strong>Validation Match:</strong> User jab code enter kare, to is list mein match karein: <code>code.toUpperCase() === inputCode</code>.
                 </li>
                 <li>
-                  <strong>Expiry Check:</strong> Check karein <code>new Date() &lt;= new Date(validUntil)</code>.
+                  <strong>Expiry Check:</strong> Check karein{" "}
+                  <code>coupon.validUntil === &quot;no_expiry&quot; || new Date() &lt;= new Date(validUntil)</code>.
                 </li>
                 <li>
                   <strong>Discount Calculation:</strong> Total cart value par <code>discountPercentage</code> deduct karein:  

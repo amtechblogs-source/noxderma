@@ -17,19 +17,7 @@ export function generateRandomCouponCode(
   return `${cleanPrefix}-${discountPercent}-${randomPart}`;
 }
 
-/**
- * Normalize Pakistani phone numbers for WhatsApp (e.g. 0300-1234567 -> 923001234567)
- */
-export function normalizePhoneForWhatsApp(phone: string): string {
-  if (!phone) return "";
-  let cleaned = phone.replace(/[^0-9]/g, "");
-  if (cleaned.startsWith("0")) {
-    cleaned = "92" + cleaned.slice(1);
-  } else if (!cleaned.startsWith("92") && cleaned.length === 10) {
-    cleaned = "92" + cleaned;
-  }
-  return cleaned;
-}
+export { normalizePhoneForWhatsApp } from "@/lib/whatsapp/share";
 
 export type WhatsAppMessageTone = "roman_urdu" | "formal_english" | "urdu_nastaliq";
 
@@ -59,14 +47,25 @@ export function buildWhatsAppCouponMessage({
   brandName = "Noxderma",
   tone = "roman_urdu",
 }: WhatsAppCouponParams): string {
-  const recipient = businessName ? `${businessName} (${customerName})` : customerName || "Valued Partner";
+  const cleanBiz = (businessName || "").trim();
+  const cleanCust = (customerName || "").trim();
+  const hasDistinctNames =
+    Boolean(cleanBiz && cleanCust) &&
+    cleanBiz.toLowerCase() !== cleanCust.toLowerCase();
+
+  const recipient = hasDistinctNames
+    ? `${cleanBiz} (${cleanCust})`
+    : cleanBiz || cleanCust || "Valued Partner";
   const cleanUrl = websiteUrl?.startsWith("http") ? websiteUrl : `https://${websiteUrl || "noxderma.com"}`;
 
-  const formattedDate = new Date(validUntil).toLocaleDateString("en-PK", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const isNoExpiry = !validUntil || validUntil === "no_expiry" || validUntil.startsWith("9999");
+  const formattedDate = isNoExpiry
+    ? "Lifetime (No Expiry)"
+    : new Date(validUntil).toLocaleDateString("en-PK", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
 
   if (tone === "formal_english") {
     return (
@@ -75,7 +74,7 @@ export function buildWhatsAppCouponMessage({
       `We value your partnership with ${brandName}. As a gesture of our appreciation, we have activated an exclusive promotional coupon code for your account.\n\n` +
       `🏷️ *Your Coupon Code:* *${couponCode}*\n` +
       `💰 *Discount Offer:* *${discountPercent}% FLAT OFF* on all dermatological products & medicines\n` +
-      `📅 *Validity:* Valid until *${formattedDate}*\n` +
+      `📅 *Validity:* ${isNoExpiry ? "*Lifetime (No Expiry / Always Valid)*" : `Valid until *${formattedDate}*`}\n` +
       `${minOrderPkr > 0 ? `🛒 *Min Order Value:* Rs. ${minOrderPkr.toLocaleString()}\n` : ""}` +
       `🌐 *Redeem Online:* ${cleanUrl}\n\n` +
       `*How to Redeem Your Discount:*\n` +
@@ -98,7 +97,7 @@ export function buildWhatsAppCouponMessage({
       `ہمیں خوشی ہے کہ آپ ہمارے قابلِ قدر پارٹنر ہیں۔ آپ کے لیے خصوصی ڈسکاؤنٹ کوپن کوڈ جاری کر دیا گیا ہے:\n\n` +
       `🏷️ *کوپن کوڈ:* *${couponCode}*\n` +
       `💰 *ڈسکاؤنٹ:* *${discountPercent}% فلیٹ رعایت*\n` +
-      `📅 *آخری تاریخ:* *${formattedDate}*\n` +
+      `📅 *آخری تاریخ:* *${isNoExpiry ? "بغیر کسی میعاد کے (ہمیشہ کے لیے قابلِ قبول)" : formattedDate}*\n` +
       `🌐 *ویب سائٹ:* ${cleanUrl}\n\n` +
       `*طریقہ کار:*\n` +
       `1️⃣ ہماری ویب سائٹ *${cleanUrl}* اوپن کریں\n` +
@@ -118,7 +117,7 @@ export function buildWhatsAppCouponMessage({
     `Aap ki regular partnership k shukriya k tor par, ${brandName} ne aap k liye ek exclusive discount coupon code activate kar diya hai:\n\n` +
     `🏷️ *Aapka Coupon Code:* *${couponCode}*\n` +
     `💰 *Discount:* *${discountPercent}% FLAT OFF* (Tamam Derma Products & Medicines par)\n` +
-    `📅 *Last Date (Validity):* *${formattedDate}*\n` +
+    `📅 *Last Date (Validity):* *${isNoExpiry ? "Hamesha k liye (No Expiry / Lifetime)" : formattedDate}*\n` +
     `${minOrderPkr > 0 ? `🛒 *Minimum Order:* Rs. ${minOrderPkr.toLocaleString()}\n` : ""}` +
     `🌐 *Online Order Website:* ${cleanUrl}\n\n` +
     `*Discount Hasil Karne Ka Asan Tareeqa:*\n` +

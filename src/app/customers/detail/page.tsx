@@ -31,6 +31,7 @@ import type {
   CustomerVisit,
   LedgerEntry,
 } from "@/types";
+import { openWhatsAppShare } from "@/lib/whatsapp/share";
 
 /**
  * Static-export friendly: the customer id is read from `?id=` at runtime
@@ -754,20 +755,22 @@ Phone: +92 300 1234567`}
             >
               Copy Text
             </button>
-            <a
-              href={`https://wa.me/${
-                customer.whatsappNumber || customer.phone.replace(/[^0-9]/g, "")
-              }?text=${encodeURIComponent(
-                `Assalam-o-Alaikum ${customer.name},\n\nThis is a gentle payment reminder from *Noxderma Pharma* regarding your remaining balance of *${formatPKR(
+            <button
+              type="button"
+              onClick={() => {
+                const message = `Assalam-o-Alaikum ${customer.name},\n\nThis is a gentle payment reminder from *Noxderma Pharma* regarding your remaining balance of *${formatPKR(
                   customer.currentOutstandingBalance
-                )}*.\n\nPlease share the deposit slip once transferred so we can update your Khata immediately.\n\nThank you,\n*Noxderma Pharma*`
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
+                )}*.\n\nPlease share the deposit slip once transferred so we can update your Khata immediately.\n\nThank you,\n*Noxderma Pharma*`;
+                openWhatsAppShare({
+                  phone: customer.whatsappNumber || customer.phone,
+                  rawText: message,
+                  autoCopyFull: true,
+                });
+              }}
               className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
             >
               <Send className="w-3.5 h-3.5" /> Send on WhatsApp
-            </a>
+            </button>
           </div>
         </div>
       )}

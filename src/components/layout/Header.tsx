@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -25,6 +26,13 @@ import {
   Barcode,
   ShoppingBag,
   ArrowRight,
+  ArrowLeft,
+  Scale,
+  CreditCard,
+  Calculator,
+  Ticket,
+  Factory,
+  Truck,
 } from "lucide-react";
 import { formatPKR } from "@/lib/formatting";
 import { syncManager } from "@/lib/offline/sync";
@@ -39,22 +47,191 @@ interface HeaderProps {
 }
 
 const APP_NAVIGATION_SEARCH_ITEMS = [
-  { name: "Customer Bills (Invoices)", path: "/sales/invoices", module: "Sales", keywords: "bill invoice sale memo receipt" },
-  { name: "Make New Bill (New Invoice)", path: "/sales/invoices/new", module: "Sales", keywords: "new bill create invoice add medicine" },
-  { name: "Medicine Catalog", path: "/products", module: "Inventory", keywords: "products medicine items skus" },
-  { name: "Stock & Low-Stock Alerts", path: "/inventory", module: "Inventory", keywords: "stock godown warehouse alert reorder" },
-  { name: "Batch Stock & Expiry Dates", path: "/inventory/batches", module: "Inventory", keywords: "batch expiry near fefo date" },
-  { name: "Buy Stock (Purchases / GRN)", path: "/purchases", module: "Purchases", keywords: "purchase po grn vendor supplier buy" },
-  { name: "Pharmacies & Medical Stores", path: "/customers", module: "Clients", keywords: "customer pharmacy shop medical store client" },
-  { name: "Market Udhaar (Pending Credit)", path: "/finance/credit", module: "Finance", keywords: "udhaar credit balance receive ledger khata" },
-  { name: "Customer Khata (Receivables)", path: "/finance/ledgers/customers", module: "Finance", keywords: "khata ledger customer statement" },
-  { name: "Company Khata (Payables)", path: "/finance/ledgers/manufacturers", module: "Finance", keywords: "khata company manufacturer payment" },
-  { name: "Profit & Loss Report (Kamai)", path: "/finance/pnl", module: "Finance", keywords: "profit loss pnl kamai margin" },
-  { name: "Staff Accounts & Permissions", path: "/users", module: "Settings", keywords: "users staff login permission rbac roles" },
-  { name: "Company Settings & Themes", path: "/settings", module: "Settings", keywords: "settings theme logo profile address print" },
-  { name: "Medicine Categories", path: "/categories", module: "Catalog", keywords: "category categories classification" },
-  { name: "Field Staff Orders", path: "/sales/bookings", module: "Sales", keywords: "booking order rep staff" },
-  { name: "Customer Returns", path: "/sales/returns", module: "Sales", keywords: "return credit note damage expired refund" },
+  // Products & Costing Estimator
+  {
+    name: "New Product Price Estimator & Margin Calculator",
+    path: "/products/price-estimator",
+    module: "Products",
+    keywords: "estimator price estimate new product formula costing cost margin calculator packaging markup profit roi batch sizing batch size tablet syrup ointment raw material excipient",
+  },
+  {
+    name: "Medicine Catalog & Products",
+    path: "/products",
+    module: "Inventory",
+    keywords: "products medicine items skus catalog list all medicines tablet capsule syrup derma cream serum lotion price",
+  },
+  {
+    name: "Stock & Low-Stock Alerts",
+    path: "/inventory",
+    module: "Inventory",
+    keywords: "stock godown warehouse alert reorder low stock inventory count available stock quantity",
+  },
+  {
+    name: "Batch Stock & FEFO Expiry Dates",
+    path: "/inventory/batches",
+    module: "Inventory",
+    keywords: "batch expiry near fefo date expiry alert expired batches stock remaining quantity",
+  },
+  {
+    name: "Medicine Categories & Types",
+    path: "/categories",
+    module: "Catalog",
+    keywords: "category categories classification types derma antibiotic syrup tablet ointments",
+  },
+
+  // Sales & Invoicing
+  {
+    name: "Customer Bills (Invoices)",
+    path: "/sales/invoices",
+    module: "Sales",
+    keywords: "bill invoice sale memo receipt history invoices list sales record",
+  },
+  {
+    name: "Make New Bill (New Sale Invoice)",
+    path: "/sales/invoices/new",
+    module: "Sales",
+    keywords: "new bill create invoice add medicine sell billing pos counter instant invoice",
+  },
+  {
+    name: "Field Staff Orders (Bookings)",
+    path: "/sales/bookings",
+    module: "Sales",
+    keywords: "booking order rep staff field orders approval order booking medical rep",
+  },
+  {
+    name: "Customer Returns & Damage",
+    path: "/sales/returns",
+    module: "Sales",
+    keywords: "return credit note damage expired refund exchange return goods claim",
+  },
+  {
+    name: "Online Pharmacy Orders",
+    path: "/sales/online-orders",
+    module: "Sales",
+    keywords: "online order web app pharmacy portal checkout booking store incoming orders",
+  },
+
+  // Purchases & Suppliers
+  {
+    name: "Buy Stock (Purchases / GRN)",
+    path: "/purchases",
+    module: "Purchases",
+    keywords: "purchase po grn vendor supplier buy inward stock receiving order raw stock",
+  },
+  {
+    name: "Pharmaceutical Manufacturers",
+    path: "/manufacturers",
+    module: "Suppliers",
+    keywords: "manufacturer supplier vendor factory pharma company brand producer source direct",
+  },
+  {
+    name: "Distributors & Supply Network",
+    path: "/distributors",
+    module: "Suppliers",
+    keywords: "distributor distribution supply network wholesale dealer agency vendor",
+  },
+
+  // Clients & CRM
+  {
+    name: "Pharmacies & Medical Stores",
+    path: "/customers",
+    module: "Clients",
+    keywords: "customer pharmacy shop medical store client chemist hospital clinic address phone",
+  },
+  {
+    name: "CRM Leads & Prospective Doctors",
+    path: "/crm/leads",
+    module: "CRM",
+    keywords: "crm lead leads doctor clinic prospect prospective new customer inquiry call pipeline",
+  },
+  {
+    name: "Doctor & Pharmacy Field Visits",
+    path: "/crm/visits",
+    module: "CRM",
+    keywords: "visit doctor visit field call tour dcr daily call report rep visit tracking logs",
+  },
+
+  // Finance & Ledgers
+  {
+    name: "Market Udhaar (Pending Credit Balance)",
+    path: "/finance/credit",
+    module: "Finance",
+    keywords: "udhaar credit balance receive ledger khata market recovery pending aging outstanding",
+  },
+  {
+    name: "Customer Khata (Receivables Ledger)",
+    path: "/finance/ledgers/customers",
+    module: "Finance",
+    keywords: "khata ledger customer statement receivable account balance payment receipt slip",
+  },
+  {
+    name: "Company Khata (Payables / Vendors)",
+    path: "/finance/ledgers/manufacturers",
+    module: "Finance",
+    keywords: "khata company manufacturer vendor payable supplier payment clear cheques",
+  },
+  {
+    name: "Profit & Loss Statement (P&L / Kamai)",
+    path: "/finance/pnl",
+    module: "Finance",
+    keywords: "profit loss pnl kamai margin revenue net profit gross income finance report",
+  },
+
+  // Marketing & Promotions
+  {
+    name: "Promotional Coupons & Privilege Codes",
+    path: "/marketing/coupons",
+    module: "Marketing",
+    keywords: "coupon coupons promo code discount privilege offer discount voucher campaign privilege discount",
+  },
+  {
+    name: "WhatsApp Campaigns & Bulk Messaging",
+    path: "/marketing/whatsapp",
+    module: "Marketing",
+    keywords: "whatsapp campaign marketing message broadcast offer promo blast alert",
+  },
+  {
+    name: "Marketing Hub & Promotion Overview",
+    path: "/marketing",
+    module: "Marketing",
+    keywords: "marketing promotion discount schemes privilege loyalty campaigns ads",
+  },
+
+  // Staff & HR
+  {
+    name: "Sales Targets & Staff Performance",
+    path: "/employees/targets",
+    module: "HR / Staff",
+    keywords: "target targets employee staff performance kpi quota rep achievement commission target sheet",
+  },
+  {
+    name: "Staff Accounts & Permissions (RBAC)",
+    path: "/users",
+    module: "Settings",
+    keywords: "users staff login permission rbac roles user management account employee access",
+  },
+
+  // Reports & Analytics
+  {
+    name: "Business Reports & Analytics",
+    path: "/reports",
+    module: "Analytics",
+    keywords: "reports analytics charts sales report inventory report ledger summary export pdf excel",
+  },
+
+  // System & Settings
+  {
+    name: "Company Settings, Branding & Theme",
+    path: "/settings",
+    module: "Settings",
+    keywords: "settings theme logo profile address print bill format invoice setup config company details",
+  },
+  {
+    name: "Data Sync & Offline Cloud Status",
+    path: "/sync",
+    module: "System",
+    keywords: "sync offline online backup cloud pending queue storage dexie indexeddb status",
+  },
 ];
 
 export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) {
@@ -71,6 +248,8 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [mobileFilterType, setMobileFilterType] = useState<"all" | "products" | "customers" | "invoices" | "batches" | "nav">("all");
   const [searchResults, setSearchResults] = useState<{
     navItems: { name: string; path: string; module: string }[];
     products: { id: string; name: string; sku: string; categoryName: string }[];
@@ -83,6 +262,29 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const categoryMenuRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+    const isDark =
+      document.documentElement.classList.contains("dark") ||
+      (typeof window !== "undefined" && localStorage.getItem("noxderma_dark_mode") === "true");
+    setIsDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+    }
+  }, []);
+
+  // Lock background scrolling on mobile when search modal is open
+  useEffect(() => {
+    if (isMobileSearchOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobileSearchOpen]);
 
   // Global Ctrl+K / '/' shortcut listener
   useEffect(() => {
@@ -150,7 +352,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
             item.name.toLowerCase().includes(q) ||
             item.keywords.toLowerCase().includes(q) ||
             item.module.toLowerCase().includes(q)
-        ).slice(0, 3);
+        ).slice(0, 10);
 
         // 2. Database records matching
         const [allProds, allCusts, allInvs, allBatches] = await Promise.all([
@@ -241,8 +443,14 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
     setIsDarkMode(nextDark);
     if (nextDark) {
       document.documentElement.classList.add("dark");
+      try {
+        localStorage.setItem("noxderma_dark_mode", "true");
+      } catch {}
     } else {
       document.documentElement.classList.remove("dark");
+      try {
+        localStorage.setItem("noxderma_dark_mode", "false");
+      } catch {}
     }
   };
 
@@ -535,15 +743,6 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
 
         {/* Right: Search (Mobile), Online Status, Sync, Theme, Profile */}
         <div className="flex items-center gap-2 md:gap-3">
-          {/* Mobile Search Button */}
-          <button
-            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-            aria-label="Open Universal Search"
-            className="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-
           {/* Online/Offline Status Indicator */}
           <div
             title={isOnline ? "Connected to Internet" : "Working Offline (No Internet)"}
@@ -653,96 +852,274 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
         </div>
       </div>
 
-      {/* Mobile Search Modal Overlay */}
-      {isMobileSearchOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md p-4 flex flex-col animate-in fade-in duration-150">
-          <div className="flex items-center justify-between pb-3">
-            <span className="font-extrabold text-base text-white flex items-center gap-2">
-              <Search className="w-4 h-4 text-teal-400" />
-              Universal Search
-            </span>
-            <button
-              onClick={() => setIsMobileSearchOpen(false)}
-              aria-label="Close search"
-              className="p-2 rounded-xl bg-slate-800 text-slate-300 min-h-[40px] min-w-[40px] flex items-center justify-center btn-interactive"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* Full-Screen Native Mobile Search Sheet (Rendered via Portal to avoid backdrop-filter trapping) */}
+      {isMounted && isMobileSearchOpen && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Universal Search"
+          className="fixed inset-0 z-[100] bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col h-dvh w-screen overflow-hidden animate-in fade-in duration-150"
+        >
+          {/* Top Search App Bar */}
+          <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-2.5 shrink-0 shadow-sm dark:shadow-lg">
+            <div className="flex items-center gap-2">
+              {/* Back / Exit Button */}
+              <button
+                onClick={() => {
+                  setIsMobileSearchOpen(false);
+                  setSearchQuery("");
+                }}
+                aria-label="Close search"
+                className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 min-h-[44px] min-w-[44px] flex items-center justify-center btn-interactive shrink-0"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+
+              {/* Search Input Box */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-600 dark:text-teal-400 pointer-events-none" />
+                <input
+                  autoFocus
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search medicines, bills, khata, shops..."
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base shadow-inner"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear query"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Cancel Button */}
+              <button
+                onClick={() => {
+                  setIsMobileSearchOpen(false);
+                  setSearchQuery("");
+                }}
+                className="px-2 py-1.5 text-xs font-bold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 active:scale-95"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-xs">
+              {[
+                { id: "all", label: "All" },
+                { id: "products", label: "Medicines", icon: Pill, count: searchResults.products.length },
+                { id: "customers", label: "Pharmacies", icon: Users, count: searchResults.customers.length },
+                { id: "invoices", label: "Bills", icon: Receipt, count: searchResults.invoices.length },
+                { id: "batches", label: "Batches", icon: Barcode, count: searchResults.batches.length },
+                { id: "nav", label: "Pages", icon: Compass, count: searchResults.navItems.length },
+              ].map((tab) => {
+                const isSelected = mobileFilterType === tab.id;
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setMobileFilterType(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
+                      isSelected
+                        ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/60"
+                    }`}
+                  >
+                    {Icon && <Icon className="w-3.5 h-3.5" />}
+                    <span>{tab.label}</span>
+                    {searchQuery.trim().length >= 2 && tab.count !== undefined && tab.count > 0 && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-teal-700 dark:text-teal-300"
+                        }`}
+                      >
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              autoFocus
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search anything (Medicines, bills, stores)..."
-              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-700 bg-slate-900 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base shadow-inner"
-            />
-          </div>
+          {/* Search Body Area */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 pb-safe bg-slate-50/70 dark:bg-slate-950">
+            {searchQuery.trim().length < 2 ? (
+              /* Pre-search Direct Jump Shortcuts */
+              <div className="space-y-4 pt-1">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1">
+                    ⚡ Quick Access Shortcuts
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {[
+                      { name: "Price Estimator", path: "/products/price-estimator", desc: "Formulas & Costing", icon: Calculator, color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/60" },
+                      { name: "Make New Bill", path: "/sales/invoices/new", desc: "Create sale invoice", icon: Receipt, color: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 border-teal-200 dark:border-teal-800/60" },
+                      { name: "Medicine Catalog", path: "/products", desc: "All medicines & prices", icon: Pill, color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800/60" },
+                      { name: "Batch Stock", path: "/inventory/batches", desc: "Batches & expiries", icon: Barcode, color: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/60 border-orange-200 dark:border-orange-800/60" },
+                      { name: "Pharmacies", path: "/customers", desc: "Medical store clients", icon: Users, color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800/60" },
+                      { name: "Customer Khata", path: "/finance/ledgers/customers", desc: "Client ledgers", icon: Scale, color: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800/60" },
+                      { name: "Market Udhaar", path: "/finance/credit", desc: "Pending balances", icon: CreditCard, color: "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/60" },
+                      { name: "Promo Coupons", path: "/marketing/coupons", desc: "Privilege discounts", icon: Ticket, color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/60" },
+                    ].map((shortcut) => {
+                      const Icon = shortcut.icon;
+                      return (
+                        <button
+                          key={shortcut.path}
+                          onClick={() => handleNavigateToResult(shortcut.path)}
+                          className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 active:bg-slate-100 dark:active:bg-slate-800 flex flex-col gap-1 text-left shadow-sm btn-interactive transition-all"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-lg border ${shortcut.color}`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <span className="text-xs font-bold text-slate-800 dark:text-white truncate">{shortcut.name}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{shortcut.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-          {/* Results List */}
-          <div className="flex-1 overflow-y-auto mt-3 rounded-2xl bg-slate-900 border border-slate-800 p-2.5 space-y-2 pb-safe">
-            {!hasAnyResults ? (
-              <div className="p-8 text-center text-sm text-slate-400">
-                Type at least 2 characters to search across medicines, bills, khata, and modules
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900/60 text-center shadow-sm">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Type at least 2 characters to search across medicines, bills, khata, and system modules.
+                  </p>
+                </div>
+              </div>
+            ) : !hasAnyResults ? (
+              <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                No matching records found for &quot;<span className="text-teal-600 dark:text-teal-400 font-semibold">{searchQuery}</span>&quot;
               </div>
             ) : (
-              <>
-                {searchResults.navItems.map((item) => (
-                  <button
-                    key={item.path}
-                    onClick={() => handleNavigateToResult(item.path)}
-                    className="w-full text-left p-3 rounded-xl bg-slate-800/60 active:bg-slate-800 flex items-center justify-between min-h-[50px] btn-interactive"
-                  >
-                    <span className="text-sm font-bold text-teal-400">{item.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">{item.module}</span>
-                  </button>
-                ))}
-                {searchResults.products.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleNavigateToResult(`/products/detail?id=${encodeURIComponent(p.id)}`)}
-                    className="w-full text-left p-3 rounded-xl bg-slate-800/60 active:bg-slate-800 flex items-center justify-between min-h-[50px] btn-interactive"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-white">{p.name}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">SKU: {p.sku}</div>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-slate-400 shrink-0" />
-                  </button>
-                ))}
-                {searchResults.customers.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => handleNavigateToResult(`/customers/detail?id=${encodeURIComponent(c.id)}`)}
-                    className="w-full text-left p-3 rounded-xl bg-slate-800/60 active:bg-slate-800 flex items-center justify-between min-h-[50px] btn-interactive"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-white">{c.name}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{c.city} &bull; {c.phone}</div>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-slate-400 shrink-0" />
-                  </button>
-                ))}
-                {searchResults.invoices.map((inv) => (
-                  <button
-                    key={inv.id}
-                    onClick={() => handleNavigateToResult(`/sales/invoices`)}
-                    className="w-full text-left p-3 rounded-xl bg-slate-800/60 active:bg-slate-800 flex items-center justify-between min-h-[50px] btn-interactive"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-emerald-400 font-mono">{inv.ref}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{inv.customerName}</div>
-                    </div>
-                    <span className="text-sm font-bold text-white font-mono">{formatPKR(inv.netTotal)}</span>
-                  </button>
-                ))}
-              </>
+              <div className="space-y-3">
+                {/* 1. Pages & Modules */}
+                {(mobileFilterType === "all" || mobileFilterType === "nav") && searchResults.navItems.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400 px-1 flex items-center gap-1.5">
+                      <Compass className="w-3 h-3" /> System Pages & Modules
+                    </span>
+                    {searchResults.navItems.map((item) => (
+                      <button
+                        key={item.path}
+                        onClick={() => handleNavigateToResult(item.path)}
+                        className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-teal-500/60 active:bg-slate-50 dark:active:bg-slate-800 flex items-center justify-between min-h-[50px] shadow-sm btn-interactive"
+                      >
+                        <span className="text-sm font-bold text-slate-800 dark:text-white">{item.name}</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-400 font-mono border border-slate-200 dark:border-slate-700">
+                          {item.module}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. Medicines */}
+                {(mobileFilterType === "all" || mobileFilterType === "products") && searchResults.products.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 px-1 flex items-center gap-1.5">
+                      <Pill className="w-3 h-3" /> Medicines & Products
+                    </span>
+                    {searchResults.products.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleNavigateToResult(`/products/detail?id=${encodeURIComponent(p.id)}`)}
+                        className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500/60 active:bg-slate-50 dark:active:bg-slate-800 flex items-center justify-between min-h-[52px] shadow-sm btn-interactive"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-sm font-bold text-slate-800 dark:text-white truncate">{p.name}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            SKU: <span className="font-mono text-teal-600 dark:text-teal-400">{p.sku}</span> &bull; {p.categoryName}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. Customers / Pharmacies */}
+                {(mobileFilterType === "all" || mobileFilterType === "customers") && searchResults.customers.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 px-1 flex items-center gap-1.5">
+                      <Users className="w-3 h-3" /> Customers / Pharmacies
+                    </span>
+                    {searchResults.customers.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleNavigateToResult(`/customers/detail?id=${encodeURIComponent(c.id)}`)}
+                        className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/60 active:bg-slate-50 dark:active:bg-slate-800 flex items-center justify-between min-h-[52px] shadow-sm btn-interactive"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-sm font-bold text-slate-800 dark:text-white truncate">{c.name}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            {c.city} &bull; {c.phone}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4. Invoices / Bills */}
+                {(mobileFilterType === "all" || mobileFilterType === "invoices") && searchResults.invoices.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-1 flex items-center gap-1.5">
+                      <Receipt className="w-3 h-3" /> Invoices / Bills
+                    </span>
+                    {searchResults.invoices.map((inv) => (
+                      <button
+                        key={inv.id}
+                        onClick={() => handleNavigateToResult(`/sales/invoices`)}
+                        className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/60 active:bg-slate-50 dark:active:bg-slate-800 flex items-center justify-between min-h-[52px] shadow-sm btn-interactive"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">{inv.ref}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{inv.customerName}</div>
+                        </div>
+                        <span className="text-sm font-bold text-slate-800 dark:text-white font-mono shrink-0">{formatPKR(inv.netTotal)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 5. Batches */}
+                {(mobileFilterType === "all" || mobileFilterType === "batches") && searchResults.batches.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 px-1 flex items-center gap-1.5">
+                      <Barcode className="w-3 h-3" /> Stock Batches
+                    </span>
+                    {searchResults.batches.map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => handleNavigateToResult(`/inventory/batches`)}
+                        className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/60 active:bg-slate-50 dark:active:bg-slate-800 flex items-center justify-between min-h-[52px] shadow-sm btn-interactive"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-sm font-bold text-amber-600 dark:text-amber-400 font-mono truncate">Batch: {b.batchNumber}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{b.productName}</div>
+                        </div>
+                        <span className="text-[11px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 px-2 py-0.5 rounded-full shrink-0">
+                          {b.remainingQuantity} Left
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </header>
   );
