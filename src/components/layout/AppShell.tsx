@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -21,10 +21,11 @@ import { ThemeProvider } from "@/context/ThemeContext";
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const { currentUser, logout } = useAuth();
+  const { currentUser, loading, logout } = useAuth();
 
   // Reset top progress bar on route complete
   useEffect(() => {
@@ -104,9 +105,33 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // If on login page, render children cleanly without ERP chrome
+  // Redirect unauthenticated visitors to the login page
+  useEffect(() => {
+    if (!loading && !currentUser && pathname !== "/login") {
+      router.push("/login");
+    }
+  }, [currentUser, loading, pathname, router]);
+
+  // If on login page, render children cleanly without layout chrome
   if (pathname === "/login") {
     return <main className="min-h-screen w-full">{children}</main>;
+  }
+
+  // Session verification loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#080d16] text-slate-100">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-slate-400">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Prevent flash of protected UI while redirecting
+  if (!currentUser) {
+    return null;
   }
 
   const isExactActive = (path: string) => pathname === path;

@@ -18,7 +18,7 @@ export interface AuthenticatedUser extends UserProfile {
 interface AuthContextType {
   currentUser: AuthenticatedUser | null;
   loading: boolean;
-  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
@@ -66,9 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // Check if there is an active session stored
+        // Check if there is an active session stored in localStorage or sessionStorage
         if (typeof window !== "undefined") {
-          const session = localStorage.getItem(ACTIVE_USER_STORAGE_KEY);
+          const session =
+            localStorage.getItem(ACTIVE_USER_STORAGE_KEY) ||
+            sessionStorage.getItem(ACTIVE_USER_STORAGE_KEY);
           if (session) {
             try {
               const parsed = JSON.parse(session) as AuthenticatedUser;
@@ -84,19 +86,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
             } catch {
               localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+              sessionStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
             }
           }
         }
 
-        // If no session found, we default to null (requires login) or default admin for instant localhost preview
-        // For smooth onboarding we set default admin session if none exists
-        setCurrentUser(DEFAULT_ADMIN_USER);
-        if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(DEFAULT_ADMIN_USER));
-        }
+        // If no active session exists, user must log in
+        setCurrentUser(null);
       } catch (err) {
         console.error("Auth initialization error:", err);
-        setCurrentUser(DEFAULT_ADMIN_USER);
+        setCurrentUser(null);
       } finally {
         setLoading(false);
       }
@@ -108,111 +107,121 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (
       email: string,
-      password?: string
+      password?: string,
+      rememberMe: boolean = true
     ): Promise<{ success: boolean; error?: string }> => {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPass = (password || "").trim();
 
+      if (!cleanEmail || !cleanPass) {
+        return { success: false, error: "Please enter both email and password." };
+      }
+
       try {
-        // 1. Check default admin credentials
-        if (
-          cleanEmail === DEFAULT_ADMIN_USER.email.toLowerCase() &&
-          (cleanPass === "admin" || cleanPass === "admin123" || !cleanPass)
-        ) {
+        // Fetch all system users from offlineDb and fallback localStorage
+        let dbUsers: UserProfile[] = [];
+        try {
+          dbUsers = (await (offlineDb as any).users?.toArray()) || [];
+        } catch (e) {
+          console.warn("Could not load users from offlineDb:", e);
+        }
+
+        if (dbUsers.length === 0 && typeof window !== "undefined") {
+          try {
+            const localSaved = localStorage.getItem("noxderma_users");
+            if (localSaved) {
+              const parsed = JSON.parse(localSaved);
+              if (Array.isArray(parsed)) dbUsers = parsed;
+            }
+          } catch {}
+        }
+
+        // 1. Look for user in database
+        const user = dbUsers.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+
+        if (user) {
+          if (!user.active) {
+            return {
+              success: false,
+              error: "This account has been deactivated. Please contact your administrator.",
+            };
+          }
+
+          const expectedPass = user.password || "admin";
+          if (cleanPass !== expectedPass) {
+            return {
+              success: false,
+              error: "Incorrect email or password. Please try again.",
+            };
+          }
+
+          const resolvedPerms =
+            user.permissions && user.permissions.length > 0
+              ? user.permissions
+              : ROLE_PERMISSIONS[user.role] || [];
+
+          const authSession: AuthenticatedUser = {
+            ...user,
+            permissions: resolvedPerms,
+            lastLoginAt: new Date().toISOString(),
+          };
+
+          setCurrentUser(authSession);
+          if (typeof window !== "undefined") {
+            if (rememberMe) {
+              localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(authSession));
+              sessionStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+            } else {
+              sessionStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(authSession));
+              localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+            }
+          }
+
+          try {
+            await (offlineDb as any).users?.update(user.id, {
+              lastLoginAt: authSession.lastLoginAt,
+            });
+          } catch {}
+
+          return { success: true };
+        }
+
+        // 2. Check default admin user if not present in dbUsers array
+        if (cleanEmail === DEFAULT_ADMIN_USER.email.toLowerCase()) {
+          const expectedAdminPass = DEFAULT_ADMIN_USER.password || "admin";
+          if (cleanPass !== expectedAdminPass) {
+            return {
+              success: false,
+              error: "Incorrect email or password. Please try again.",
+            };
+          }
+
           const adminSession: AuthenticatedUser = {
             ...DEFAULT_ADMIN_USER,
             lastLoginAt: new Date().toISOString(),
           };
+
           setCurrentUser(adminSession);
           if (typeof window !== "undefined") {
-            localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(adminSession));
+            if (rememberMe) {
+              localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(adminSession));
+              sessionStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+            } else {
+              sessionStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(adminSession));
+              localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+            }
           }
           return { success: true };
         }
 
-        // 2. Look up user in offlineDb
-        const dbUsers: UserProfile[] = (await (offlineDb as any).users?.toArray()) || [];
-        const user = dbUsers.find((u) => u.email.toLowerCase() === cleanEmail);
-
-        if (!user) {
-          // Also check localStorage users
-          const localSaved = localStorage.getItem("noxderma_users");
-          if (localSaved) {
-            try {
-              const parsed = JSON.parse(localSaved) as UserProfile[];
-              const localUser = parsed.find((u) => u.email.toLowerCase() === cleanEmail);
-              if (localUser) {
-                if (!localUser.active) {
-                  return { success: false, error: "Yeh account deactivate kar diya gaya hai. Admin se rabta karein." };
-                }
-                if (localUser.password && cleanPass && localUser.password !== cleanPass) {
-                  return { success: false, error: "Ghalat Password darj kiya gaya hai." };
-                }
-
-                const resolvedPerms =
-                  localUser.permissions && localUser.permissions.length > 0
-                    ? localUser.permissions
-                    : ROLE_PERMISSIONS[localUser.role] || [];
-
-                const authSession: AuthenticatedUser = {
-                  ...localUser,
-                  permissions: resolvedPerms,
-                  lastLoginAt: new Date().toISOString(),
-                };
-
-                setCurrentUser(authSession);
-                if (typeof window !== "undefined") {
-                  localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(authSession));
-                }
-                return { success: true };
-              }
-            } catch {}
-          }
-
-          return {
-            success: false,
-            error: "Email address system ma darj nahi hai. Admin se account banwayen.",
-          };
-        }
-
-        if (!user.active) {
-          return {
-            success: false,
-            error: "Yeh account deactivate hai. Administrator se rabta karein.",
-          };
-        }
-
-        if (user.password && cleanPass && user.password !== cleanPass) {
-          return { success: false, error: "Ghalat Password darj kiya gaya hai." };
-        }
-
-        const permissions =
-          user.permissions && user.permissions.length > 0
-            ? user.permissions
-            : ROLE_PERMISSIONS[user.role] || [];
-
-        const sessionUser: AuthenticatedUser = {
-          ...user,
-          permissions,
-          lastLoginAt: new Date().toISOString(),
+        // If no user matched
+        return {
+          success: false,
+          error: "Incorrect email or password. Please try again.",
         };
-
-        setCurrentUser(sessionUser);
-        if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(sessionUser));
-        }
-
-        // Update last login in db
-        try {
-          await (offlineDb as any).users?.update(user.id, {
-            lastLoginAt: sessionUser.lastLoginAt,
-          });
-        } catch {}
-
-        return { success: true };
       } catch (err: any) {
         console.error("Login attempt failed:", err);
-        return { success: false, error: err.message || "Login karne ma khata hui." };
+        return { success: false, error: "Unable to sign in. Please try again." };
       }
     },
     []
@@ -222,6 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+      sessionStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
     }
     router.push("/login");
   }, [router]);

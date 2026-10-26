@@ -655,7 +655,10 @@ export function OfflineInvoiceCreator() {
 
           {/* Customer & Payment Details Cards */}
           <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm">
-            <div className="p-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400">
+            <div
+              className="invoice-info-card p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400 print:!p-4"
+              style={{ padding: "14px 16px" }}
+            >
               <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 CUSTOMER / PHARMACY:
               </span>
@@ -675,7 +678,10 @@ export function OfflineInvoiceCreator() {
                 </div>
               )}
             </div>
-            <div className="p-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400">
+            <div
+              className="invoice-info-card p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400 print:!p-4"
+              style={{ padding: "14px 16px" }}
+            >
               <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 PAYMENT DETAILS:
               </span>

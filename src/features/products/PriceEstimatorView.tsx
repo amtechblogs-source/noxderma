@@ -38,7 +38,7 @@ import {
   Cell,
   Tooltip,
 } from "recharts";
-import { formatPKR, formatNumber } from "@/lib/formatting";
+import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useAuth } from "@/context/AuthContext";
 import { useCategory } from "@/context/CategoryContext";
@@ -94,6 +94,19 @@ export function PriceEstimatorView() {
 
   // Mobile active tab view: inputs vs results
   const [mobileTab, setMobileTab] = useState<"inputs" | "results">("inputs");
+
+  // Business settings for print layout branding
+  const [businessSettings, setBusinessSettings] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const stored = await offlineDb.settings.get("primary");
+        if (stored) setBusinessSettings(stored);
+      } catch {}
+    }
+    loadSettings();
+  }, []);
 
   // Load existing products on mount
   useEffect(() => {
@@ -238,7 +251,8 @@ export function PriceEstimatorView() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5 pb-36 lg:pb-16 px-3 sm:px-6">
+    <>
+      <div className="max-w-7xl mx-auto space-y-5 pb-36 lg:pb-16 px-3 sm:px-6 no-print print:hidden">
       {/* Top Breadcrumb & Action Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
@@ -1506,5 +1520,273 @@ export function PriceEstimatorView() {
         </div>
       </div>
     </div>
-  );
+
+    {/* Dedicated A4 Printable Costing & Feasibility Sheet */}
+    <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-5">
+      {/* Document Header */}
+      <div className="flex justify-between items-start pb-4 border-b-2 border-black gap-4">
+        <div className="flex items-start gap-3">
+          {businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl ? (
+            <img
+              src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
+              alt="Logo"
+              className="h-14 w-auto max-w-[140px] object-contain shrink-0"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-lg shrink-0">
+              ND
+            </div>
+          )}
+          <div>
+            <h1 className="text-xl font-black tracking-tight text-black leading-tight uppercase">
+              {businessSettings?.brandName || "NOXDERMA PHARMA"}
+            </h1>
+            <p className="text-[11px] font-bold text-slate-700">
+              Pharmaceutical Product Costing & Commercial Feasibility Sheet
+            </p>
+            <div className="mt-1 text-[10px] text-slate-600 space-x-2">
+              <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
+              <span>&bull;</span>
+              <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
+              <span>&bull;</span>
+              <span>{businessSettings?.email || "info@noxderma.com"}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right shrink-0">
+          <span className="inline-block px-2.5 py-0.5 rounded text-[10px] font-black border border-black bg-slate-100 tracking-wider uppercase">
+            COSTING SHEET
+          </span>
+          <p className="font-mono text-xs font-bold text-black mt-1">
+            Date: {formatKarachiDate(new Date())}
+          </p>
+          <p className="text-[10px] text-slate-700">
+            Prepared by: <strong>{currentUser?.displayName || "Administrator"}</strong>
+          </p>
+        </div>
+      </div>
+
+      {/* Product Overview Banner */}
+      <div className="my-3 p-3 rounded-xl border border-slate-400 bg-slate-50 grid grid-cols-4 gap-3 text-xs">
+        <div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+            Product Name
+          </span>
+          <span className="font-black text-sm text-black block truncate">
+            {inputs.productName || "Untitled Medicine"}
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+            Pack Size / Presentation
+          </span>
+          <span className="font-bold text-black block">
+            {inputs.packSize || "Standard Pack"}
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+            Target Monthly Volume
+          </span>
+          <span className="font-mono font-black text-black block">
+            {formatNumber(inputs.expectedMonthlyVolume)} Packs / mo
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+            Fixed Overheads Pool
+          </span>
+          <span className="font-mono font-bold text-black block">
+            {formatPKR(
+              inputs.employeeCount *
+                (inputs.salaryPerEmployee + inputs.fuelPerEmployee + inputs.dailyAllowancePerEmployee) +
+                inputs.officeAdminOverheads
+            )} / mo
+          </span>
+        </div>
+      </div>
+
+      {/* Main 2-Column Comparison: Cost Breakdown vs Pricing Waterfall */}
+      <div className="grid grid-cols-2 gap-4 text-xs">
+        {/* Column 1: Unit Landed Cost Structure */}
+        <div className="border border-slate-300 rounded-xl overflow-hidden">
+          <div className="bg-slate-100 px-3 py-2 border-b border-slate-300 font-black text-xs uppercase tracking-wider text-black flex justify-between">
+            <span>1. Cost Breakdown (Per Pack)</span>
+            <span>Amount (PKR)</span>
+          </div>
+          <table className="w-full text-left border-collapse text-[11px]">
+            <tbody className="divide-y divide-slate-200">
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Base Factory / Manufacturing Cost</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(inputs.buyingCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Packaging, Monocarton & Labels</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(inputs.packagingCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Inward Transport & Freight</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(inputs.inwardFreightPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Breakage & Expiry Reserve ({inputs.damageBufferPercent}%)</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">
+                  {formatPKR(
+                    (inputs.buyingCostPerUnit + inputs.packagingCostPerUnit + inputs.inwardFreightPerUnit) *
+                      (inputs.damageBufferPercent / 100)
+                  )}
+                </td>
+              </tr>
+              <tr className="bg-slate-50 font-bold">
+                <td className="py-1 px-3 text-black">Subtotal Direct Cost</td>
+                <td className="py-1 px-3 text-right font-mono text-black">{formatPKR(results.directCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">
+                  Field Staff & Overheads ({inputs.employeeCount} Reps Pool)
+                </td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(results.overheadCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">
+                  Doctor Free Samples Allowance ({inputs.doctorSamplingPercent}%)
+                </td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(results.doctorSamplingCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Marketing Literature & Rep Commission</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(results.fieldPromoCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Outward Courier & Delivery</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(results.deliveryCostPerUnit)}</td>
+              </tr>
+              <tr className="bg-slate-900 text-white font-black text-xs">
+                <td className="py-1.5 px-3 uppercase tracking-wide">Total Net Landed Cost</td>
+                <td className="py-1.5 px-3 text-right font-mono text-sm">{formatPKR(results.totalLandedCostPerUnit)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Column 2: Pricing Structure & Channel Margins */}
+        <div className="border border-slate-300 rounded-xl overflow-hidden">
+          <div className="bg-slate-100 px-3 py-2 border-b border-slate-300 font-black text-xs uppercase tracking-wider text-black flex justify-between">
+            <span>2. Commercial Pricing Tiers</span>
+            <span>Rate (PKR)</span>
+          </div>
+          <table className="w-full text-left border-collapse text-[11px]">
+            <tbody className="divide-y divide-slate-200">
+              <tr>
+                <td className="py-1 px-3 text-slate-800">Total Landed Cost (Basis)</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(results.totalLandedCostPerUnit)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">
+                  Noxderma Target Margin ({inputs.noxdermaTargetMarginPercent}%)
+                </td>
+                <td className="py-1 px-3 text-right font-mono text-emerald-800 font-semibold">
+                  +{formatPKR(results.noxdermaNetProfitPerUnit)}
+                </td>
+              </tr>
+              <tr className="bg-slate-100 font-black">
+                <td className="py-1 px-3 text-black">Distributor Price (DP)</td>
+                <td className="py-1 px-3 text-right font-mono text-black">{formatPKR(results.distributorPrice)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">
+                  Trade Deal ({inputs.bonusSchemeType === "none" ? "None" : inputs.bonusSchemeType.replace(/_/g, " ")})
+                </td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">
+                  Eff. DP: {formatPKR(results.effectiveDistributorPriceWithScheme)}
+                </td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">
+                  Distributor Margin ({inputs.distributorMarginPercent}%)
+                </td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">
+                  +{formatPKR(results.tradePrice - results.distributorPrice)}
+                </td>
+              </tr>
+              <tr className="bg-teal-50 font-black">
+                <td className="py-1 px-3 text-teal-900">Trade Price (Price to Pharmacy)</td>
+                <td className="py-1 px-3 text-right font-mono text-teal-900">{formatPKR(results.tradePrice)}</td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">
+                  Pharmacy Retail Margin ({inputs.pharmacyMarginPercent}%)
+                </td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">
+                  +{formatPKR(results.retailPriceFinalMrp - results.taxAmountPerUnit - results.tradePrice)}
+                </td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 text-slate-800">GST / Sales Tax ({inputs.taxGstPercent}%)</td>
+                <td className="py-1 px-3 text-right font-mono font-semibold">{formatPKR(results.taxAmountPerUnit)}</td>
+              </tr>
+              <tr className="bg-slate-900 text-white font-black text-xs">
+                <td className="py-1.5 px-3 uppercase tracking-wide">Maximum Retail Price (MRP)</td>
+                <td className="py-1.5 px-3 text-right font-mono text-sm">{formatPKR(results.retailPriceFinalMrp)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Financial Feasibility & Viability Summary */}
+      <div className="my-3 grid grid-cols-4 gap-2 text-center text-xs">
+        <div className="p-2 rounded-xl border border-slate-300 bg-slate-50">
+          <span className="text-[10px] font-bold text-slate-500 uppercase block">Profit Per Unit</span>
+          <span className="text-sm font-black text-emerald-800 font-mono block">
+            {formatPKR(results.noxdermaNetProfitPerUnit)}
+          </span>
+          <span className="text-[10px] text-slate-500">{results.noxdermaGrossMarginPercent.toFixed(1)}% margin</span>
+        </div>
+        <div className="p-2 rounded-xl border border-slate-300 bg-slate-50">
+          <span className="text-[10px] font-bold text-slate-500 uppercase block">Monthly Net Profit</span>
+          <span className="text-sm font-black text-emerald-800 font-mono block">
+            {formatPKR(results.noxdermaMonthlyNetProfit)}
+          </span>
+          <span className="text-[10px] text-slate-500">at {formatNumber(inputs.expectedMonthlyVolume)} packs</span>
+        </div>
+        <div className="p-2 rounded-xl border border-slate-300 bg-slate-50">
+          <span className="text-[10px] font-bold text-slate-500 uppercase block">Monthly Revenue</span>
+          <span className="text-sm font-black text-black font-mono block">
+            {formatPKR(results.distributorPrice * inputs.expectedMonthlyVolume)}
+          </span>
+          <span className="text-[10px] text-slate-500">Distributor Level</span>
+        </div>
+        <div className="p-2 rounded-xl border border-slate-300 bg-slate-50">
+          <span className="text-[10px] font-bold text-slate-500 uppercase block">Break-even Volume</span>
+          <span className="text-sm font-black text-black font-mono block">
+            {formatNumber(results.breakEvenVolumeUnits)} Packs
+          </span>
+          <span className="text-[10px] text-slate-500">Fixed Cost Coverage</span>
+        </div>
+      </div>
+
+      {/* Approvals Section */}
+      <div className="pt-6 pb-2 grid grid-cols-3 gap-8 text-[11px] font-bold text-black">
+        <div className="border-t-2 border-slate-400 pt-1.5 text-center">
+          <span>Prepared By (Product Manager)</span>
+        </div>
+        <div className="border-t-2 border-slate-400 pt-1.5 text-center">
+          <span>Reviewed By (Finance / Accounts)</span>
+        </div>
+        <div className="border-t-2 border-slate-400 pt-1.5 text-center">
+          <span>Approved By (Managing Director)</span>
+        </div>
+      </div>
+
+      {/* Footer Note */}
+      <div className="mt-3 border-t border-slate-300 pt-2 text-center text-[10px] text-slate-500">
+        <p>
+          Confidential &bull; {businessSettings?.brandName || "Noxderma Pharma"} &bull; Official Costing & Commercial Feasibility Document.
+        </p>
+      </div>
+    </div>
+  </>
+);
 }

@@ -309,10 +309,7 @@ button:active:not(:disabled) {
   #root,
   #__next,
   main,
-  div[class*="min-h-screen"],
-  div[class*="bg-slate-50"],
-  div[class*="bg-slate-950"],
-  div[class*="dark:bg-slate-950"] {
+  div[class~="min-h-screen"] {
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #000000 !important;
@@ -327,12 +324,6 @@ button:active:not(:disabled) {
     font-size: 12pt;
   }
 
-  /* Reset layout constraints and side paddings */
-  div[class*="lg:pl-"],
-  div[class*="pl-"] {
-    padding-left: 0 !important;
-  }
-
   main {
     padding: 0 !important;
     margin: 0 !important;
@@ -341,6 +332,12 @@ button:active:not(:disabled) {
     box-shadow: none !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
+  }
+
+  /* Ensure Invoice Information Cards maintain proper padding during print */
+  .invoice-info-card {
+    padding: 14px 16px !important;
+    border-radius: 12px !important;
   }
 
   /* 3. A4 Printable Page Container */

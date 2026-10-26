@@ -241,8 +241,9 @@ export default function SalesInvoicesListPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
+    <>
+      <div className="space-y-6 no-print print:hidden">
+        {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -795,10 +796,11 @@ export default function SalesInvoicesListPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
       {selectedInvoice && (
-        <div className="hidden print:block fixed inset-0 z-50 bg-white text-black p-6 font-sans text-xs">
+        <div className="hidden print:block print-page bg-white text-black p-6 font-sans text-xs w-full max-w-none m-0">
           {/* Header with Print Logo support */}
           <div className="flex justify-between items-start pb-5 border-b-2 border-black gap-4">
             <div className="flex items-start gap-3.5">
@@ -847,7 +849,10 @@ export default function SalesInvoicesListPage() {
 
           {/* Customer & Payment Details Cards */}
           <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm my-4">
-            <div className="p-3.5 rounded-xl border border-slate-400 bg-white">
+            <div
+              className="invoice-info-card p-4 rounded-xl border border-slate-400 bg-white print:!p-4"
+              style={{ padding: "14px 16px" }}
+            >
               <span className="text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 CUSTOMER / PHARMACY:
               </span>
@@ -867,7 +872,10 @@ export default function SalesInvoicesListPage() {
                 </div>
               )}
             </div>
-            <div className="p-3.5 rounded-xl border border-slate-400 bg-white">
+            <div
+              className="invoice-info-card p-4 rounded-xl border border-slate-400 bg-white print:!p-4"
+              style={{ padding: "14px 16px" }}
+            >
               <span className="text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 PAYMENT DETAILS:
               </span>
@@ -993,6 +1001,6 @@ export default function SalesInvoicesListPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
