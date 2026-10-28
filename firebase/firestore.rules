@@ -2,175 +2,200 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for authentication and role verification
-    function isAuthenticated() {
-      return request.auth != null;
+    // ===============================================================
+    // Assumed Data Model & Schema Validators for Noxderma ERP
+    // ===============================================================
+    function isValidDocSize() {
+      return request.resource.data.keys().size() <= 60;
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function hasValidId() {
+      return !('id' in request.resource.data) ||
+        (request.resource.data.id is string && request.resource.data.id.size() >= 1 && request.resource.data.id.size() <= 150);
     }
 
-    function hasRole(role) {
-      return isAuthenticated() && (
-        request.auth.token.role == role || 
-        getUserData().role == role
-      );
+    function isValidErpWrite() {
+      return isValidDocSize() && hasValidId();
     }
 
-    function isAdmin() {
-      return hasRole('admin');
+    // Core ERP Collections synchronized with IndexedDB (offlineDb)
+    match /settings/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    function isWarehouseStaff() {
-      return hasRole('warehouse_staff');
+    match /organizationSettings/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    function isBookingUser() {
-      return hasRole('booking_user');
+    match /categories/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Organization settings: readable by all authenticated staff, writable only by admin
-    match /organizationSettings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    match /products/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Dynamic Categories: readable by all authenticated, writable only by admin
-    match /categories/{categoryId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    match /productPricing/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // User management: only admin can read and manage user records
-    match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+    match /inventoryBatches/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Audit logs: append-only for authenticated actions, readable only by admin
-    match /auditLogs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated();
-      allow update, delete: if false; // Append-only audit integrity
+    match /stockMovements/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Product catalog (public operational info)
-    match /products/{productId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    match /inventoryProjections/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Sensitive Product Pricing & Costs: strictly Admin and authorized booking roles, blocked for Warehouse Staff
-    match /productPricing/{productId} {
-      allow read: if isAuthenticated() && !isWarehouseStaff();
-      allow write: if isAdmin();
+    match /customers/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Inventory batches: operational info readable by warehouse and admin
-    match /inventoryBatches/{batchId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isWarehouseStaff();
+    match /leads/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Sensitive batch cost records: strictly Admin only
-    match /batchCostRecords/{batchId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+    match /customerVisits/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Stock movements: can be created by warehouse staff or admin, immutable after write
-    match /stockMovements/{movementId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isAdmin() || isWarehouseStaff() || isBookingUser());
-      allow update, delete: if false; // Immutable ledger
+    match /invoices/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Inventory projections: cached stock levels
-    match /inventoryProjections/{productId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isWarehouseStaff();
+    match /payments/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Damaged and sample stock tracking
-    match /damagedStockRecords/{recordId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isWarehouseStaff();
+    match /manufacturers/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /sampleRecords/{recordId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isWarehouseStaff() || isBookingUser();
+    match /purchaseOrders/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Customers and Leads CRM
-    match /customers/{customerId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isBookingUser();
+    match /salesBookings/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /leads/{leadId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isBookingUser();
+    match /onlineOrders/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /customerVisits/{visitId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+    match /salesReturns/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Invoices and Sales: readable by Admin & Booking, blocked for Warehouse Staff
-    match /invoices/{invoiceId} {
-      allow read: if isAuthenticated() && !isWarehouseStaff();
-      allow create: if isAdmin() || isBookingUser();
-      allow update: if isAdmin();
-      allow delete: if false; // Must use auditable reversals
+    match /marketingCampaigns/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Manufacturers & Purchases: sensitive financial supplier data
-    match /manufacturers/{manufacturerId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    match /employeeTargets/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /purchaseOrders/{poId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+    match /users/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /goodsReceipts/{receiptId} {
-      allow read: if isAdmin() || isWarehouseStaff();
-      allow write: if isAdmin() || isWarehouseStaff();
+    match /coupons/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Financial Ledgers & Cash/Bank Accounts: strictly Admin only
-    match /ledgerAccounts/{accountId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+    match /staffMonitors/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /ledgerEntries/{entryId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin();
-      allow update, delete: if false; // Balanced journal entries are append-only
+    match /dailyBeatPlans/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /payments/{paymentId} {
-      allow read: if isAdmin() || isBookingUser();
-      allow create: if isAdmin() || isBookingUser();
-      allow update: if isAdmin();
-      allow delete: if false;
+    match /liveMapPins/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    // Sync operations queue records: accessible to originating device/user and admin
-    match /syncOperations/{opId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+    match /geoVerifiedPhotos/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
     }
 
-    match /syncConflicts/{conflictId} {
-      allow read: if isAdmin();
-      allow write: if isAuthenticated();
+    match /auditLogs/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
+    }
+
+    match /syncOperations/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
+    }
+
+    match /syncConflicts/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
+    }
+
+    // Default deny for any unmapped collection
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
