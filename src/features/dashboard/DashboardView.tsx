@@ -15,6 +15,7 @@ import {
   ArrowUpRight,
   ShieldAlert,
   CheckCircle,
+  Compass,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -168,6 +169,14 @@ export function DashboardView() {
           >
             <PlusCircle className="w-4 h-4 stroke-[2.5]" />
             <span>Make New Bill (Invoice)</span>
+          </Link>
+
+          <Link
+            href="/employees/monitoring"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive"
+          >
+            <Compass className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            <span>Staff Live Radar</span>
           </Link>
 
           <Link

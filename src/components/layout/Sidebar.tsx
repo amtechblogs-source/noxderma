@@ -39,6 +39,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   History,
+  Compass,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { offlineDb } from "@/lib/offline/db";
@@ -94,6 +95,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Main Distributors", href: "/distributors", icon: Truck, requiredPermission: "crm:customers" },
       { name: "New Client Enquiries (Leads)", href: "/crm/leads", icon: Users2, requiredPermission: "crm:leads" },
       { name: "Doctor & Market Visits", href: "/crm/visits", icon: MapPin, requiredPermission: "crm:visits" },
+      { name: "Staff Live Radar & Route Monitor", href: "/employees/monitoring", icon: Compass, requiredPermission: "crm:visits" },
       { name: "Staff Sales Targets", href: "/employees/targets", icon: Target, requiredPermission: "crm:visits" },
     ],
   },
@@ -150,6 +152,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
       "/inventory/batches",
       "/inventory",
       "/customers",
+      "/employees/monitoring",
       "/finance/credit",
       "/purchases",
     ];

@@ -10,3 +10,4 @@ export * from "./crm";
 export * from "./pricing";
 export * from "./coupons";
 export * from "./audit";
+export * from "./monitoring";

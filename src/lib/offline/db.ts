@@ -15,6 +15,10 @@ import type {
   OutboxOperation,
   SyncConflict,
   CouponCode,
+  StaffMonitoringProfile,
+  DailyBeatPlan,
+  LiveMapTransactionPin,
+  GeoVerifiedPhoto,
 } from "@/types";
 
 export interface PendingImageRecord {
@@ -78,6 +82,10 @@ export class NoxdermaDexieDB extends Dexie {
   employeeTargets!: Table<any, string>;
   users!: Table<any, string>;
   coupons!: Table<CouponCode, string>;
+  staffMonitors!: Table<StaffMonitoringProfile, string>;
+  dailyBeatPlans!: Table<DailyBeatPlan, string>;
+  liveMapPins!: Table<LiveMapTransactionPin, string>;
+  geoVerifiedPhotos!: Table<GeoVerifiedPhoto, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -123,6 +131,13 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(5).stores({
       auditLogs: "id, userId, timestamp, action, entityType, entityId, isUndone",
+    });
+
+    this.version(6).stores({
+      staffMonitors: "id, name, liveState, territory",
+      dailyBeatPlans: "id, staffId, date, territory",
+      liveMapPins: "id, type, staffId, timestamp",
+      geoVerifiedPhotos: "id, staffId, capturedAt, auditStatus",
     });
   }
 }
