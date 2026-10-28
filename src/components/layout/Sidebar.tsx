@@ -95,7 +95,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Main Distributors", href: "/distributors", icon: Truck, requiredPermission: "crm:customers" },
       { name: "New Client Enquiries (Leads)", href: "/crm/leads", icon: Users2, requiredPermission: "crm:leads" },
       { name: "Doctor & Market Visits", href: "/crm/visits", icon: MapPin, requiredPermission: "crm:visits" },
-      { name: "Staff Live Radar & Route Monitor", href: "/employees/monitoring", icon: Compass, requiredPermission: "crm:visits" },
+      { name: "Staff Location & Battery", href: "/employees/monitoring", icon: Compass, requiredPermission: "crm:visits" },
       { name: "Staff Sales Targets", href: "/employees/targets", icon: Target, requiredPermission: "crm:visits" },
     ],
   },
