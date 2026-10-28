@@ -225,6 +225,20 @@ button:active:not(:disabled) {
   transform: translateY(0);
 }
 
+/* Prevent Tailwind space-y / space-x from adding top/left margin to fixed overlays, modals, and drawers */
+.fixed.inset-0,
+[class*="space-y-"] > .fixed,
+[class*="space-x-"] > .fixed {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
 /* Mobile Safe Bottom Area */
 .pb-safe {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);

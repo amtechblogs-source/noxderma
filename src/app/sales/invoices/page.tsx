@@ -725,7 +725,7 @@ export default function SalesInvoicesListPage() {
       {/* INDIVIDUAL INVOICE DELETE CONFIRMATION MODAL                              */}
       {/* ========================================================================= */}
       {deletingInvoice && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
               <Trash2 className="w-6 h-6" />
@@ -801,7 +801,7 @@ export default function SalesInvoicesListPage() {
       {/* BULK INVOICES DELETE CONFIRMATION MODAL                                    */}
       {/* ========================================================================= */}
       {isBulkDeleting && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-card-hover max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
               <Trash2 className="w-6 h-6" />

@@ -507,7 +507,7 @@ export default function UserManagementPage() {
 
       {/* Add / Edit User Modal with Modular Access Nizam */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">

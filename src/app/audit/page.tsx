@@ -640,7 +640,7 @@ export default function AuditLogsPage() {
       {/* UNDO CONFIRMATION MODAL                                                   */}
       {/* ========================================================================= */}
       {undoTargetLog && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-lg w-full p-6 sm:p-7 space-y-5 animate-in zoom-in-95">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -727,7 +727,7 @@ export default function AuditLogsPage() {
       {/* SNAPSHOT & DIFF VIEWER MODAL                                              */}
       {/* ========================================================================= */}
       {inspectLog && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-2xl w-full p-6 space-y-4 animate-in zoom-in-95 max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
