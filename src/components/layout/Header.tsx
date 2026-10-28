@@ -495,27 +495,27 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
     searchResults.batches.length > 0;
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
-      <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 h-16 gap-2 sm:gap-3">
+    <header className="sticky top-0 z-30 w-full max-w-[100vw] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
+      <div className="flex items-center justify-between px-2.5 sm:px-4 md:px-6 h-16 gap-1.5 sm:gap-3">
         {/* Left: Mobile Sidebar Toggle & Category Switcher */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
             onClick={onToggleSidebar}
             aria-label="Toggle navigation menu"
-            className="lg:hidden p-2.5 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 btn-interactive"
+            className="lg:hidden p-2 rounded-xl min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 btn-interactive shrink-0"
           >
             <Menu className="w-5 h-5" />
           </button>
 
           {/* Dynamic Category Switcher Dropdown */}
-          <div ref={categoryMenuRef} className="relative">
+          <div ref={categoryMenuRef} className="relative min-w-0">
             <button
               onClick={() => setIsCategoryMenuOpen(!isCategoryMenuOpen)}
-              className="flex items-center gap-2 px-3 sm:px-3.5 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all shadow-sm btn-interactive"
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-2 min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all shadow-sm btn-interactive"
             >
               <Layers className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
               <span className="hidden sm:inline">Category:</span>
-              <span className="text-teal-700 dark:text-teal-300 font-bold truncate max-w-[130px] sm:max-w-[180px]">
+              <span className="text-teal-700 dark:text-teal-300 font-bold truncate max-w-[100px] sm:max-w-[180px]">
                 {selectedCategoryId === "all"
                   ? "All Categories"
                   : categories.find((c) => c.id === selectedCategoryId)?.name || "Category"}
@@ -751,20 +751,20 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
         </div>
 
         {/* Right: Search (Mobile), Online Status, Sync, Theme, Profile */}
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
           {/* Online/Offline Status Indicator */}
           <div
             title={isOnline ? "Connected to Internet" : "Working Offline (No Internet)"}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-xs font-semibold ${
               isOnline
                 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
                 : "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
             }`}
           >
             {isOnline ? (
-              <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             ) : (
-              <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-pulse" />
+              <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-pulse shrink-0" />
             )}
             <span className="hidden sm:inline">{isOnline ? "Online" : "Offline"}</span>
           </div>
@@ -775,9 +775,9 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
               onClick={handleManualSync}
               disabled={isSyncing || !isOnline}
               title={`${pendingCount} items waiting to save online. Click to save.`}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-semibold hover:bg-teal-100 transition-all disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-semibold hover:bg-teal-100 transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-teal-600" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSyncing ? "animate-spin text-teal-600" : ""}`} />
               <span>{pendingCount}</span>
             </button>
           )}
@@ -786,27 +786,27 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           <button
             onClick={() => setIsMobileSearchOpen(true)}
             aria-label="Universal Search"
-            className="md:hidden p-2.5 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
+            className="md:hidden p-2 rounded-xl min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
           >
-            <Search className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            <Search className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0" />
           </button>
 
           {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
             aria-label="Toggle dark mode"
-            className="p-2.5 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors btn-interactive"
+            className="p-2 rounded-xl min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors btn-interactive"
           >
-            {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
+            {isDarkMode ? <Sun className="w-5 h-5 text-amber-400 shrink-0" /> : <Moon className="w-5 h-5 text-slate-600 shrink-0" />}
           </button>
 
           {/* User Profile Dropdown */}
           <div ref={profileMenuRef} className="relative">
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="flex items-center gap-2 p-1.5 min-h-[44px] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all btn-interactive"
+              className="flex items-center gap-1.5 sm:gap-2 p-1 min-h-[40px] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all btn-interactive"
             >
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
                 {currentUser?.displayName ? currentUser.displayName[0].toUpperCase() : "A"}
               </div>
               <div className="hidden sm:flex flex-col text-left">
@@ -817,7 +817,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                   {roleLabel}
                 </span>
               </div>
-              <ChevronDown className="w-4 h-4 text-slate-400" />
+              <ChevronDown className="hidden sm:block w-4 h-4 text-slate-400 shrink-0" />
             </button>
 
             {isProfileMenuOpen && (

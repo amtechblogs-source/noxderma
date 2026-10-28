@@ -178,28 +178,28 @@ export function DashboardView() {
         </div>
 
         {/* Quick Action Toolbar */}
-        <div className="flex items-center flex-wrap gap-2.5 w-full sm:w-auto">
+        <div className="grid grid-cols-2 sm:flex sm:items-center sm:flex-wrap gap-2.5 w-full sm:w-auto">
           <Link
             href="/sales/invoices/new"
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
+            className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
           >
-            <PlusCircle className="w-4 h-4 stroke-[2.5]" />
+            <PlusCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
             <span>Make New Bill (Invoice)</span>
           </Link>
 
           <Link
             href="/employees/monitoring"
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive"
+            className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs sm:text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive text-center"
           >
-            <Compass className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-            <span>Staff Location &amp; Battery</span>
+            <Compass className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+            <span className="truncate">Staff Location</span>
           </Link>
 
           <Link
             href="/crm/visits"
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive"
+            className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive text-center"
           >
-            <span>Add Doctor Visit</span>
+            <span className="truncate">Add Doctor Visit</span>
           </Link>
         </div>
       </div>

@@ -1493,32 +1493,32 @@ export function PriceEstimatorView() {
       </div>
 
       {/* Persistent Mobile Bottom Quick Summary Bar (lg:hidden) */}
-      <div className="lg:hidden fixed bottom-16 left-0 right-0 z-30 px-3 py-2.5 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white border-t border-slate-800 shadow-2xl">
+      <div className="lg:hidden fixed bottom-[62px] left-0 right-0 z-30 px-3 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 shadow-lg">
         <div className="max-w-md mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div>
-              <span className="block text-[8px] font-bold uppercase text-slate-400 leading-none">
+              <span className="block text-[8px] font-bold uppercase text-slate-500 dark:text-slate-400 leading-none">
                 Cost
               </span>
-              <span className="text-[11px] font-black font-mono text-slate-200">
+              <span className="text-[11px] font-black font-mono text-slate-800 dark:text-slate-200">
                 {formatPKR(results.totalLandedCostPerUnit)}
               </span>
             </div>
-            <div className="h-5 w-px bg-slate-700 shrink-0" />
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
             <div>
-              <span className="block text-[8px] font-bold uppercase text-teal-400 leading-none">
+              <span className="block text-[8px] font-bold uppercase text-teal-600 dark:text-teal-400 leading-none">
                 Trade (TP)
               </span>
-              <span className="text-[11px] font-black font-mono text-teal-300">
+              <span className="text-[11px] font-black font-mono text-teal-700 dark:text-teal-300">
                 {formatPKR(results.tradePrice)}
               </span>
             </div>
-            <div className="h-5 w-px bg-slate-700 shrink-0" />
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
             <div>
-              <span className="block text-[8px] font-bold uppercase text-amber-400 leading-none">
+              <span className="block text-[8px] font-bold uppercase text-amber-600 dark:text-amber-400 leading-none">
                 MRP
               </span>
-              <span className="text-xs font-black font-mono text-amber-300">
+              <span className="text-xs font-black font-mono text-amber-700 dark:text-amber-300">
                 {formatPKR(results.retailPriceFinalMrp)}
               </span>
             </div>

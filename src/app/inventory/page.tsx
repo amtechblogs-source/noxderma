@@ -218,24 +218,27 @@ export default function InventoryOverviewPage() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => setIsRecordingDamage(true)}
-            className="px-3.5 py-2 rounded-lg border border-rose-500/30 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+            className="px-3 py-2.5 min-h-[42px] rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
           >
-            <PackageX className="w-3.5 h-3.5" /> Broken / Damaged Stock
+            <PackageX className="w-4 h-4 shrink-0" />
+            <span className="truncate">Broken / Damaged</span>
           </button>
           <button
             onClick={() => setIsRecordingSample(true)}
-            className="px-3.5 py-2 rounded-lg border border-sky-500/30 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+            className="px-3 py-2.5 min-h-[42px] rounded-xl border border-sky-500/30 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
           >
-            <Stethoscope className="w-3.5 h-3.5" /> Free Doctor Sample
+            <Stethoscope className="w-4 h-4 shrink-0" />
+            <span className="truncate">Doctor Sample</span>
           </button>
           <Link
             href="/inventory/batches"
-            className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
+            className="col-span-2 sm:col-span-1 px-4 py-2.5 min-h-[42px] rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all"
           >
-            <Barcode className="w-4 h-4" /> View All Batches & Expiry
+            <Barcode className="w-4 h-4 shrink-0" />
+            <span>View All Batches &amp; Expiry</span>
           </Link>
         </div>
       </div>
@@ -302,24 +305,25 @@ export default function InventoryOverviewPage() {
       </div>
 
       {/* Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex items-center justify-between text-xs">
-        <div className="relative w-full max-w-sm">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 shrink-0" />
           <input
             type="text"
             placeholder="Search medicine name, code, or category..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-end gap-3 shrink-0">
           <Link
             href="/inventory/movements"
-            className="text-xs font-bold text-teal-600 hover:underline flex items-center gap-1"
+            className="text-xs font-bold text-teal-600 hover:underline inline-flex items-center gap-1.5"
           >
-            <ArrowLeftRight className="w-3.5 h-3.5" /> Stock In & Out History
+            <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+            <span>Stock In &amp; Out History</span>
           </Link>
         </div>
       </div>

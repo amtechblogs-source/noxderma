@@ -70,33 +70,29 @@ export default function StaffLocationAndPhoneStatusPage() {
     }, 4000);
   };
 
-  // Load saved staff monitoring profiles from IndexedDB / localStorage & sync real staff from offlineDb.users
+  // Auto-fetch all staff logins (offlineDb.users) & live staff monitors (offlineDb.staffMonitors) in real-time
   useEffect(() => {
-    async function loadStaff() {
+    let isMounted = true;
+
+    async function loadAndAutoFetchStaff() {
       let existing: StaffMonitoringProfile[] = [];
       try {
         const dbStaff = await offlineDb.staffMonitors?.toArray();
         if (dbStaff && dbStaff.length > 0) {
           existing = dbStaff.filter((s) => !DEMO_STAFF_IDS.has(s.id));
+          // Clean up any legacy demo records from DB if present
+          for (const s of dbStaff) {
+            if (DEMO_STAFF_IDS.has(s.id)) {
+              await offlineDb.staffMonitors?.delete(s.id);
+            }
+          }
         }
       } catch {}
 
-      if (existing.length === 0) {
-        try {
-          const saved = localStorage.getItem("noxderma_staff_monitors");
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-              existing = parsed.filter((s: StaffMonitoringProfile) => !DEMO_STAFF_IDS.has(s.id));
-            }
-          }
-        } catch {}
-      }
-
-      // Also sync real staff accounts from offlineDb.users so real employees appear automatically
+      // Auto-fetch all staff accounts from offlineDb.users so every registered/logged-in user appears automatically
       try {
         const realUsers = await offlineDb.users.toArray();
-        const existingIds = new Set(existing.map((s) => s.id));
+        const existingMap = new Map(existing.map((s) => [s.id, s]));
         let pct = 100;
         let charging = false;
         if (typeof navigator !== "undefined" && "getBattery" in navigator) {
@@ -107,19 +103,20 @@ export default function StaffLocationAndPhoneStatusPage() {
           } catch {}
         }
         const browserDevice = detectBrowserDeviceName();
+        const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
+          sales_rep: "Order Booker",
+          medical_rep: "Medical Rep",
+          recovery_officer: "Recovery Officer",
+          warehouse_staff: "Field Supervisor",
+          accountant: "Field Supervisor",
+          admin: "Field Supervisor",
+        };
 
         for (const u of realUsers) {
           const monitorId = `user_${u.id}`;
-          if (!existingIds.has(monitorId)) {
-            const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
-              sales_rep: "Order Booker",
-              medical_rep: "Medical Rep",
-              recovery_officer: "Recovery Officer",
-              warehouse_staff: "Field Supervisor",
-              accountant: "Field Supervisor",
-              admin: "Field Supervisor",
-            };
-            existing.push({
+          const prev = existingMap.get(monitorId);
+          if (!prev) {
+            const newProfile: StaffMonitoringProfile = {
               id: monitorId,
               name: u.displayName || u.email,
               roleTitle: roleMap[u.role] || "Order Booker",
@@ -127,9 +124,9 @@ export default function StaffLocationAndPhoneStatusPage() {
               vehicleType: "bike",
               territory: "Karachi",
               liveState: u.active ? "moving" : "offline",
-              statusHeadline: u.active ? "Active" : "Offline",
+              statusHeadline: u.active ? "Online (Auto-Synced)" : "Offline",
               currentSpeedKmh: 0,
-              currentRoadOrLocation: "Click 'Sync My Mobile & GPS' for live coordinates",
+              currentRoadOrLocation: `Auto-Synced Session (${browserDevice})`,
               shiftStartTime: "09:00 AM",
               batteryLevel: pct,
               isCharging: charging,
@@ -142,31 +139,66 @@ export default function StaffLocationAndPhoneStatusPage() {
               x: 50,
               y: 50,
               dayRoute: [],
-            });
+            };
+            existing.push(newProfile);
+            await offlineDb.staffMonitors?.put(newProfile);
+          } else {
+            // Keep name/role/phone synced with user account and replace any old "Click 'Sync..." text
+            const cleanedLocation = prev.currentRoadOrLocation?.includes("Click")
+              ? `Live GPS (${prev.lat.toFixed(4)}° N, ${prev.lng.toFixed(4)}° E)`
+              : prev.currentRoadOrLocation;
+            if (
+              prev.name !== (u.displayName || u.email) ||
+              prev.currentRoadOrLocation !== cleanedLocation
+            ) {
+              const updatedProfile: StaffMonitoringProfile = {
+                ...prev,
+                name: u.displayName || u.email,
+                roleTitle: roleMap[u.role] || prev.roleTitle,
+                phone: u.phone || u.email,
+                currentRoadOrLocation: cleanedLocation,
+              };
+              existingMap.set(monitorId, updatedProfile);
+              await offlineDb.staffMonitors?.put(updatedProfile);
+            }
           }
         }
+        existing = Array.from(
+          new Map(existing.map((item) => [item.id, existingMap.get(item.id) || item])).values()
+        );
       } catch {}
 
+      if (!isMounted) return;
       setStaffList(existing);
-      if (existing.length > 0) {
-        setSelectedStaffId(existing[0].id);
-      }
-      localStorage.setItem("noxderma_staff_monitors", JSON.stringify(existing));
+      setSelectedStaffId((prevId) => {
+        if (prevId && existing.some((s) => s.id === prevId)) return prevId;
+        return existing[0]?.id || "";
+      });
       try {
-        await offlineDb.staffMonitors?.clear();
-        if (existing.length > 0) {
-          await offlineDb.staffMonitors?.bulkPut(existing);
-        }
+        localStorage.setItem("noxderma_staff_monitors", JSON.stringify(existing));
       } catch {}
     }
-    loadStaff();
+
+    loadAndAutoFetchStaff();
+
+    // Automatically refresh whenever Cloud Firestore pushes live staff/login updates
+    const handleCloudUpdate = () => {
+      loadAndAutoFetchStaff();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudUpdate);
+    const pollInterval = setInterval(loadAndAutoFetchStaff, 5000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("noxderma-cloud-synced", handleCloudUpdate);
+      clearInterval(pollInterval);
+    };
   }, []);
 
   const persistStaffList = async (updated: StaffMonitoringProfile[]) => {
     setStaffList(updated);
     localStorage.setItem("noxderma_staff_monitors", JSON.stringify(updated));
     try {
-      await offlineDb.staffMonitors?.clear();
       await offlineDb.staffMonitors?.bulkPut(updated);
     } catch {}
   };
@@ -175,76 +207,6 @@ export default function StaffLocationAndPhoneStatusPage() {
     () => staffList.find((s) => s.id === selectedStaffId) || staffList[0],
     [staffList, selectedStaffId]
   );
-
-  // Sync real HTML5 Battery + Device Name + Live GPS Coordinates for selected staff
-  const handleSyncLiveDeviceStatus = async () => {
-    setIsSyncingDevice(true);
-    let pct = selectedStaff?.batteryLevel ?? 80;
-    let charging = false;
-
-    if (typeof navigator !== "undefined" && "getBattery" in navigator) {
-      try {
-        const bat = await (navigator as any).getBattery();
-        pct = Math.round((bat.level ?? 0.8) * 100);
-        charging = Boolean(bat.charging);
-      } catch {}
-    }
-
-    const detectedModel = detectBrowserDeviceName();
-
-    const applyUpdate = (lat: number, lng: number, acc: number, locLabel?: string) => {
-      const signal: StaffMonitoringProfile["gpsSignal"] =
-        acc <= 15 ? "High Accuracy Active" : acc <= 40 ? "Moderate Signal" : "Weak Signal";
-
-      const updated = staffList.map((s) =>
-        s.id === selectedStaff.id
-          ? {
-              ...s,
-              batteryLevel: pct,
-              isCharging: charging,
-              deviceModel: s.deviceModel || detectedModel,
-              lat,
-              lng,
-              gpsAccuracyMeters: Math.round(acc),
-              gpsSignal: signal,
-              currentRoadOrLocation: locLabel || s.currentRoadOrLocation,
-              lastPingTime: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              liveState: "moving" as StaffLiveState,
-            }
-          : s
-      );
-
-      persistStaffList(updated);
-      setIsSyncingDevice(false);
-      showToast(
-        `✓ Updated ${selectedStaff.name}: ${pct}% Battery (${
-          charging ? "Charging" : "On Battery"
-        }) • GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`
-      );
-    };
-
-    if (typeof navigator !== "undefined" && "geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          applyUpdate(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            pos.coords.accuracy || 5,
-            `Live GPS Location (${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E)`
-          );
-        },
-        () => {
-          applyUpdate(selectedStaff.lat, selectedStaff.lng, 5);
-        },
-        { enableHighAccuracy: true, timeout: 4000 }
-      );
-    } else {
-      applyUpdate(selectedStaff.lat, selectedStaff.lng, 5);
-    }
-  };
 
   // Add new staff member to monitor
   const handleAddStaffMember = (e: React.FormEvent) => {
@@ -328,22 +290,18 @@ export default function StaffLocationAndPhoneStatusPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleSyncLiveDeviceStatus}
-            disabled={isSyncingDevice}
-            className="px-3.5 py-2 rounded-xl border border-teal-500/30 bg-teal-50 dark:bg-teal-950/50 hover:bg-teal-100 text-teal-700 dark:text-teal-300 text-xs font-bold flex items-center gap-1.5 transition-all"
-          >
-            <RefreshCw className={`w-4 h-4 ${isSyncingDevice ? "animate-spin" : ""}`} />
-            Sync My Mobile &amp; GPS
-          </button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="px-3 py-2 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+            <span>Auto-Syncing GPS &amp; Battery</span>
+          </div>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20"
           >
-            <Plus className="w-4 h-4" />
-            Add Staff Mobile
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Add Staff Mobile</span>
           </button>
         </div>
       </div>
@@ -362,24 +320,24 @@ export default function StaffLocationAndPhoneStatusPage() {
               Live location active
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+          <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center shrink-0">
             <Navigation className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex items-center justify-between">
-          <div>
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex items-center justify-between gap-2">
+          <div className="min-w-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
               Selected Mobile Model
             </span>
             <span className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 truncate block mt-0.5">
-              {selectedStaff?.deviceModel}
+              {selectedStaff?.deviceModel || "Auto-Detecting..."}
             </span>
-            <span className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold block mt-0.5">
+            <span className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold truncate block mt-0.5">
               {selectedStaff?.name} ({selectedStaff?.roleTitle})
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center">
+          <div className="w-11 h-11 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shrink-0">
             <Smartphone className="w-5 h-5" />
           </div>
         </div>
@@ -400,7 +358,7 @@ export default function StaffLocationAndPhoneStatusPage() {
               Real-time HTML5 Battery Monitor
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+          <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shrink-0">
             <Battery className="w-5 h-5" />
           </div>
         </div>
@@ -409,19 +367,19 @@ export default function StaffLocationAndPhoneStatusPage() {
       {/* MAIN CONTENT: STAFF LIST (LEFT) + LIVE LOCATION MAP (RIGHT) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT 7 COLUMNS: STAFF CARDS WITH MOBILE NAME, BATTERY % & LIVE LOCATION */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="flex items-center justify-between gap-2">
+        <div className="lg:col-span-7 space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
               All Field Staff ({filteredStaff.length})
             </h2>
-            <div className="relative w-64">
+            <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search staff, mobile, location..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs"
+                className="w-full pl-8 pr-3 py-2 sm:py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs"
               />
             </div>
           </div>

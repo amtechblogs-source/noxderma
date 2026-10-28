@@ -171,13 +171,24 @@ html, body, button, a, input, select, textarea {
   touch-action: manipulation;
 }
 
+html {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   overflow-x: hidden;
+  max-width: 100vw;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent SVG icons from shrinking or squishing inside flex buttons on narrow mobile screens */
+svg {
+  flex-shrink: 0;
 }
 
 /* Touch-friendly Mobile Inputs & Form Elements (Prevents iOS auto-zoom) */
@@ -225,10 +236,17 @@ button:active:not(:disabled) {
   transform: translateY(0);
 }
 
-/* Prevent Tailwind space-y / space-x from adding top/left margin to fixed overlays, modals, and drawers */
-.fixed.inset-0,
+/* Prevent Tailwind space-y / space-x from adding top/left margin to fixed elements */
 [class*="space-y-"] > .fixed,
 [class*="space-x-"] > .fixed {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Ensure full-screen modal/drawer backdrops cover all 4 edges with zero margin */
+.fixed.inset-0 {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   margin-left: 0 !important;

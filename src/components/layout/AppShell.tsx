@@ -18,6 +18,29 @@ import { OfflineBanner } from "./OfflineBanner";
 import { CategoryProvider } from "@/context/CategoryContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { offlineDb } from "@/lib/offline/db";
+import type { StaffMonitoringProfile } from "@/types";
+
+function detectMobileDeviceName(): string {
+  if (typeof navigator === "undefined") return "Mobile Device";
+  const ua = navigator.userAgent || "";
+  if (/SM-[A-Z0-9]+/i.test(ua)) {
+    const match = ua.match(/SM-[A-Z0-9]+/i);
+    return `Samsung Galaxy (${match ? match[0] : "Android"})`;
+  }
+  if (/Redmi|Mi |POCO/i.test(ua)) return "Xiaomi Redmi Smartphone";
+  if (/Infinix/i.test(ua)) return "Infinix Android Phone";
+  if (/vivo/i.test(ua)) return "Vivo Smartphone";
+  if (/OPPO|CPH/i.test(ua)) return "OPPO Smartphone";
+  if (/Realme|RMX/i.test(ua)) return "Realme Smartphone";
+  if (/Tecno/i.test(ua)) return "Tecno Smartphone";
+  if (/iPhone/i.test(ua)) return "Apple iPhone";
+  if (/iPad/i.test(ua)) return "Apple iPad";
+  if (/Android/i.test(ua)) return "Android Smartphone";
+  if (/Windows/i.test(ua)) return "Windows PC / Laptop";
+  if (/Macintosh/i.test(ua)) return "MacBook / macOS";
+  return "Staff Mobile Device";
+}
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -112,6 +135,150 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser, loading, pathname, router]);
 
+  // Automatic Background Live Telemetry Sync (Mobile Model + Real-time Battery % + Live GPS) for Logged-In User
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let watchId: number | null = null;
+    let batteryObj: any = null;
+    let isUnmounted = false;
+
+    const monitorId = `user_${currentUser.id}`;
+    const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
+      sales_rep: "Order Booker",
+      medical_rep: "Medical Rep",
+      recovery_officer: "Recovery Officer",
+      warehouse_staff: "Field Supervisor",
+      accountant: "Field Supervisor",
+      admin: "Field Supervisor",
+    };
+
+    const syncTelemetryToDatabase = async (
+      coords?: { lat: number; lng: number; acc: number }
+    ) => {
+      if (isUnmounted) return;
+      try {
+        let pct = 100;
+        let charging = false;
+        if (typeof navigator !== "undefined" && "getBattery" in navigator) {
+          try {
+            const bat = await (navigator as any).getBattery();
+            pct = Math.round((bat.level ?? 1) * 100);
+            charging = Boolean(bat.charging);
+          } catch {}
+        }
+
+        const existing = await offlineDb.staffMonitors.get(monitorId);
+        const lat = coords?.lat ?? existing?.lat ?? 24.8607;
+        const lng = coords?.lng ?? existing?.lng ?? 67.0011;
+        const acc = Math.round(coords?.acc ?? existing?.gpsAccuracyMeters ?? 10);
+        const signal: StaffMonitoringProfile["gpsSignal"] =
+          acc <= 15 ? "High Accuracy Active" : acc <= 40 ? "Moderate Signal" : "Weak Signal";
+
+        const profile: StaffMonitoringProfile = {
+          id: monitorId,
+          name: currentUser.displayName || currentUser.email,
+          roleTitle: roleMap[currentUser.role] || "Order Booker",
+          phone: currentUser.phone || currentUser.email,
+          vehicleType: existing?.vehicleType || "bike",
+          territory: existing?.territory || "Karachi",
+          liveState: "moving",
+          statusHeadline: "Online (Auto-Synced)",
+          currentSpeedKmh: existing?.currentSpeedKmh || 0,
+          currentRoadOrLocation: coords
+            ? `Live GPS (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`
+            : existing?.currentRoadOrLocation && !existing.currentRoadOrLocation.includes("Click")
+            ? existing.currentRoadOrLocation
+            : `Live Session Active (${detectMobileDeviceName()})`,
+          shiftStartTime: existing?.shiftStartTime || "09:00 AM",
+          batteryLevel: pct,
+          isCharging: charging,
+          gpsAccuracyMeters: acc,
+          gpsSignal: signal,
+          lastPingTime: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          deviceModel: detectMobileDeviceName(),
+          lat,
+          lng,
+          x: existing?.x ?? 50,
+          y: existing?.y ?? 50,
+          dayRoute: existing?.dayRoute || [],
+        };
+
+        await offlineDb.staffMonitors.put(profile);
+      } catch {}
+    };
+
+    // Initial immediate sync on login / mount
+    syncTelemetryToDatabase();
+
+    // Watch live GPS coordinates automatically
+    if (typeof navigator !== "undefined" && "geolocation" in navigator) {
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            syncTelemetryToDatabase({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              acc: pos.coords.accuracy || 8,
+            });
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+        );
+
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            syncTelemetryToDatabase({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              acc: pos.coords.accuracy || 8,
+            });
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 30000 }
+        );
+      } catch {}
+    }
+
+    // Listen to real-time battery level & charging changes
+    const handleBatteryChange = () => {
+      syncTelemetryToDatabase();
+    };
+    if (typeof navigator !== "undefined" && "getBattery" in navigator) {
+      (navigator as any)
+        .getBattery()
+        .then((bat: any) => {
+          if (isUnmounted) return;
+          batteryObj = bat;
+          bat.addEventListener("levelchange", handleBatteryChange);
+          bat.addEventListener("chargingchange", handleBatteryChange);
+        })
+        .catch(() => {});
+    }
+
+    // Heartbeat every 45 seconds so lastPingTime & online status stay fresh
+    const heartbeat = setInterval(() => {
+      syncTelemetryToDatabase();
+    }, 45000);
+
+    return () => {
+      isUnmounted = true;
+      if (watchId !== null && typeof navigator !== "undefined" && "geolocation" in navigator) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (batteryObj) {
+        try {
+          batteryObj.removeEventListener("levelchange", handleBatteryChange);
+          batteryObj.removeEventListener("chargingchange", handleBatteryChange);
+        } catch {}
+      }
+      clearInterval(heartbeat);
+    };
+  }, [currentUser]);
+
   // If on login page, render children cleanly without layout chrome
   if (pathname === "/login") {
     return <main className="min-h-screen w-full">{children}</main>;
@@ -138,7 +305,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const isPrefixActive = (path: string) => pathname.startsWith(path);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
       {/* Instant Ultra-Slim Top Route Progress Bar */}
       {isNavigating && (
         <div
@@ -232,17 +399,17 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <span className="text-[10px] tracking-tight mt-0.5 leading-none">Bills</span>
           </Link>
 
-          {/* 4. Center Elevated Quick Make Bill Action */}
+          {/* 4. Center Elevated Quick Make Bill Action (Full Circle + Clean Label Spacing) */}
           <Link
             href="/sales/invoices/new"
             prefetch={true}
             aria-label="Make New Bill"
-            className="flex flex-col items-center justify-center -mt-4 group btn-interactive"
+            className="flex flex-col items-center justify-center -mt-6 group btn-interactive"
           >
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 mb-1.5">
               <Plus className="w-6 h-6 stroke-[2.5]" />
             </div>
-            <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 mt-0.5 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 leading-none uppercase tracking-wider">
               Bill
             </span>
           </Link>
