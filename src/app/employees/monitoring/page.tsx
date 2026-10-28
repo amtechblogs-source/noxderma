@@ -45,9 +45,11 @@ function detectBrowserDeviceName(): string {
   return "Staff Mobile Device";
 }
 
+const DEMO_STAFF_IDS = new Set(["staff_ali", "staff_bilal", "staff_kamran", "staff_usman"]);
+
 export default function StaffLocationAndPhoneStatusPage() {
-  const [staffList, setStaffList] = useState<StaffMonitoringProfile[]>(DEFAULT_STAFF_MONITORS);
-  const [selectedStaffId, setSelectedStaffId] = useState<string>("staff_ali");
+  const [staffList, setStaffList] = useState<StaffMonitoringProfile[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>("");
   const [search, setSearch] = useState<string>("");
   const [isSyncingDevice, setIsSyncingDevice] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -58,8 +60,8 @@ export default function StaffLocationAndPhoneStatusPage() {
   const [staffRole, setStaffRole] = useState<StaffMonitoringProfile["roleTitle"]>("Order Booker");
   const [staffPhone, setStaffPhone] = useState<string>("");
   const [deviceModel, setDeviceModel] = useState<string>("");
-  const [currentLocationText, setCurrentLocationText] = useState<string>("Tariq Road, Karachi");
-  const [batteryPct, setBatteryPct] = useState<number>(85);
+  const [currentLocationText, setCurrentLocationText] = useState<string>("");
+  const [batteryPct, setBatteryPct] = useState<number>(100);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -68,27 +70,93 @@ export default function StaffLocationAndPhoneStatusPage() {
     }, 4000);
   };
 
-  // Load saved staff monitoring profiles from IndexedDB / localStorage
+  // Load saved staff monitoring profiles from IndexedDB / localStorage & sync real staff from offlineDb.users
   useEffect(() => {
     async function loadStaff() {
+      let existing: StaffMonitoringProfile[] = [];
       try {
         const dbStaff = await offlineDb.staffMonitors?.toArray();
         if (dbStaff && dbStaff.length > 0) {
-          setStaffList(dbStaff);
-          return;
+          existing = dbStaff.filter((s) => !DEMO_STAFF_IDS.has(s.id));
         }
       } catch {}
 
+      if (existing.length === 0) {
+        try {
+          const saved = localStorage.getItem("noxderma_staff_monitors");
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              existing = parsed.filter((s: StaffMonitoringProfile) => !DEMO_STAFF_IDS.has(s.id));
+            }
+          }
+        } catch {}
+      }
+
+      // Also sync real staff accounts from offlineDb.users so real employees appear automatically
       try {
-        const saved = localStorage.getItem("noxderma_staff_monitors");
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setStaffList(parsed);
-            return;
+        const realUsers = await offlineDb.users.toArray();
+        const existingIds = new Set(existing.map((s) => s.id));
+        let pct = 100;
+        let charging = false;
+        if (typeof navigator !== "undefined" && "getBattery" in navigator) {
+          try {
+            const bat = await (navigator as any).getBattery();
+            pct = Math.round((bat.level ?? 1) * 100);
+            charging = Boolean(bat.charging);
+          } catch {}
+        }
+        const browserDevice = detectBrowserDeviceName();
+
+        for (const u of realUsers) {
+          const monitorId = `user_${u.id}`;
+          if (!existingIds.has(monitorId)) {
+            const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
+              sales_rep: "Order Booker",
+              medical_rep: "Medical Rep",
+              recovery_officer: "Recovery Officer",
+              warehouse_staff: "Field Supervisor",
+              accountant: "Field Supervisor",
+              admin: "Field Supervisor",
+            };
+            existing.push({
+              id: monitorId,
+              name: u.displayName || u.email,
+              roleTitle: roleMap[u.role] || "Order Booker",
+              phone: u.phone || u.email,
+              vehicleType: "bike",
+              territory: "Karachi",
+              liveState: u.active ? "moving" : "offline",
+              statusHeadline: u.active ? "Active" : "Offline",
+              currentSpeedKmh: 0,
+              currentRoadOrLocation: "Click 'Sync My Mobile & GPS' for live coordinates",
+              shiftStartTime: "09:00 AM",
+              batteryLevel: pct,
+              isCharging: charging,
+              gpsAccuracyMeters: 10,
+              gpsSignal: "High Accuracy Active",
+              lastPingTime: "Live",
+              deviceModel: browserDevice,
+              lat: 24.8607,
+              lng: 67.0011,
+              x: 50,
+              y: 50,
+              dayRoute: [],
+            });
           }
         }
-        await offlineDb.staffMonitors?.bulkPut(DEFAULT_STAFF_MONITORS);
+      } catch {}
+
+      setStaffList(existing);
+      if (existing.length > 0) {
+        setSelectedStaffId(existing[0].id);
+      }
+      localStorage.setItem("noxderma_staff_monitors", JSON.stringify(existing));
+      try {
+        await offlineDb.staffMonitors?.clear();
+        if (existing.length > 0) {
+          await offlineDb.staffMonitors?.bulkPut(existing);
+        }
       } catch {}
     }
     loadStaff();

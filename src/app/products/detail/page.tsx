@@ -74,7 +74,7 @@ function ProductDetailContent() {
   const [newBatchNumber, setNewBatchNumber] = useState("");
   const [newExpiryDate, setNewExpiryDate] = useState("");
   const [newMfgDate, setNewMfgDate] = useState("");
-  const [newQuantity, setNewQuantity] = useState(50);
+  const [newQuantity, setNewQuantity] = useState(0);
   const [newStatus, setNewStatus] = useState<InventoryBatch["status"]>("active");
 
   // Edit Product Modal State
@@ -253,7 +253,7 @@ function ProductDetailContent() {
     setNewBatchNumber("");
     setNewExpiryDate("");
     setNewMfgDate("");
-    setNewQuantity(50);
+    setNewQuantity(0);
     await loadData();
   };
 

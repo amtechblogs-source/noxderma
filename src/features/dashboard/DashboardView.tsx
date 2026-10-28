@@ -41,17 +41,21 @@ export function DashboardView() {
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [outbox, setOutbox] = useState<OutboxOperation[]>([]);
+  const [manufacturers, setManufacturers] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [selectedRange, setSelectedRange] = useState<"today" | "7d" | "30d">("7d");
 
   // Load live data from IndexedDB
   const refreshDashboardData = async () => {
     try {
-      const [invList, batchList, movList, outList, prodList] = await Promise.all([
+      const [invList, batchList, movList, outList, prodList, mfrList, poList] = await Promise.all([
         offlineDb.invoices.toArray(),
         offlineDb.inventoryBatches.toArray(),
         offlineDb.stockMovements.orderBy("timestamp").reverse().limit(10).toArray(),
         offlineDb.outboxQueue.where("status").anyOf(["pending", "processing", "conflict", "failed"]).toArray(),
         offlineDb.products.toArray(),
+        offlineDb.manufacturers.toArray(),
+        offlineDb.purchaseOrders.toArray(),
       ]);
 
       setInvoices(invList);
@@ -59,6 +63,8 @@ export function DashboardView() {
       setMovements(movList);
       setOutbox(outList);
       setProducts(prodList);
+      setManufacturers(mfrList);
+      setPurchaseOrders(poList);
     } catch (err) {
       console.warn("Failed to query IndexedDB dashboard metrics:", err);
     }
@@ -105,6 +111,16 @@ export function DashboardView() {
   const todaySalesTotal = todayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
   const todayPaymentsCollected = todayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
   const totalReceivables = displayInvoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+  const storeReceivables = displayInvoices
+    .filter((inv) => inv.customerCategory !== "distributor")
+    .reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+  const distributorReceivables = displayInvoices
+    .filter((inv) => inv.customerCategory === "distributor")
+    .reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+  const totalManufacturerPayables = manufacturers.reduce((sum, m) => sum + (m.currentPayable || 0), 0);
+  const pendingPoPayables = purchaseOrders
+    .filter((po) => po.status !== "cancelled" && po.status !== "completed")
+    .reduce((sum, po) => sum + (po.totalAmount || 0), 0);
 
   // Near-expiry batches (< 90 days)
   const nowTime = Date.now();
@@ -220,14 +236,14 @@ export function DashboardView() {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
-              {formatPKR(todaySalesTotal || 64000)}
+              {formatPKR(todaySalesTotal)}
             </span>
             <span className="text-xs font-bold text-emerald-600 flex items-center">
-              <ArrowUpRight className="w-3.5 h-3.5" /> +14%
+              <ArrowUpRight className="w-3.5 h-3.5" /> {todayInvoices.length} bill{todayInvoices.length !== 1 ? "s" : ""}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1.5">
-            Cash Received: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(todayPaymentsCollected || 48000)}</strong>
+            Cash Received: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(todayPaymentsCollected)}</strong>
           </p>
         </div>
 
@@ -243,11 +259,11 @@ export function DashboardView() {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
-              {formatPKR(totalReceivables || 248500)}
+              {formatPKR(totalReceivables)}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1.5">
-            Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(185000)}</strong> • Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(63500)}</strong>
+            Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(storeReceivables)}</strong> • Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(distributorReceivables)}</strong>
           </p>
         </div>
 
@@ -263,11 +279,11 @@ export function DashboardView() {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
-              {formatPKR(312000)}
+              {formatPKR(totalManufacturerPayables)}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1.5">
-            Due in 15 days: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(120000)}</strong>
+            Open POs: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(pendingPoPayables)}</strong>
           </p>
         </div>
 
@@ -283,7 +299,7 @@ export function DashboardView() {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">
-              {nearExpiryBatches.length || 1}
+              {nearExpiryBatches.length}
             </span>
             <span className="text-xs font-medium text-slate-500">batches within 90 days</span>
           </div>

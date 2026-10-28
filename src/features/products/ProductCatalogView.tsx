@@ -141,6 +141,7 @@ export function ProductCatalogView() {
   const [editPurchaseCost, setEditPurchaseCost] = useState(0);
   const [editTradePrice, setEditTradePrice] = useState(0);
   const [editMrp, setEditMrp] = useState(0);
+  const [editCurrentStock, setEditCurrentStock] = useState<number>(0);
   const [editImages, setEditImages] = useState<ProductImage[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
@@ -159,15 +160,29 @@ export function ProductCatalogView() {
 
     setProducts(prodList);
 
+    const validProductIds = new Set(prodList.map((p) => p.id));
+    // Purge any orphan/demo batches whose product no longer exists
+    const orphanBatchIds = batchList
+      .filter((b) => !validProductIds.has(b.productId))
+      .map((b) => b.id);
+    if (orphanBatchIds.length > 0) {
+      try {
+        await offlineDb.inventoryBatches.bulkDelete(orphanBatchIds);
+      } catch {}
+    }
+
     const pMap: Record<string, ProductPricing> = {};
     for (const pr of pricingList) {
       pMap[pr.productId] = pr;
     }
     setPricingMap(pMap);
 
+    const nowMs = Date.now();
     const sMap: Record<string, number> = {};
     for (const b of batchList) {
-      if (b.status === "active") {
+      if (!validProductIds.has(b.productId)) continue;
+      const isExpired = b.expiryDate ? new Date(b.expiryDate).getTime() <= nowMs : false;
+      if (b.status === "active" && !isExpired && (b.remainingQuantity || 0) > 0) {
         sMap[b.productId] = (sMap[b.productId] || 0) + (b.remainingQuantity || 0);
       }
     }
@@ -180,6 +195,15 @@ export function ProductCatalogView() {
 
   useEffect(() => {
     refreshCatalog();
+    const handleFocus = () => {
+      refreshCatalog();
+    };
+    window.addEventListener("focus", handleFocus);
+    const interval = setInterval(refreshCatalog, 3000);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(interval);
+    };
   }, [categories]);
 
   // Auto-generate SKU when Add modal is opened or when category changes
@@ -527,6 +551,7 @@ export function ProductCatalogView() {
     setEditReorderThreshold(prod.reorderThreshold || 10);
     setEditDescription(prod.description || "");
     setEditImages(prod.images || []);
+    setEditCurrentStock(stockMap[prod.id] || 0);
 
     // Load Pricing
     try {
@@ -584,14 +609,101 @@ export function ProductCatalogView() {
     };
 
     try {
-      await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
-        await offlineDb.products.put(updatedProduct);
-        await offlineDb.productPricing.put(updatedPricing);
-      });
+      await offlineDb.transaction(
+        "rw",
+        [offlineDb.products, offlineDb.productPricing, offlineDb.inventoryBatches, offlineDb.stockMovements],
+        async () => {
+          await offlineDb.products.put(updatedProduct);
+          await offlineDb.productPricing.put(updatedPricing);
+
+          // Reconcile real-time stock if adjusted in Edit modal
+          const targetStock = Math.max(0, Number(editCurrentStock) || 0);
+          const prodBatches = await offlineDb.inventoryBatches
+            .where("productId")
+            .equals(editingProduct.id)
+            .toArray();
+          const activeBatches = prodBatches.filter((b) => b.status === "active");
+          const currentTotal = activeBatches.reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
+
+          if (targetStock !== currentTotal) {
+            const diff = targetStock - currentTotal;
+            if (targetStock === 0) {
+              for (const b of activeBatches) {
+                await offlineDb.inventoryBatches.update(b.id, {
+                  remainingQuantity: 0,
+                  status: "depleted",
+                  updatedAt: now,
+                });
+              }
+            } else if (activeBatches.length > 0) {
+              // Update primary active batch and zero out any extra active batches if needed
+              const firstBatch = activeBatches[0];
+              await offlineDb.inventoryBatches.update(firstBatch.id, {
+                productName: updatedProduct.name,
+                remainingQuantity: targetStock,
+                receivedQuantity: Math.max(firstBatch.receivedQuantity || 0, targetStock),
+                status: "active",
+                updatedAt: now,
+              });
+              for (let i = 1; i < activeBatches.length; i++) {
+                await offlineDb.inventoryBatches.update(activeBatches[i].id, {
+                  remainingQuantity: 0,
+                  status: "depleted",
+                  updatedAt: now,
+                });
+              }
+            } else {
+              // Create an active batch for the new stock count
+              const batchId = `bch_${Date.now()}`;
+              const bchNum = `BCH-${Date.now().toString().slice(-4)}`;
+              const expDate = new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10);
+              await offlineDb.inventoryBatches.add({
+                id: batchId,
+                productId: editingProduct.id,
+                productName: updatedProduct.name,
+                batchNumber: bchNum,
+                manufacturerId: updatedProduct.manufacturerId || "mfr_primary",
+                manufacturingDate: now.slice(0, 10),
+                expiryDate: expDate,
+                receivedQuantity: targetStock,
+                remainingQuantity: targetStock,
+                blockedQuantity: 0,
+                status: "active",
+                createdAt: now,
+                updatedAt: now,
+              });
+            }
+
+            await offlineDb.stockMovements.add({
+              id: `mov_adj_${Date.now()}`,
+              productId: editingProduct.id,
+              productName: updatedProduct.name,
+              batchId: activeBatches[0]?.id || `bch_${Date.now()}`,
+              batchNumber: activeBatches[0]?.batchNumber || "STOCK-ADJ",
+              type: "reconciliation_adjustment",
+              quantityChange: diff,
+              balanceAfter: targetStock,
+              referenceId: `EDIT-${editingProduct.sku}`,
+              referenceType: "adjustment",
+              userId: currentUser?.id || "usr_admin",
+              userName: currentUser?.displayName || "Admin",
+              reason: "Real-time stock updated from Medicine Catalog",
+              timestamp: now,
+            });
+          } else {
+            // Keep productName in sync across batches
+            for (const b of prodBatches) {
+              if (b.productName !== updatedProduct.name) {
+                await offlineDb.inventoryBatches.update(b.id, { productName: updatedProduct.name });
+              }
+            }
+          }
+        }
+      );
 
       await refreshCatalog();
       setEditingProduct(null);
-      setSuccessNotice(`Medicine "${updatedProduct.name}" kamyabi se update ho gai!`);
+      setSuccessNotice(`Medicine "${updatedProduct.name}" aur real-time stock (${editCurrentStock} pk) update ho gaya!`);
       setTimeout(() => setSuccessNotice(null), 4000);
     } catch (err) {
       console.error("Failed to update product:", err);
@@ -639,10 +751,16 @@ export function ProductCatalogView() {
   const handleDeleteProduct = async (product: Product) => {
     setIsDeletingLoading(true);
     try {
-      await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
-        await offlineDb.products.delete(product.id);
-        await offlineDb.productPricing.delete(product.id);
-      });
+      await offlineDb.transaction(
+        "rw",
+        [offlineDb.products, offlineDb.productPricing, offlineDb.inventoryBatches, offlineDb.stockMovements],
+        async () => {
+          await offlineDb.products.delete(product.id);
+          await offlineDb.productPricing.delete(product.id);
+          await offlineDb.inventoryBatches.where("productId").equals(product.id).delete();
+          await offlineDb.stockMovements.where("productId").equals(product.id).delete();
+        }
+      );
       setSelectedProductIds((prev) => prev.filter((id) => id !== product.id));
       setDeletingProduct(null);
       await refreshCatalog();
@@ -662,12 +780,18 @@ export function ProductCatalogView() {
     setIsDeletingLoading(true);
     try {
       const count = selectedProductIds.length;
-      await offlineDb.transaction("rw", [offlineDb.products, offlineDb.productPricing], async () => {
-        for (const id of selectedProductIds) {
-          await offlineDb.products.delete(id);
-          await offlineDb.productPricing.delete(id);
+      await offlineDb.transaction(
+        "rw",
+        [offlineDb.products, offlineDb.productPricing, offlineDb.inventoryBatches, offlineDb.stockMovements],
+        async () => {
+          for (const id of selectedProductIds) {
+            await offlineDb.products.delete(id);
+            await offlineDb.productPricing.delete(id);
+            await offlineDb.inventoryBatches.where("productId").equals(id).delete();
+            await offlineDb.stockMovements.where("productId").equals(id).delete();
+          }
         }
-      });
+      );
       setSelectedProductIds([]);
       setIsBulkDeleting(false);
       await refreshCatalog();
@@ -1403,45 +1527,53 @@ export function ProductCatalogView() {
                   </div>
                 </div>
 
-                <div className="pt-3.5 mt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                  {currentStock <= 0 ? (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/40">
-                      OUT OF STOCK
+                <div className="pt-3.5 mt-3.5 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      Live Stock
                     </span>
-                  ) : currentStock <= prod.reorderThreshold ? (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40">
-                      LOW STOCK ({currentStock} pk)
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
-                      IN STOCK ({currentStock} pk)
-                    </span>
-                  )}
+                    {currentStock <= 0 ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold whitespace-nowrap shrink-0 bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                        OUT OF STOCK (0 pk)
+                      </span>
+                    ) : currentStock <= prod.reorderThreshold ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold whitespace-nowrap shrink-0 bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        LOW STOCK ({currentStock} pk)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold whitespace-nowrap shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        IN STOCK ({currentStock} pk)
+                      </span>
+                    )}
+                  </div>
 
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap justify-end">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => handleCloneProduct(prod)}
-                      className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm btn-interactive"
+                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
                       title={`Clone "${prod.name}" to create a new variant`}
                     >
-                      <Copy className="w-3.5 h-3.5" /> Clone
+                      <Copy className="w-3.5 h-3.5 shrink-0" /> Clone
                     </button>
 
                     <button
                       type="button"
                       onClick={() => openEditModal(prod)}
-                      className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm btn-interactive"
-                      title="Edit Product Details"
+                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
+                      title="Edit Product Details & Stock"
                     >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit
+                      <Edit2 className="w-3.5 h-3.5 shrink-0" /> Edit
                     </button>
 
                     <Link
                       href={`/products/detail?id=${encodeURIComponent(prod.id)}`}
-                      className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm btn-interactive"
+                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
                     >
-                      <Eye className="w-3.5 h-3.5" /> Details
+                      <Eye className="w-3.5 h-3.5 shrink-0" /> Details
                     </Link>
                   </div>
                 </div>
@@ -1593,6 +1725,27 @@ export function ProductCatalogView() {
                     onChange={(e) => setEditReorderThreshold(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1.5">
+                    Current Available Stock (Packs / Boxes in Warehouse)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={editCurrentStock === 0 ? "" : editCurrentStock}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                      setEditCurrentStock(raw === "" ? 0 : Math.max(0, Number(raw) || 0));
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/40 dark:bg-emerald-950/30 font-mono font-extrabold text-sm text-emerald-800 dark:text-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Real-time warehouse stock count. Set to 0 if out of stock.
+                  </p>
                 </div>
               </div>
 
