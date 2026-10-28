@@ -95,8 +95,8 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Distributors", href: "/distributors", icon: Truck, requiredPermission: "crm:customers" },
       { name: "Client Leads", href: "/crm/leads", icon: Users2, requiredPermission: "crm:leads" },
       { name: "Doctor Visits", href: "/crm/visits", icon: MapPin, requiredPermission: "crm:visits" },
-      { name: "Staff Location", href: "/employees/monitoring", icon: Compass, requiredPermission: "crm:visits" },
-      { name: "Sales Targets", href: "/employees/targets", icon: Target, requiredPermission: "crm:visits" },
+      { name: "Staff Location", href: "/employees/monitoring", icon: Compass, requiredPermission: "staff:monitoring" },
+      { name: "Sales Targets", href: "/employees/targets", icon: Target, requiredPermission: "staff:targets" },
     ],
   },
   {
@@ -106,7 +106,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Company Khata", href: "/finance/ledgers/manufacturers", icon: BookOpen, requiredPermission: "finance:ledgers" },
       { name: "Customer Khata", href: "/finance/ledgers/customers", icon: Scale, requiredPermission: "finance:ledgers" },
       { name: "Profit & Loss", href: "/finance/pnl", icon: TrendingUp, requiredPermission: "finance:pnl" },
-      { name: "Reports", href: "/reports", icon: FileSpreadsheet, requiredPermission: "finance:aging" },
+      { name: "Reports", href: "/reports", icon: FileSpreadsheet, requiredPermission: "finance:pnl" },
     ],
   },
   {
@@ -123,7 +123,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Audit Logs", href: "/audit", icon: History, requiredPermission: "audit:view" },
       { name: "Cloud Sync", href: "/sync", icon: Database, requiredPermission: "sync:reconcile" },
       { name: "Staff Accounts", href: "/users", icon: UserCog, requiredPermission: "users:manage" },
-      { name: "Notifications", href: "/notifications", icon: BellRing },
+      { name: "Notifications", href: "/notifications", icon: BellRing, requiredPermission: "settings:manage" },
       { name: "Integrations", href: "/integrations", icon: PlugZap, requiredPermission: "settings:manage" },
       { name: "Settings", href: "/settings", icon: Settings, requiredPermission: "settings:manage" },
     ],
@@ -228,11 +228,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
       ...section,
       items: section.items.filter((item) => {
         if (!currentUser) return false;
-        if (item.href === "/audit") {
-          return currentUser.role === "owner" || currentUser.role === "admin" || hasPermission("audit:view");
-        }
         if (!item.requiredPermission) return true;
-        if (currentUser.role === "admin" || currentUser.role === "owner") return true;
         return hasPermission(item.requiredPermission);
       }),
     })).filter((section) => section.items.length > 0);

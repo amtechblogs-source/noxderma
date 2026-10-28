@@ -11,6 +11,8 @@ import {
   CreditCard,
   MapPin,
   Menu,
+  ShieldAlert,
+  ArrowLeft,
 } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -48,7 +50,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const { currentUser, loading, logout } = useAuth();
+  const { currentUser, loading, logout, hasPermission, hasAnyPermission } = useAuth();
 
   // Reset top progress bar on route complete
   useEffect(() => {
@@ -304,6 +306,85 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const isExactActive = (path: string) => pathname === path;
   const isPrefixActive = (path: string) => pathname.startsWith(path);
 
+  // Strict Route-Level Permission Check so no user can open an unpermitted module via URL or link
+  const isRouteAllowed = (() => {
+    if (pathname === "/" || pathname === "/login") return true;
+    if (pathname.startsWith("/sales/invoices/new") || pathname.startsWith("/sales/bookings")) {
+      return hasPermission("invoices:create");
+    }
+    if (pathname.startsWith("/sales/returns")) {
+      return hasPermission("invoices:reverse");
+    }
+    if (pathname.startsWith("/sales")) {
+      return hasAnyPermission(["invoices:view", "invoices:create", "invoices:edit"]);
+    }
+    if (pathname.startsWith("/products/price-estimator")) {
+      return hasPermission("pricing:view");
+    }
+    if (pathname.startsWith("/products/new")) {
+      return hasPermission("products:edit");
+    }
+    if (pathname.startsWith("/products") || pathname.startsWith("/manufacturers")) {
+      return hasAnyPermission(["products:view", "products:edit"]);
+    }
+    if (pathname.startsWith("/categories")) {
+      return hasPermission("categories:manage");
+    }
+    if (pathname.startsWith("/purchases")) {
+      return hasPermission("inventory:receive");
+    }
+    if (pathname.startsWith("/inventory")) {
+      return hasAnyPermission(["inventory:view", "inventory:receive", "inventory:damage", "inventory:samples", "inventory:adjust"]);
+    }
+    if (pathname.startsWith("/customers") || pathname.startsWith("/distributors")) {
+      return hasPermission("crm:customers");
+    }
+    if (pathname.startsWith("/crm/leads")) {
+      return hasPermission("crm:leads");
+    }
+    if (pathname.startsWith("/crm/visits")) {
+      return hasPermission("crm:visits");
+    }
+    if (pathname.startsWith("/employees/monitoring")) {
+      return hasPermission("staff:monitoring");
+    }
+    if (pathname.startsWith("/employees/targets")) {
+      return hasPermission("staff:targets");
+    }
+    if (pathname.startsWith("/finance/credit")) {
+      return hasAnyPermission(["finance:aging", "finance:payments", "finance:ledgers"]);
+    }
+    if (pathname.startsWith("/finance/ledgers")) {
+      return hasPermission("finance:ledgers");
+    }
+    if (pathname.startsWith("/finance/pnl") || pathname.startsWith("/reports")) {
+      return hasPermission("finance:pnl");
+    }
+    if (pathname.startsWith("/finance")) {
+      return hasAnyPermission(["finance:aging", "finance:ledgers", "finance:payments", "finance:pnl"]);
+    }
+    if (pathname.startsWith("/marketing")) {
+      return hasPermission("marketing:manage");
+    }
+    if (pathname.startsWith("/audit")) {
+      return hasPermission("audit:view");
+    }
+    if (pathname.startsWith("/sync")) {
+      return hasPermission("sync:reconcile");
+    }
+    if (pathname.startsWith("/users")) {
+      return hasPermission("users:manage");
+    }
+    if (
+      pathname.startsWith("/settings") ||
+      pathname.startsWith("/notifications") ||
+      pathname.startsWith("/integrations")
+    ) {
+      return hasPermission("settings:manage");
+    }
+    return true;
+  })();
+
   return (
     <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
       {/* Instant Ultra-Slim Top Route Progress Bar */}
@@ -338,24 +419,50 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           />
 
           <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-24 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0 print:bg-white print:min-h-0">
-            {children}
+            {isRouteAllowed ? (
+              children
+            ) : (
+              <div className="max-w-lg mx-auto my-12 p-6 sm:p-8 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-white dark:bg-slate-900 shadow-lg text-center space-y-4">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+                  <ShieldAlert className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-slate-100">
+                    Module Access Restricted
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                    Aap ke account (<strong>{currentUser.displayName}</strong> &bull;{" "}
+                    <span className="uppercase">{currentUser.role.replace("_", " ")}</span>) ko is module ki access nahi di gayi. Sirf assigned modules hi open kiye ja sakte hain.
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <Link
+                    href="/"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-teal-600/20"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Dashboard
+                  </Link>
+                </div>
+              </div>
+            )}
           </main>
         </div>
       </div>
 
-      {/* Modern Ergonomic Mobile Bottom Navigation Bar */}
+      {/* Modern Ergonomic Mobile Bottom Navigation Bar (Filtered by User Permissions) */}
       <nav
         aria-label="Mobile Bottom Navigation"
         className={`no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-1 sm:px-2 py-1 transition-all duration-300 ease-in-out ${
           sidebarOpen ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
         }`}
       >
-        <div className="max-w-md mx-auto grid grid-cols-7 items-center justify-items-center">
+        <div className="max-w-md mx-auto flex items-center justify-around">
           {/* 1. Dashboard */}
           <Link
             href="/"
             prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
+            className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
               isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -367,91 +474,101 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <span className="text-[10px] tracking-tight mt-0.5 leading-none">Home</span>
           </Link>
 
-          {/* 2. Field Visits */}
-          <Link
-            href="/crm/visits"
-            prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
-              isPrefixActive("/crm/visits")
-                ? "text-teal-600 dark:text-teal-400 font-bold"
-                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
-          >
-            <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/crm/visits") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
-              <MapPin className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Visits</span>
-          </Link>
+          {/* 2. Field Visits (Only if crm:visits permitted) */}
+          {hasPermission("crm:visits") && (
+            <Link
+              href="/crm/visits"
+              prefetch={true}
+              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                isPrefixActive("/crm/visits")
+                  ? "text-teal-600 dark:text-teal-400 font-bold"
+                  : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/crm/visits") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+                <MapPin className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] tracking-tight mt-0.5 leading-none">Visits</span>
+            </Link>
+          )}
 
-          {/* 3. Invoices List (Bills) */}
-          <Link
-            href="/sales/invoices"
-            prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
-              isExactActive("/sales/invoices")
-                ? "text-teal-600 dark:text-teal-400 font-bold"
-                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
-          >
-            <div className={`p-1 rounded-lg transition-transform ${isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
-              <Receipt className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Bills</span>
-          </Link>
+          {/* 3. Invoices List (Bills) (Only if invoices:view permitted) */}
+          {hasPermission("invoices:view") && (
+            <Link
+              href="/sales/invoices"
+              prefetch={true}
+              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                isExactActive("/sales/invoices")
+                  ? "text-teal-600 dark:text-teal-400 font-bold"
+                  : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <div className={`p-1 rounded-lg transition-transform ${isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+                <Receipt className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] tracking-tight mt-0.5 leading-none">Bills</span>
+            </Link>
+          )}
 
-          {/* 4. Center Elevated Quick Make Bill Action (Full Circle + Clean Label Spacing) */}
-          <Link
-            href="/sales/invoices/new"
-            prefetch={true}
-            aria-label="Make New Bill"
-            className="flex flex-col items-center justify-center -mt-6 group btn-interactive"
-          >
-            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 mb-1.5">
-              <Plus className="w-6 h-6 stroke-[2.5]" />
-            </div>
-            <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 leading-none uppercase tracking-wider">
-              Bill
-            </span>
-          </Link>
+          {/* 4. Center Elevated Quick Make Bill Action (Only if invoices:create permitted) */}
+          {hasPermission("invoices:create") && (
+            <Link
+              href="/sales/invoices/new"
+              prefetch={true}
+              aria-label="Make New Bill"
+              className="flex flex-col items-center justify-center flex-1 -mt-6 group btn-interactive"
+            >
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 mb-1.5">
+                <Plus className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 leading-none uppercase tracking-wider">
+                Bill
+              </span>
+            </Link>
+          )}
 
-          {/* 5. Stock Batches */}
-          <Link
-            href="/inventory/batches"
-            prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
-              isPrefixActive("/inventory")
-                ? "text-teal-600 dark:text-teal-400 font-bold"
-                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
-          >
-            <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
-              <Barcode className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Stock</span>
-          </Link>
+          {/* 5. Stock Batches (Only if inventory:view permitted) */}
+          {hasPermission("inventory:view") && (
+            <Link
+              href="/inventory/batches"
+              prefetch={true}
+              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                isPrefixActive("/inventory")
+                  ? "text-teal-600 dark:text-teal-400 font-bold"
+                  : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+                <Barcode className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] tracking-tight mt-0.5 leading-none">Stock</span>
+            </Link>
+          )}
 
-          {/* 6. Khata / Credit */}
-          <Link
-            href="/finance/credit"
-            prefetch={true}
-            className={`flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive ${
-              isPrefixActive("/finance")
-                ? "text-teal-600 dark:text-teal-400 font-bold"
-                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
-          >
-            <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/finance") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
-              <CreditCard className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] tracking-tight mt-0.5 leading-none">Khata</span>
-          </Link>
+          {/* 6. Khata / Credit (Only if finance:aging or finance:ledgers permitted) */}
+          {hasAnyPermission(["finance:aging", "finance:ledgers", "finance:payments"]) && (
+            <Link
+              href="/finance/credit"
+              prefetch={true}
+              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                isPrefixActive("/finance")
+                  ? "text-teal-600 dark:text-teal-400 font-bold"
+                  : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/finance") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] tracking-tight mt-0.5 leading-none">Khata</span>
+            </Link>
+          )}
 
           {/* 7. Menu (Toggle Sidebar) */}
           <button
             type="button"
             onClick={() => setSidebarOpen((prev) => !prev)}
             aria-label="Open Navigation Menu"
-            className="flex flex-col items-center justify-center w-full py-0.5 rounded-xl text-center transition-all btn-interactive text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+            className="flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
           >
             <div className="p-1 rounded-lg transition-transform hover:bg-slate-100 dark:hover:bg-slate-800">
               <Menu className="w-5 h-5" />

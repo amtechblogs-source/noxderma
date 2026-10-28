@@ -32,10 +32,12 @@ import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { syncManager } from "@/lib/offline/sync";
 import { useCategory } from "@/context/CategoryContext";
-import type { Invoice, InventoryBatch, StockMovement, OutboxOperation, Product } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import type { Invoice, InventoryBatch, StockMovement, OutboxOperation, Product, Permission } from "@/types";
 
 export function DashboardView() {
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
+  const { currentUser, hasPermission, hasAnyPermission } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -167,6 +169,147 @@ export function DashboardView() {
     categoryShareData.push({ name: "General Inventory", value: products.length || 1 });
   }
 
+  // Strict Role & Module Permission Checks for Dashboard Sections
+  const isOwnerOrAccountant =
+    currentUser?.role === "owner" ||
+    currentUser?.id === "usr_admin" ||
+    currentUser?.role === "accountant";
+
+  const canViewSalesSummary =
+    isOwnerOrAccountant || hasPermission("dashboard:sales") || hasPermission("finance:pnl");
+  const canViewFinanceSummary =
+    isOwnerOrAccountant || hasPermission("dashboard:finance") || hasPermission("finance:pnl");
+  const canViewInventory = hasAnyPermission([
+    "inventory:view",
+    "inventory:receive",
+    "inventory:damage",
+    "inventory:samples",
+    "inventory:adjust",
+  ]);
+
+  const allQuickModules: {
+    title: string;
+    desc: string;
+    href: string;
+    perm: Permission;
+    badge: string;
+  }[] = [
+    {
+      title: "Make New Bill (Invoice)",
+      desc: "Create customer invoice & cash memo",
+      href: "/sales/invoices/new",
+      perm: "invoices:create",
+      badge: "Sales",
+    },
+    {
+      title: "Invoices (Bills) List",
+      desc: "View and print customer bills",
+      href: "/sales/invoices",
+      perm: "invoices:view",
+      badge: "Sales",
+    },
+    {
+      title: "Staff Bookings",
+      desc: "Field order bookings",
+      href: "/sales/bookings",
+      perm: "invoices:create",
+      badge: "Orders",
+    },
+    {
+      title: "Medicines Catalog",
+      desc: "View medicines, pack sizes & rates",
+      href: "/products",
+      perm: "products:view",
+      badge: "Catalog",
+    },
+    {
+      title: "Price Estimator",
+      desc: "Calculate landed cost, TP & MRP",
+      href: "/products/price-estimator",
+      perm: "pricing:view",
+      badge: "Pricing",
+    },
+    {
+      title: "Batches & Expiry",
+      desc: "Warehouse stock & expiry dates",
+      href: "/inventory/batches",
+      perm: "inventory:view",
+      badge: "Stock",
+    },
+    {
+      title: "Stock Alerts",
+      desc: "Current medicine stock & low stock",
+      href: "/inventory",
+      perm: "inventory:view",
+      badge: "Stock",
+    },
+    {
+      title: "Purchases (GRN)",
+      desc: "Receive stock from manufacturers",
+      href: "/purchases",
+      perm: "inventory:receive",
+      badge: "GRN",
+    },
+    {
+      title: "Pharmacies & Clients",
+      desc: "Medical stores & distributors",
+      href: "/customers",
+      perm: "crm:customers",
+      badge: "CRM",
+    },
+    {
+      title: "Doctor Visits",
+      desc: "Record doctor & field visits",
+      href: "/crm/visits",
+      perm: "crm:visits",
+      badge: "Field",
+    },
+    {
+      title: "Client Leads",
+      desc: "New enquiries & sales prospects",
+      href: "/crm/leads",
+      perm: "crm:leads",
+      badge: "CRM",
+    },
+    {
+      title: "Staff Live Location",
+      desc: "Live GPS & mobile battery monitor",
+      href: "/employees/monitoring",
+      perm: "staff:monitoring",
+      badge: "GPS",
+    },
+    {
+      title: "Market Udhaar",
+      desc: "Customer credit & aging balances",
+      href: "/finance/credit",
+      perm: "finance:aging",
+      badge: "Khata",
+    },
+    {
+      title: "Company & Customer Khata",
+      desc: "Detailed account ledgers",
+      href: "/finance/ledgers/customers",
+      perm: "finance:ledgers",
+      badge: "Khata",
+    },
+    {
+      title: "Profit & Loss",
+      desc: "Net profit, margins & reports",
+      href: "/finance/pnl",
+      perm: "finance:pnl",
+      badge: "Accounts",
+    },
+    {
+      title: "Offers & Schemes",
+      desc: "Bonus schemes, coupons & WhatsApp",
+      href: "/marketing",
+      perm: "marketing:manage",
+      badge: "Marketing",
+    },
+  ];
+
+  const permittedQuickModules = allQuickModules.filter((m) => hasPermission(m.perm));
+
   return (
     <div className="space-y-6">
       {/* Top Banner: Greeting, Timezone, and Quick Actions */}
@@ -175,32 +318,44 @@ export function DashboardView() {
           <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
             Daily Business Overview
           </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Logged in as <strong>{currentUser?.displayName}</strong> &bull;{" "}
+            <span className="uppercase font-bold text-teal-600 dark:text-teal-400">
+              {currentUser?.role === "owner" ? "Owner" : currentUser?.role?.replace("_", " ")}
+            </span>
+          </p>
         </div>
 
-        {/* Quick Action Toolbar */}
+        {/* Quick Action Toolbar (Filtered by User Permissions) */}
         <div className="grid grid-cols-2 sm:flex sm:items-center sm:flex-wrap gap-2.5 w-full sm:w-auto">
-          <Link
-            href="/sales/invoices/new"
-            className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
-          >
-            <PlusCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
-            <span>Make New Bill (Invoice)</span>
-          </Link>
+          {hasPermission("invoices:create") && (
+            <Link
+              href="/sales/invoices/new"
+              className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
+            >
+              <PlusCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
+              <span>Make New Bill (Invoice)</span>
+            </Link>
+          )}
 
-          <Link
-            href="/employees/monitoring"
-            className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs sm:text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive text-center"
-          >
-            <Compass className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-            <span className="truncate">Staff Location</span>
-          </Link>
+          {hasPermission("staff:monitoring") && (
+            <Link
+              href="/employees/monitoring"
+              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs sm:text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive text-center"
+            >
+              <Compass className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+              <span className="truncate">Staff Location</span>
+            </Link>
+          )}
 
-          <Link
-            href="/crm/visits"
-            className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive text-center"
-          >
-            <span className="truncate">Add Doctor Visit</span>
-          </Link>
+          {hasPermission("crm:visits") && (
+            <Link
+              href="/crm/visits"
+              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive text-center"
+            >
+              <span className="truncate">Add Doctor Visit</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -222,98 +377,109 @@ export function DashboardView() {
         </div>
       )}
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Today's Sales */}
-        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Today's Total Sales
-            </span>
-            <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shadow-sm">
-              <TrendingUp className="w-5 h-5" />
+      {/* KPI Cards Grid (Only renders cards permitted for this role/user) */}
+      {(canViewSalesSummary || canViewFinanceSummary || canViewInventory) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Today's Sales (Owner / Accountant / dashboard:sales only) */}
+          {canViewSalesSummary && (
+            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Today&apos;s Total Sales
+                </span>
+                <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shadow-sm">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+                  {formatPKR(todaySalesTotal)}
+                </span>
+                <span className="text-xs font-bold text-emerald-600 flex items-center">
+                  <ArrowUpRight className="w-3.5 h-3.5" /> {todayInvoices.length} bill{todayInvoices.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Cash Received: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(todayPaymentsCollected)}</strong>
+              </p>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
-              {formatPKR(todaySalesTotal)}
-            </span>
-            <span className="text-xs font-bold text-emerald-600 flex items-center">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {todayInvoices.length} bill{todayInvoices.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1.5">
-            Cash Received: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(todayPaymentsCollected)}</strong>
-          </p>
-        </div>
+          )}
 
-        {/* Card 2: 3-Way Receivables */}
-        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Money to Receive (Udhaar)
-            </span>
-            <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center shadow-sm">
-              <CreditCard className="w-5 h-5" />
+          {/* Card 2: 3-Way Receivables (Owner / Accountant / dashboard:finance only) */}
+          {canViewFinanceSummary && (
+            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Money to Receive (Udhaar)
+                </span>
+                <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center shadow-sm">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+                  {formatPKR(totalReceivables)}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(storeReceivables)}</strong> • Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(distributorReceivables)}</strong>
+              </p>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
-              {formatPKR(totalReceivables)}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1.5">
-            Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(storeReceivables)}</strong> • Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(distributorReceivables)}</strong>
-          </p>
-        </div>
+          )}
 
-        {/* Card 3: Manufacturer Payables */}
-        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/50">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Money We Owe Companies
-            </span>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-sm">
-              <Receipt className="w-5 h-5" />
+          {/* Card 3: Manufacturer Payables (Owner / Accountant / dashboard:finance only) */}
+          {canViewFinanceSummary && (
+            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Money We Owe Companies
+                </span>
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-sm">
+                  <Receipt className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+                  {formatPKR(totalManufacturerPayables)}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Open POs: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(pendingPoPayables)}</strong>
+              </p>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
-              {formatPKR(totalManufacturerPayables)}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1.5">
-            Open POs: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(pendingPoPayables)}</strong>
-          </p>
-        </div>
+          )}
 
-        {/* Card 4: FEFO Expiry / Low Stock Alerts */}
-        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/50">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Medicines Expiring Soon
-            </span>
-            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shadow-sm">
-              <Clock className="w-5 h-5" />
+          {/* Card 4: FEFO Expiry / Low Stock Alerts (Only if inventory access permitted) */}
+          {canViewInventory && (
+            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Medicines Expiring Soon
+                </span>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shadow-sm">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">
+                  {nearExpiryBatches.length}
+                </span>
+                <span className="text-xs font-medium text-slate-500">batches within 90 days</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                {expiredBatches.length > 0 ? (
+                  <span className="text-red-600 font-bold">{expiredBatches.length} Expired (Blocked from sale)</span>
+                ) : (
+                  <span className="text-emerald-600 font-semibold">0 Expired Medicines (Stock Safe)</span>
+                )}
+              </p>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">
-              {nearExpiryBatches.length}
-            </span>
-            <span className="text-xs font-medium text-slate-500">batches within 90 days</span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
-            {expiredBatches.length > 0 ? (
-              <span className="text-red-600 font-bold">{expiredBatches.length} Expired (Blocked from sale)</span>
-            ) : (
-              <span className="text-emerald-600 font-semibold">0 Expired Medicines (Stock Safe)</span>
-            )}
-          </p>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Analytics & Charts Section */}
+      {/* Analytics & Charts Section (Owner / Accountant / dashboard:sales ONLY) */}
+      {canViewSalesSummary && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sales Performance Trend */}
         <div className="lg:col-span-2 p-5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
@@ -437,8 +603,10 @@ export function DashboardView() {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Critical Lists Grid: Near Expiry Batches & Recent Movements */}
+      {/* Critical Lists Grid: Near Expiry Batches & Recent Movements (Only if inventory access permitted) */}
+      {canViewInventory && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Table 1: Near-Expiry Batches (Sell First) */}
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -482,12 +650,14 @@ export function DashboardView() {
                       </td>
                       <td className="py-2.5 text-right font-bold">{formatNumber(b.remainingQuantity)}</td>
                       <td className="py-2.5 text-right">
-                        <Link
-                          href="/marketing"
-                          className="px-2 py-1 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-semibold hover:bg-teal-100 text-[10px]"
-                        >
-                          Make Offer
-                        </Link>
+                        {hasPermission("marketing:manage") && (
+                          <Link
+                            href="/marketing"
+                            className="px-2 py-1 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-semibold hover:bg-teal-100 text-[10px]"
+                          >
+                            Make Offer
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -591,6 +761,49 @@ export function DashboardView() {
             </table>
           </div>
         </div>
+      </div>
+      )}
+
+      {/* Your Assigned Modules (Shows ONLY modules permitted for this user) */}
+      <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-teal-600" />
+              Your Assigned Modules ({permittedQuickModules.length})
+            </h2>
+            <p className="text-xs text-slate-500">
+              Modules enabled for your account based on your role &amp; access permissions
+            </p>
+          </div>
+        </div>
+
+        {permittedQuickModules.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {permittedQuickModules.map((mod) => (
+              <Link
+                key={mod.href}
+                href={mod.href}
+                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-teal-500/50 hover:bg-teal-50/30 dark:hover:bg-teal-950/20 transition-all flex items-start justify-between gap-2 group"
+              >
+                <div className="min-w-0">
+                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 mb-1">
+                    {mod.badge}
+                  </span>
+                  <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 truncate">
+                    {mod.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{mod.desc}</p>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-teal-600 shrink-0 mt-1" />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-xs text-slate-400 rounded-xl bg-slate-50 dark:bg-slate-800/40">
+            No additional modules assigned yet. Please ask the Owner/Administrator to enable modules for your account in Staff Accounts.
+          </div>
+        )}
       </div>
     </div>
   );

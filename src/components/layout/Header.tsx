@@ -38,6 +38,7 @@ import { formatPKR } from "@/lib/formatting";
 import { syncManager } from "@/lib/offline/sync";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
+import { useAuth } from "@/context/AuthContext";
 import type { DynamicCategory, UserProfile } from "@/types";
 
 interface HeaderProps {
@@ -243,6 +244,7 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
 export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) {
   const router = useRouter();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
+  const { hasPermission, hasAnyPermission } = useAuth();
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -352,10 +354,36 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
 
     const timer = setTimeout(async () => {
       try {
-        // 1. Navigation items matching
-        const isOwnerOrAdmin = currentUser?.role === "owner" || currentUser?.role === "admin";
+        // 1. Navigation items matching (strictly filtered by user permissions)
+        const canAccessSearchPath = (p: string): boolean => {
+          if (p === "/") return true;
+          if (p.startsWith("/sales/invoices/new") || p.startsWith("/sales/bookings")) return hasPermission("invoices:create");
+          if (p.startsWith("/sales/returns")) return hasPermission("invoices:reverse");
+          if (p.startsWith("/sales")) return hasAnyPermission(["invoices:view", "invoices:create"]);
+          if (p.startsWith("/products/price-estimator")) return hasPermission("pricing:view");
+          if (p.startsWith("/products/new")) return hasPermission("products:edit");
+          if (p.startsWith("/products") || p.startsWith("/manufacturers")) return hasPermission("products:view");
+          if (p.startsWith("/categories")) return hasPermission("categories:manage");
+          if (p.startsWith("/purchases")) return hasPermission("inventory:receive");
+          if (p.startsWith("/inventory")) return hasPermission("inventory:view");
+          if (p.startsWith("/customers") || p.startsWith("/distributors")) return hasPermission("crm:customers");
+          if (p.startsWith("/crm/leads")) return hasPermission("crm:leads");
+          if (p.startsWith("/crm/visits")) return hasPermission("crm:visits");
+          if (p.startsWith("/employees/monitoring")) return hasPermission("staff:monitoring");
+          if (p.startsWith("/employees/targets")) return hasPermission("staff:targets");
+          if (p.startsWith("/finance/credit")) return hasPermission("finance:aging");
+          if (p.startsWith("/finance/ledgers")) return hasPermission("finance:ledgers");
+          if (p.startsWith("/finance/pnl") || p.startsWith("/reports")) return hasPermission("finance:pnl");
+          if (p.startsWith("/marketing")) return hasPermission("marketing:manage");
+          if (p.startsWith("/audit")) return hasPermission("audit:view");
+          if (p.startsWith("/sync")) return hasPermission("sync:reconcile");
+          if (p.startsWith("/users")) return hasPermission("users:manage");
+          if (p.startsWith("/settings") || p.startsWith("/notifications") || p.startsWith("/integrations")) return hasPermission("settings:manage");
+          return true;
+        };
+
         const matchedNav = APP_NAVIGATION_SEARCH_ITEMS.filter((item) => {
-          if (item.path === "/audit" && !isOwnerOrAdmin) return false;
+          if (!canAccessSearchPath(item.path)) return false;
           return (
             item.name.toLowerCase().includes(q) ||
             item.keywords.toLowerCase().includes(q) ||
@@ -363,12 +391,12 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           );
         }).slice(0, 10);
 
-        // 2. Database records matching
+        // 2. Database records matching (strictly filtered by user permissions)
         const [allProds, allCusts, allInvs, allBatches] = await Promise.all([
-          offlineDb.products.toArray(),
-          offlineDb.customers.toArray(),
-          offlineDb.invoices.toArray(),
-          offlineDb.inventoryBatches.toArray(),
+          hasPermission("products:view") ? offlineDb.products.toArray() : Promise.resolve([]),
+          hasPermission("crm:customers") ? offlineDb.customers.toArray() : Promise.resolve([]),
+          hasPermission("invoices:view") ? offlineDb.invoices.toArray() : Promise.resolve([]),
+          hasPermission("inventory:view") ? offlineDb.inventoryBatches.toArray() : Promise.resolve([]),
         ]);
 
         const matchedProds = allProds
@@ -556,13 +584,17 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                     {selectedCategoryId === cat.id && <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shadow-sm" />}
                   </button>
                 ))}
-                <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
-                <Link
-                  href="/categories"
-                  className="block px-4 py-2 text-xs text-teal-600 dark:text-teal-400 font-bold hover:underline"
-                >
-                  Manage / Add Categories →
-                </Link>
+                {hasPermission("categories:manage") && (
+                  <>
+                    <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
+                    <Link
+                      href="/categories"
+                      className="block px-4 py-2 text-xs text-teal-600 dark:text-teal-400 font-bold hover:underline"
+                    >
+                      Manage / Add Categories →
+                    </Link>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -838,15 +870,19 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                   </span>
                 </div>
 
-                <Link
-                  href="/settings"
-                  className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors font-medium"
-                >
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span>My Profile & Settings</span>
-                </Link>
+                {hasPermission("settings:manage") && (
+                  <>
+                    <Link
+                      href="/settings"
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors font-medium"
+                    >
+                      <User className="w-4 h-4 text-slate-400" />
+                      <span>My Profile &amp; Settings</span>
+                    </Link>
 
-                <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
+                    <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
+                  </>
+                )}
 
                 <button
                   onClick={onLogout}

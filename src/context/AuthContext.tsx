@@ -47,13 +47,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize Auth state from storage / offlineDb
+  // Initialize Auth state from storage / offlineDb & keep permissions synced in real-time
   useEffect(() => {
     async function initAuth() {
       try {
         // Ensure default admin user is seeded into offlineDb.users if not present
-        const dbUsers = await (offlineDb as any).users?.toArray();
-        const existingAdmin = (dbUsers || []).find(
+        const dbUsers: UserProfile[] = (await (offlineDb as any).users?.toArray()) || [];
+        const existingAdmin = dbUsers.find(
           (u: UserProfile) => u.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
         );
 
@@ -77,12 +77,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               const parsed = JSON.parse(session) as AuthenticatedUser;
               if (parsed && parsed.email) {
-                // Ensure permissions array is populated
-                const perms =
-                  parsed.permissions && parsed.permissions.length > 0
-                    ? parsed.permissions
-                    : ROLE_PERMISSIONS[parsed.role] || [];
-                setCurrentUser({ ...parsed, permissions: perms });
+                // Always prefer the latest user record from offlineDb.users so permission changes apply immediately
+                const latestDbUser = dbUsers.find(
+                  (u) =>
+                    u.id === parsed.id ||
+                    u.email.trim().toLowerCase() === parsed.email.trim().toLowerCase()
+                );
+
+                if (latestDbUser && !latestDbUser.active && latestDbUser.id !== "usr_admin") {
+                  localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+                  sessionStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+                  setCurrentUser(null);
+                  setLoading(false);
+                  return;
+                }
+
+                const baseUser = latestDbUser || parsed;
+                const isPrimaryOwner =
+                  baseUser.id === "usr_admin" ||
+                  baseUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase() ||
+                  baseUser.role === "owner";
+
+                const perms = isPrimaryOwner
+                  ? ALL_PERMISSIONS
+                  : Array.isArray(baseUser.permissions)
+                  ? baseUser.permissions
+                  : ROLE_PERMISSIONS[baseUser.role] || [];
+
+                const syncedSession: AuthenticatedUser = {
+                  ...parsed,
+                  ...baseUser,
+                  permissions: perms,
+                };
+
+                setCurrentUser(syncedSession);
+                if (localStorage.getItem(ACTIVE_USER_STORAGE_KEY)) {
+                  localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(syncedSession));
+                } else {
+                  sessionStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(syncedSession));
+                }
                 setLoading(false);
                 return;
               }
@@ -104,6 +137,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     initAuth();
+
+    const handleLiveUserSync = () => {
+      initAuth();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleLiveUserSync);
+    window.addEventListener("noxderma-users-updated", handleLiveUserSync);
+    return () => {
+      window.removeEventListener("noxderma-cloud-synced", handleLiveUserSync);
+      window.removeEventListener("noxderma-users-updated", handleLiveUserSync);
+    };
   }, []);
 
   const login = useCallback(
@@ -171,10 +214,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
           }
 
-          const resolvedPerms =
-            user.permissions && user.permissions.length > 0
-              ? user.permissions
-              : ROLE_PERMISSIONS[user.role] || [];
+          const isPrimaryOwner =
+            user.id === "usr_admin" ||
+            user.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase() ||
+            user.role === "owner";
+
+          const resolvedPerms = isPrimaryOwner
+            ? ALL_PERMISSIONS
+            : Array.isArray(user.permissions)
+            ? user.permissions
+            : ROLE_PERMISSIONS[user.role] || [];
 
           const authSession: AuthenticatedUser = {
             ...user,
@@ -254,20 +303,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermission = useCallback((permission: Permission): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === "admin" || currentUser.role === "owner") return true;
+    if (
+      currentUser.role === "owner" ||
+      currentUser.id === "usr_admin" ||
+      currentUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
+    ) {
+      return true;
+    }
     return (currentUser.permissions || []).includes(permission);
   }, [currentUser]);
 
   const hasAnyPermission = useCallback((permissions: Permission[]): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === "admin" || currentUser.role === "owner") return true;
+    if (
+      currentUser.role === "owner" ||
+      currentUser.id === "usr_admin" ||
+      currentUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
+    ) {
+      return true;
+    }
     const userPerms = currentUser.permissions || [];
     return permissions.some((p) => userPerms.includes(p));
   }, [currentUser]);
 
   const hasModuleAccess = useCallback((moduleKey: string): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === "admin" || currentUser.role === "owner") return true;
+    if (
+      currentUser.role === "owner" ||
+      currentUser.id === "usr_admin" ||
+      currentUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
+    ) {
+      return true;
+    }
 
     switch (moduleKey) {
       case "dashboard":
@@ -280,13 +347,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return hasAnyPermission(["invoices:create", "invoices:view", "invoices:edit", "invoices:reverse"]);
       case "inventory":
       case "stock":
-        return hasAnyPermission(["inventory:view", "inventory:receive", "inventory:damage", "inventory:samples"]);
+        return hasAnyPermission(["inventory:view", "inventory:receive", "inventory:damage", "inventory:samples", "inventory:adjust"]);
       case "products":
       case "catalog":
         return hasAnyPermission(["products:view", "products:edit"]);
       case "crm":
       case "customers":
-        return hasAnyPermission(["crm:customers", "crm:visits", "crm:leads"]);
+        return hasAnyPermission(["crm:customers", "crm:visits", "crm:leads", "staff:monitoring", "staff:targets"]);
       case "finance":
       case "accounts":
         return hasAnyPermission(["finance:payments", "finance:aging", "finance:ledgers", "finance:pnl"]);

@@ -96,17 +96,28 @@ export default function UserManagementPage() {
       } catch {}
     }
     loadUsers();
+
+    const handleCloudSync = () => {
+      loadUsers();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSync);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSync);
   }, []);
 
-  const saveUsers = async (updated: UserProfile[]) => {
+  const saveUsers = async (updated: UserProfile[], deletedId?: string) => {
     setUsers(updated);
     localStorage.setItem("noxderma_users", JSON.stringify(updated));
     try {
       if ((offlineDb as any).users) {
-        await (offlineDb as any).users.clear();
+        if (deletedId) {
+          await (offlineDb as any).users.delete(deletedId);
+        }
         if (updated.length > 0) {
           await (offlineDb as any).users.bulkPut(updated);
         }
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("noxderma-users-updated"));
       }
     } catch (err) {
       console.error("Failed to sync users to offlineDb:", err);
@@ -133,10 +144,9 @@ export default function UserManagementPage() {
     setPassword(u.password || "admin");
     setRole(u.role);
     setPhone(u.phone || "");
-    const perms =
-      u.permissions && u.permissions.length > 0
-        ? u.permissions
-        : ROLE_PERMISSIONS[u.role] || [];
+    const perms = Array.isArray(u.permissions)
+      ? u.permissions
+      : ROLE_PERMISSIONS[u.role] || [];
     setSelectedPermissions(perms);
     setIsModalOpen(true);
   };
@@ -220,7 +230,7 @@ export default function UserManagementPage() {
     }
     if (confirm("Kiya aap waqai is staff user ko delete karna chahte hain?")) {
       const updated = users.filter((u) => u.id !== userId);
-      saveUsers(updated);
+      saveUsers(updated, userId);
     }
   };
 
@@ -313,7 +323,9 @@ export default function UserManagementPage() {
           </div>
         ) : (
           filtered.map((user) => {
-            const userPermCount = user.permissions?.length || ROLE_PERMISSIONS[user.role]?.length || 0;
+            const userPermCount = Array.isArray(user.permissions)
+              ? user.permissions.length
+              : ROLE_PERMISSIONS[user.role]?.length || 0;
             return (
               <div
                 key={user.id}
@@ -349,7 +361,9 @@ export default function UserManagementPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500 font-medium">Modular Permissions:</span>
                     <span className="font-bold text-teal-600 dark:text-teal-400">
-                      {user.role === "owner" || user.role === "admin" ? "All (Full Access)" : `${userPermCount} Selected`}
+                      {user.role === "owner" || user.id === "usr_admin"
+                        ? "All (Owner Full Access)"
+                        : `${userPermCount} / ${ALL_PERMISSIONS.length} Selected`}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -411,7 +425,9 @@ export default function UserManagementPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filtered.map((user) => {
-                const userPermCount = user.permissions?.length || ROLE_PERMISSIONS[user.role]?.length || 0;
+                const userPermCount = Array.isArray(user.permissions)
+                  ? user.permissions.length
+                  : ROLE_PERMISSIONS[user.role]?.length || 0;
                 return (
                   <tr
                     key={user.id}
@@ -452,10 +468,12 @@ export default function UserManagementPage() {
                     <td className="py-3.5 px-3">
                       <div className="flex items-center gap-1.5">
                         <span className="px-2.5 py-1 rounded-md font-bold font-mono text-xs bg-slate-100 dark:bg-slate-800 text-teal-600 dark:text-teal-400">
-                          {user.role === "owner" || user.role === "admin" ? "All (Full Access)" : `${userPermCount} Selected`}
+                          {user.role === "owner" || user.id === "usr_admin"
+                            ? "All (Owner Full Access)"
+                            : `${userPermCount} / ${ALL_PERMISSIONS.length} Selected`}
                         </span>
                         <span className="text-xs text-slate-400">
-                          {user.role === "owner" || user.role === "admin"
+                          {user.role === "owner" || user.id === "usr_admin"
                             ? "Master Unrestricted"
                             : user.permissions
                             ? "Customized"
