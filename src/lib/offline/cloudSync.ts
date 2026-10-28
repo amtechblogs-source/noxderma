@@ -419,3 +419,4 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
   dispatchCloudSyncUpdate();
   return totalSyncedDocs;
 }
+
