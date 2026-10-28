@@ -49,9 +49,15 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    const handleCloudSynced = () => {
+      refreshCategories();
+    };
+
     window.addEventListener("noxderma_category_changed", handleCategoryEvent);
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
     return () => {
       window.removeEventListener("noxderma_category_changed", handleCategoryEvent);
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     };
   }, []);
 

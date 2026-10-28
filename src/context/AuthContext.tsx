@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { collection, getDocs } from "firebase/firestore";
+import { db as firestoreDb } from "@/lib/firebase/config";
 import { offlineDb } from "@/lib/offline/db";
 import {
   UserProfile,
@@ -136,8 +138,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {}
         }
 
-        // 1. Look for user in database
-        const user = dbUsers.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+        // 1. Look for user in database (and fallback to live Cloud Firestore if not yet synced locally)
+        let user = dbUsers.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+
+        if (!user) {
+          try {
+            const snap = await getDocs(collection(firestoreDb, "users"));
+            const remoteUsers: UserProfile[] = [];
+            snap.forEach((docSnap) => {
+              remoteUsers.push({ ...(docSnap.data() as UserProfile), id: docSnap.id });
+            });
+            if (remoteUsers.length > 0) {
+              await (offlineDb as any).users?.bulkPut(remoteUsers);
+              user = remoteUsers.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+            }
+          } catch {}
+        }
 
         if (user) {
           if (!user.active) {

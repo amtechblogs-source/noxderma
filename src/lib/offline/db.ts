@@ -143,3 +143,14 @@ export class NoxdermaDexieDB extends Dexie {
 }
 
 export const offlineDb = new NoxdermaDexieDB();
+
+if (typeof window !== "undefined") {
+  import("./cloudSync")
+    .then(({ attachDexieCloudHooks, startRealtimeCloudSync }) => {
+      attachDexieCloudHooks(offlineDb);
+      startRealtimeCloudSync(offlineDb);
+    })
+    .catch((err) => {
+      console.warn("Could not initialize Cloud Firestore sync:", err);
+    });
+}

@@ -7,6 +7,8 @@ import {
   getPendingOutboxCount,
   onOutboxEnqueued,
 } from "./outbox";
+import { offlineDb } from "./db";
+import { forceFullCloudDatabaseSync, startRealtimeCloudSync } from "./cloudSync";
 import type { OutboxOperation } from "@/types";
 
 export interface SyncResult {
@@ -30,6 +32,10 @@ class SynchronizationManager {
       });
 
       window.addEventListener("offline", () => {
+        this.notifyListeners();
+      });
+
+      window.addEventListener("noxderma-cloud-synced", () => {
         this.notifyListeners();
       });
 
@@ -102,6 +108,8 @@ class SynchronizationManager {
     let failedCount = 0;
 
     try {
+      await startRealtimeCloudSync(offlineDb);
+      const cloudDocsCount = await forceFullCloudDatabaseSync(offlineDb);
       const pending = await getPendingOperations();
 
       for (const op of pending) {
