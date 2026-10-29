@@ -95,3 +95,32 @@ export interface ProfitAndLossReport {
   netOperatingProfit: number;
   netProfitMarginPercentage: number;
 }
+
+export type SalaryPaymentStatus = "pending" | "paid";
+
+export interface StaffSalary {
+  id: string; // e.g. "sal_1793256789_usr_123"
+  staffId: string;
+  staffName: string;
+  staffRole: string;
+  phone?: string;
+  month: string; // "YYYY-MM" e.g. "2026-10"
+  monthLabel: string; // "October 2026"
+  baseSalary: number;
+  bonus: number;
+  bonusReason?: string;
+  fuelAllowance: number;
+  otherAllowances: number;
+  deductions: number;
+  deductionReason?: string;
+  netSalary: number; // (baseSalary + bonus + fuelAllowance + otherAllowances) - deductions
+  status: SalaryPaymentStatus;
+  disbursedAt?: string;
+  disbursedByUserId?: string;
+  disbursedByUserName?: string;
+  paymentMethod: "cash" | "bank_transfer" | "cheque" | "online";
+  paymentReference?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}

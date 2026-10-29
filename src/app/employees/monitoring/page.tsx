@@ -179,19 +179,28 @@ export default function StaffLocationAndPhoneStatusPage() {
       const enrichedSessions = validSessions.map((session) => {
         const matchedUser = session.userId ? userById.get(session.userId) : undefined;
         if (!matchedUser) {
+          const cleanName = normalizeUserDisplayName(session.name, "Owner");
+          const cleanRole = normalizeRoleTitle(session.roleTitle);
+          if (session.name !== cleanName || session.roleTitle !== cleanRole) {
+            offlineDb.staffMonitors.update(session.id, { name: cleanName, roleTitle: cleanRole }).catch(() => {});
+          }
           return {
             ...session,
-            name: normalizeUserDisplayName(session.name, "Owner"),
-            roleTitle: normalizeRoleTitle(session.roleTitle),
+            name: cleanName,
+            roleTitle: cleanRole,
           };
         }
         const resolvedRole = roleMap[matchedUser.role] || normalizeRoleTitle(session.roleTitle);
+        const cleanName = normalizeUserDisplayName(
+          matchedUser.displayName,
+          resolvedRole === "Owner" ? "Owner" : matchedUser.email || session.name
+        );
+        if (session.name !== cleanName || session.roleTitle !== resolvedRole) {
+          offlineDb.staffMonitors.update(session.id, { name: cleanName, roleTitle: resolvedRole }).catch(() => {});
+        }
         return {
           ...session,
-          name: normalizeUserDisplayName(
-            matchedUser.displayName,
-            resolvedRole === "Owner" ? "Owner" : matchedUser.email || session.name
-          ),
+          name: cleanName,
           roleTitle: resolvedRole,
           phone: matchedUser.phone || matchedUser.email || session.phone,
           userEmail: matchedUser.email,

@@ -20,6 +20,7 @@ import type {
   LiveMapTransactionPin,
   GeoVerifiedPhoto,
   OperatingExpense,
+  StaffSalary,
 } from "@/types";
 
 export interface PendingImageRecord {
@@ -88,6 +89,7 @@ export class NoxdermaDexieDB extends Dexie {
   liveMapPins!: Table<LiveMapTransactionPin, string>;
   geoVerifiedPhotos!: Table<GeoVerifiedPhoto, string>;
   operatingExpenses!: Table<OperatingExpense, string>;
+  staffSalaries!: Table<StaffSalary, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -148,6 +150,10 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(8).stores({
       operatingExpenses: "id, category, date, paymentMethod, amount, createdAt",
+    });
+
+    this.version(9).stores({
+      staffSalaries: "id, staffId, month, status, disbursedAt, createdAt",
     });
   }
 }

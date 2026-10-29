@@ -24,6 +24,7 @@ import {
   Scale,
   TrendingUp,
   CreditCard,
+  Banknote,
   Target,
   Megaphone,
   Share2,
@@ -98,6 +99,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Doctor Visits", href: "/crm/visits", icon: MapPin, requiredPermission: "crm:visits" },
       { name: "Staff Location", href: "/employees/monitoring", icon: Compass, requiredPermission: "staff:monitoring" },
       { name: "Sales Targets", href: "/employees/targets", icon: Target, requiredPermission: "staff:targets" },
+      { name: "Staff Salaries", href: "/finance/salaries", icon: Banknote, requiredPermission: "finance:pnl" },
     ],
   },
   {
@@ -106,6 +108,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Market Udhaar", href: "/finance/credit", icon: CreditCard, requiredPermission: "finance:aging" },
       { name: "Company Khata", href: "/finance/ledgers/manufacturers", icon: BookOpen, requiredPermission: "finance:ledgers" },
       { name: "Customer Khata", href: "/finance/ledgers/customers", icon: Scale, requiredPermission: "finance:ledgers" },
+      { name: "Staff Salaries", href: "/finance/salaries", icon: Banknote, requiredPermission: "finance:pnl" },
       { name: "Profit & Loss", href: "/finance/pnl", icon: TrendingUp, requiredPermission: "finance:pnl" },
       { name: "Reports", href: "/reports", icon: FileSpreadsheet, requiredPermission: "finance:pnl" },
     ],

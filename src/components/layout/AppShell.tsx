@@ -450,6 +450,9 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/employees/targets")) {
       return hasPermission("staff:targets");
     }
+    if (pathname.startsWith("/employees/salaries") || pathname.startsWith("/finance/salaries")) {
+      return hasAnyPermission(["finance:pnl", "finance:payments", "users:manage"]);
+    }
 
     // Finance, Khata & Reports
     if (pathname.startsWith("/finance/credit")) {

@@ -34,6 +34,7 @@ import type {
   InventoryBatch,
   OperatingExpense,
   ExpenseCategory,
+  StaffSalary,
 } from "@/types";
 
 const EXPENSE_CATEGORIES: { key: ExpenseCategory; label: string; icon: any }[] = [
@@ -53,6 +54,7 @@ export default function ProfitAndLossPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [expenses, setExpenses] = useState<OperatingExpense[]>([]);
+  const [staffSalaries, setStaffSalaries] = useState<StaffSalary[]>([]);
   const [period, setPeriod] = useState<"this_month" | "last_month" | "all">("all");
   const [loading, setLoading] = useState(true);
 
@@ -71,13 +73,14 @@ export default function ProfitAndLossPage() {
 
   const loadFinanceData = async () => {
     try {
-      const [invs, movs, pricings, prods, bchs, exps] = await Promise.all([
+      const [invs, movs, pricings, prods, bchs, exps, sals] = await Promise.all([
         offlineDb.invoices.toArray(),
         offlineDb.stockMovements.toArray(),
         offlineDb.productPricing.toArray(),
         offlineDb.products.toArray(),
         offlineDb.inventoryBatches.toArray(),
         offlineDb.operatingExpenses.toArray(),
+        offlineDb.staffSalaries.toArray(),
       ]);
       setInvoices(invs || []);
       setMovements(movs || []);
@@ -85,6 +88,7 @@ export default function ProfitAndLossPage() {
       setProducts(prods || []);
       setBatches(bchs || []);
       setExpenses(exps || []);
+      setStaffSalaries(sals || []);
     } catch (err) {
       console.error("Failed to load P&L finance records:", err);
     } finally {
@@ -148,9 +152,13 @@ export default function ProfitAndLossPage() {
     const periodInvoices = invoices.filter((i) => isMatch(i.invoiceDate || i.createdAt));
     const periodExpenses = expenses.filter((e) => isMatch(e.date || e.createdAt));
     const periodMovements = movements.filter((m) => isMatch(m.timestamp));
+    const periodSalaries = staffSalaries.filter((s) => {
+      if (s.status !== "paid") return false;
+      return isMatch(s.disbursedAt || `${s.month}-15` || s.createdAt);
+    });
 
-    return { periodInvoices, periodExpenses, periodMovements };
-  }, [invoices, expenses, movements, period]);
+    return { periodInvoices, periodExpenses, periodMovements, periodSalaries };
+  }, [invoices, expenses, movements, staffSalaries, period]);
 
   // 1. REVENUE CALCULATIONS
   const grossSales = useMemo(() => {
@@ -210,16 +218,34 @@ export default function ProfitAndLossPage() {
 
   // 3. OPERATING EXPENSES BREAKDOWN
   const travelingExpenses = useMemo(() => {
-    return filteredData.periodExpenses
+    const manualFuel = filteredData.periodExpenses
       .filter((e) => e.category === "traveling_fuel")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [filteredData.periodExpenses]);
+    const salaryFuel = filteredData.periodSalaries.reduce(
+      (sum, s) => sum + (Number(s.fuelAllowance) || 0),
+      0
+    );
+    return manualFuel + salaryFuel;
+  }, [filteredData.periodExpenses, filteredData.periodSalaries]);
 
   const staffSalaries = useMemo(() => {
-    return filteredData.periodExpenses
+    const manualSalaries = filteredData.periodExpenses
       .filter((e) => e.category === "staff_salaries")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [filteredData.periodExpenses]);
+    const payrollSalaries = filteredData.periodSalaries.reduce(
+      (sum, s) =>
+        sum +
+        Math.max(
+          0,
+          (Number(s.baseSalary) || 0) +
+            (Number(s.bonus) || 0) +
+            (Number(s.otherAllowances) || 0) -
+            (Number(s.deductions) || 0)
+        ),
+      0
+    );
+    return manualSalaries + payrollSalaries;
+  }, [filteredData.periodExpenses, filteredData.periodSalaries]);
 
   const officeUtilities = useMemo(() => {
     return filteredData.periodExpenses
@@ -494,13 +520,29 @@ export default function ProfitAndLossPage() {
             </button>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Traveling &amp; Fuel Expenses (Petrol / Reps TA/DA)</span>
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 pl-3">
+            <span className="flex items-center gap-2">
+              <span>Traveling &amp; Fuel Expenses (Petrol / Reps TA/DA)</span>
+              <Link
+                href="/finance/salaries"
+                className="text-[10px] text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
+              >
+                (Payroll &rarr;)
+              </Link>
+            </span>
             <span className="text-rose-600 font-medium font-mono">-{formatPKR(travelingExpenses)}</span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Staff Salaries &amp; Field Commissions (Tankhwah)</span>
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 pl-3">
+            <span className="flex items-center gap-2">
+              <span>Staff Salaries &amp; Field Commissions (Tankhwah)</span>
+              <Link
+                href="/finance/salaries"
+                className="text-[10px] text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
+              >
+                (Payroll Slips &rarr;)
+              </Link>
+            </span>
             <span className="text-rose-600 font-medium font-mono">-{formatPKR(staffSalaries)}</span>
           </div>
 

@@ -87,7 +87,7 @@ export default function CustomerLedgersPage() {
       id: `ledg_inv_${inv.id}`,
       customerId: inv.customerId,
       customerName: inv.customerName,
-      date: (inv.invoiceDate || inv.createdAt).slice(0, 10),
+      date: (inv.invoiceDate || inv.createdAt || "").slice(0, 10),
       referenceNumber: inv.provisionalReference || inv.id,
       type: "Sales Bill",
       description: `Bill Issued (${inv.lines?.length || 1} medicines)`,
@@ -99,7 +99,7 @@ export default function CustomerLedgersPage() {
       id: `ledg_pay_${pay.id}`,
       customerId: pay.customerId,
       customerName: pay.customerName,
-      date: (pay.paymentDate || pay.createdAt).slice(0, 10),
+      date: (pay.paymentDate || pay.createdAt || "").slice(0, 10),
       referenceNumber: pay.referenceNumber || pay.id,
       type: "Payment Received",
       description: `Cash Received (${pay.paymentMethod === "cash" ? "Cash" : "Bank Transfer"})`,
@@ -107,7 +107,11 @@ export default function CustomerLedgersPage() {
       credit: pay.amount, // Payment decreases customer balance
       timestamp: new Date(pay.createdAt).getTime(),
     })),
-  ].sort((a, b) => a.timestamp - b.timestamp);
+  ].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+    // Put bill first (+ debit), then payment (- credit)
+    return b.debit - a.debit;
+  });
 
   const filteredEntries = rawLedgerEntries.filter((e) => {
     const matchesCustomer =

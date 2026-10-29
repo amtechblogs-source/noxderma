@@ -217,6 +217,7 @@ const LEGACY_OWNER_DISPLAY_NAMES = new Set([
   "owner / admin",
   "shop owner / admin",
   "owner (owner)",
+  "system administrator (owner) (owner / admin)",
 ]);
 
 /**
@@ -230,7 +231,17 @@ export function normalizeUserDisplayName(
   const trimmed = (rawName || "").trim();
   if (!trimmed) return fallback;
 
-  if (LEGACY_OWNER_DISPLAY_NAMES.has(trimmed.toLowerCase())) {
+  const lower = trimmed.toLowerCase();
+  // Any legacy admin / system administrator variation instantly becomes Owner
+  if (
+    lower.includes("system administrator") ||
+    lower.includes("administrator") ||
+    lower.includes("owner / admin") ||
+    lower === "admin" ||
+    lower === "admin user" ||
+    lower === "owner (owner)" ||
+    lower === "system admin"
+  ) {
     return "Owner";
   }
 
