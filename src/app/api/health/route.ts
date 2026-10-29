@@ -22,3 +22,4 @@ export async function HEAD() {
     headers: HEALTH_HEADERS,
   });
 }
+
