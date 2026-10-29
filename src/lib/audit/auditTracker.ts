@@ -450,6 +450,19 @@ export async function clearAllAuditLogs(): Promise<number> {
     if (ids.length > 0) {
       await deleteAuditLogEntries(ids);
     }
+
+    // Direct Firestore collection purge to guarantee remote clean state across all sessions
+    try {
+      const { collection, getDocs, deleteDoc } = await import("firebase/firestore");
+      const { db: firestoreDb } = await import("@/lib/firebase/config");
+      const snap = await getDocs(collection(firestoreDb, "auditLogs"));
+      await Promise.allSettled(snap.docs.map((d) => deleteDoc(d.ref)));
+    } catch (remoteErr) {
+      console.warn("Direct Firestore clear-all warning:", remoteErr);
+    }
+
+    await offlineDb.auditLogs.clear();
+
     if (typeof window !== "undefined") {
       localStorage.setItem("noxderma_audit_seeded", "true");
     }
