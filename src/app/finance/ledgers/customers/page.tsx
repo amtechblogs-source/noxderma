@@ -65,7 +65,7 @@ export default function CustomerLedgersPage() {
       // Automatically purge orphan payments from local storage
       if (orphanPayments.length > 0) {
         for (const op of orphanPayments) {
-          offlineDb.payments.delete(op.id).catch(() => {});
+          offlineDb.payments.delete(op.id).catch(() => { });
         }
       }
 
@@ -335,8 +335,8 @@ export default function CustomerLedgersPage() {
                           row.runningBalance > 0
                             ? "text-rose-600 dark:text-rose-400"
                             : row.runningBalance < 0
-                            ? "text-sky-600 dark:text-sky-400"
-                            : "text-slate-900 dark:text-slate-100"
+                              ? "text-sky-600 dark:text-sky-400"
+                              : "text-slate-900 dark:text-slate-100"
                         }
                       >
                         {row.runningBalance < 0

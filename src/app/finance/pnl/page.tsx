@@ -155,7 +155,10 @@ export default function ProfitAndLossPage() {
     const periodMovements = movements.filter((m) => isMatch(m.timestamp));
     const periodSalaries = salaryRecords.filter((s) => {
       if (s.status !== "paid") return false;
-      return isMatch(s.disbursedAt || `${s.month}-15` || s.createdAt);
+      // Match by the earned salary month (e.g. "2026-10" for October),
+      // so salaries paid in November for October work deduct from October's P&L statement (accrual matching)
+      const targetDate = s.month ? `${s.month}-15` : (s.disbursedAt || s.createdAt);
+      return isMatch(targetDate);
     });
 
     return { periodInvoices, periodExpenses, periodMovements, periodSalaries };
@@ -602,7 +605,10 @@ export default function ProfitAndLossPage() {
                 Staff Salaries &amp; Field Commissions (Tankhwah)
               </span>
               <div className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
-                <span>Monthly salaries &amp; allowances</span>
+                <span>
+                  Earned month salaries
+                  {filteredData.periodSalaries.length > 0 && ` (${filteredData.periodSalaries.length} slips synced)`}
+                </span>
                 <span>•</span>
                 <Link
                   href="/finance/salaries"

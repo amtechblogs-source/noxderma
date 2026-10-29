@@ -99,6 +99,16 @@ export default function StaffSalariesPage() {
   const [editingSalary, setEditingSalary] = useState<StaffSalary | null>(null);
   const [slipSalary, setSlipSalary] = useState<StaffSalary | null>(null);
   const [bulkDisburseModalOpen, setBulkDisburseModalOpen] = useState(false);
+  const [disburseModalSalary, setDisburseModalSalary] = useState<StaffSalary | null>(null);
+
+  // Single Disburse Modal State
+  const [disburseDate, setDisburseDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [disbursePaymentMethod, setDisbursePaymentMethod] = useState<"cash" | "bank_transfer" | "cheque" | "online">("cash");
+  const [disbursePaymentRef, setDisbursePaymentRef] = useState("");
+
+  // Bulk Disburse Modal State
+  const [bulkDisburseDate, setBulkDisburseDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [bulkDisburseMethod, setBulkDisburseMethod] = useState<"cash" | "bank_transfer" | "cheque" | "online">("cash");
 
   // Form State
   const [formStaffId, setFormStaffId] = useState("");
@@ -117,6 +127,7 @@ export default function StaffSalariesPage() {
   const [formPaymentRef, setFormPaymentRef] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [formDisburseNow, setFormDisburseNow] = useState(false);
+  const [formDisburseDate, setFormDisburseDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
   // Access restriction
   const isOwnerOrAccountant =
@@ -286,6 +297,7 @@ export default function StaffSalariesPage() {
       setFormPaymentRef(sal.paymentReference || "");
       setFormNotes(sal.notes || "");
       setFormDisburseNow(sal.status === "paid");
+      setFormDisburseDate(sal.disbursedAt ? sal.disbursedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
     } else {
       setEditingSalary(null);
       setFormStaffId(staffUsers[0]?.id || "");
@@ -304,6 +316,7 @@ export default function StaffSalariesPage() {
       setFormPaymentRef("");
       setFormNotes("");
       setFormDisburseNow(false);
+      setFormDisburseDate(new Date().toISOString().slice(0, 10));
     }
     setIsCreateModalOpen(true);
   };
@@ -331,7 +344,7 @@ export default function StaffSalariesPage() {
 
     const status: SalaryPaymentStatus = formDisburseNow ? "paid" : "pending";
     const disbursedAt = formDisburseNow
-      ? editingSalary?.disbursedAt || now.toISOString()
+      ? (formDisburseDate ? `${formDisburseDate}T${now.toTimeString().slice(0, 8)}.000Z` : (editingSalary?.disbursedAt || now.toISOString()))
       : undefined;
 
     const salaryRecord: StaffSalary = {
@@ -390,13 +403,28 @@ export default function StaffSalariesPage() {
     }
   };
 
-  // One-click individual disbursement
-  const handleDisburseSingle = async (sal: StaffSalary) => {
+  // Open individual disbursement confirmation modal
+  const handleOpenDisburseModal = (sal: StaffSalary) => {
+    setDisburseModalSalary(sal);
+    setDisburseDate(new Date().toISOString().slice(0, 10));
+    setDisbursePaymentMethod(sal.paymentMethod || "cash");
+    setDisbursePaymentRef(sal.paymentReference || "");
+  };
+
+  // Confirm and execute single disbursement
+  const handleConfirmSingleDisburse = async () => {
+    if (!disburseModalSalary) return;
     const now = new Date();
+    const disbursedAt = disburseDate
+      ? `${disburseDate}T${now.toTimeString().slice(0, 8)}.000Z`
+      : now.toISOString();
+
     const updated: StaffSalary = {
-      ...sal,
+      ...disburseModalSalary,
       status: "paid",
-      disbursedAt: now.toISOString(),
+      disbursedAt,
+      paymentMethod: disbursePaymentMethod,
+      paymentReference: disbursePaymentRef.trim() || undefined,
       disbursedByUserId: currentUser?.id || "usr_admin",
       disbursedByUserName: currentUser?.displayName || "Owner",
       updatedAt: now.toISOString(),
@@ -412,15 +440,17 @@ export default function StaffSalariesPage() {
         userRole: currentUser?.role || "owner",
         action: "update",
         entityType: "salary",
-        entityId: sal.id,
-        entityTitle: `Disbursed Salary - ${sal.staffName}`,
-        details: `Disbursed PKR ${sal.netSalary.toLocaleString()} to ${sal.staffName} for ${sal.monthLabel} via ${sal.paymentMethod.toUpperCase()}`,
+        entityId: updated.id,
+        entityTitle: `Disbursed Salary - ${updated.staffName}`,
+        details: `Disbursed PKR ${updated.netSalary.toLocaleString()} to ${updated.staffName} for ${updated.monthLabel} via ${disbursePaymentMethod.toUpperCase()} on ${disburseDate}`,
         snapshotAfter: updated,
       });
 
+      const processedSal = updated;
+      setDisburseModalSalary(null);
       setNotice({
         type: "success",
-        text: `Salary of PKR ${sal.netSalary.toLocaleString()} disbursed to ${sal.staffName}!`,
+        text: `Salary of PKR ${processedSal.netSalary.toLocaleString()} disbursed to ${processedSal.staffName} for ${processedSal.monthLabel}!`,
       });
       await loadData();
     } catch (err: any) {
@@ -434,12 +464,17 @@ export default function StaffSalariesPage() {
     if (pendingList.length === 0) return;
 
     const now = new Date();
+    const disbursedAt = bulkDisburseDate
+      ? `${bulkDisburseDate}T${now.toTimeString().slice(0, 8)}.000Z`
+      : now.toISOString();
+
     try {
       for (const sal of pendingList) {
         const updated: StaffSalary = {
           ...sal,
           status: "paid",
-          disbursedAt: now.toISOString(),
+          disbursedAt,
+          paymentMethod: bulkDisburseMethod,
           disbursedByUserId: currentUser?.id || "usr_admin",
           disbursedByUserName: currentUser?.displayName || "Owner",
           updatedAt: now.toISOString(),
@@ -593,8 +628,10 @@ export default function StaffSalariesPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-3 sm:px-4 md:px-0 pb-28 sm:pb-16">
-      {/* Official Print-Only Sheet Header (When printing entire list) */}
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-0 pb-28 sm:pb-16">
+      {/* Main Ledger Content (Entirely hidden from printer when a Salary Slip is being printed) */}
+      <div className={`space-y-4 sm:space-y-6 ${slipSalary ? "print:hidden" : ""}`}>
+        {/* Official Print-Only Sheet Header (When printing entire list) */}
       <div className="hidden print:block border-b-2 border-black pb-3 mb-4">
         <div className="flex justify-between items-start">
           <div>
@@ -723,7 +760,7 @@ export default function StaffSalariesPage() {
             {formatPKR(kpis.disbursedAmount)}
           </div>
           <span className="text-[10px] text-slate-500 mt-0.5 block">
-            {kpis.paidCount} Staff Paid &bull; Synced in P&amp;L
+            {kpis.paidCount} Staff Paid • Synced in P&amp;L
           </span>
         </div>
 
@@ -897,7 +934,7 @@ export default function StaffSalariesPage() {
                             {sal.staffName}
                           </h3>
                           <span className="text-[10px] text-slate-400 block">
-                            {sal.staffRole} &bull; {sal.monthLabel}
+                            {sal.staffRole} • {sal.monthLabel}
                           </span>
                         </div>
                       </div>
@@ -970,7 +1007,7 @@ export default function StaffSalariesPage() {
                         {!isPaid && (
                           <button
                             type="button"
-                            onClick={() => handleDisburseSingle(sal)}
+                            onClick={() => handleOpenDisburseModal(sal)}
                             className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs inline-flex items-center gap-1 shadow-sm"
                           >
                             <Zap className="w-3 h-3" />
@@ -1112,9 +1149,9 @@ export default function StaffSalariesPage() {
                             {!isPaid && (
                               <button
                                 type="button"
-                                onClick={() => handleDisburseSingle(sal)}
+                                onClick={() => handleOpenDisburseModal(sal)}
                                 className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-sm transition-colors"
-                                title="Disburse salary immediately"
+                                title="Disburse salary with date & payment mode"
                               >
                                 <Zap className="w-3 h-3" />
                                 <span>Disburse</span>
@@ -1217,9 +1254,11 @@ export default function StaffSalariesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                    Salary Month (YYYY-MM) *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      Salary For Month (Kis Month Ki Tankhwah Hai) *
+                    </label>
+                  </div>
                   <input
                     type="month"
                     value={formMonth}
@@ -1227,6 +1266,42 @@ export default function StaffSalariesPage() {
                     required
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold"
                   />
+                  {/* Quick Select Buttons */}
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setFormMonth(currentMonthKey)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                        formMonth === currentMonthKey
+                          ? "bg-teal-600 text-white"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                      }`}
+                    >
+                      This Month
+                    </button>
+                    {(() => {
+                      const prevD = new Date();
+                      prevD.setMonth(prevD.getMonth() - 1);
+                      const prevKey = prevD.toISOString().slice(0, 7);
+                      const prevLbl = prevD.toLocaleString("en-PK", { month: "short", year: "numeric" });
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setFormMonth(prevKey)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                            formMonth === prevKey
+                              ? "bg-teal-600 text-white"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                          }`}
+                        >
+                          Previous Month ({prevLbl})
+                        </button>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    💡 <strong>P&amp;L Matching:</strong> Tankhwah jis mahinay ki hai wohi select karein taake Profit &amp; Loss mein ye usi maheenay ki bikri se minus ho (chahe payment baad mein ho).
+                  </p>
                 </div>
               </div>
 
@@ -1386,8 +1461,8 @@ export default function StaffSalariesPage() {
               </div>
 
               {/* Disburse Immediately Checkbox */}
-              <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
+              <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-3">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={formDisburseNow}
@@ -1399,10 +1474,32 @@ export default function StaffSalariesPage() {
                       Mark as Disbursed (Paid Immediately)
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      Reflects instantly in Profit &amp; Loss expense calculations
+                      Reflects instantly in Profit &amp; Loss expense calculations under {formMonth}
                     </span>
                   </div>
                 </label>
+
+                {formDisburseNow && (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                        Disbursement / Payment Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={formDisburseDate}
+                        onChange={(e) => setFormDisburseDate(e.target.value)}
+                        required
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-400 mt-5">
+                        Will be timestamped &amp; recorded on the official slip.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -1429,7 +1526,7 @@ export default function StaffSalariesPage() {
       {/* MODAL 2: BULK DISBURSE MODAL                                              */}
       {/* ========================================================================= */}
       {bulkDisburseModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in no-print">
           <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shrink-0">
@@ -1440,7 +1537,7 @@ export default function StaffSalariesPage() {
                   One-Click Salary Disbursement
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Disburse all pending salaries for {selectedMonth}
+                  Disburse all pending salaries for {selectedMonth === "all" ? "current period" : selectedMonth}
                 </p>
               </div>
             </div>
@@ -1462,10 +1559,45 @@ export default function StaffSalariesPage() {
                   {formatPKR(kpis.totalFuel)}
                 </span>
               </div>
+              <p className="text-[10px] text-slate-400 pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                📌 <strong>P&amp;L Accrual Sync:</strong> Tamam tankhwah ka kharcha unke muntakhib maheenay ({selectedMonth === "all" ? "respective months" : selectedMonth}) ke Profit &amp; Loss accounts se deduct hoga.
+              </p>
+            </div>
+
+            {/* Payout Options */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Disbursement Date *
+                </label>
+                <input
+                  type="date"
+                  value={bulkDisburseDate}
+                  onChange={(e) => setBulkDisburseDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Payment Mode *
+                </label>
+                <select
+                  value={bulkDisburseMethod}
+                  onChange={(e) => setBulkDisburseMethod(e.target.value as any)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
+                >
+                  <option value="cash">Cash in Hand</option>
+                  <option value="bank_transfer">Bank IBFT</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="online">Online / EasyPaisa</option>
+                </select>
+              </div>
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Clicking &quot;Confirm Disbursement&quot; will mark all {kpis.pendingCount} salary records as <strong>PAID</strong>, register disbursement timestamps, and sync this expense into the <strong>Profit &amp; Loss</strong> statement.
+              Clicking &quot;Confirm Disbursement&quot; will mark all {kpis.pendingCount} salary records as <strong>PAID</strong>, register timestamps, and sync this expense into the <strong>Profit &amp; Loss</strong> statement.
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2">
@@ -1490,212 +1622,356 @@ export default function StaffSalariesPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 3: OFFICIAL PRINTABLE SALARY SLIP (A4 / VOUCHER)                     */}
+      {/* MODAL 2A: CONFIRM INDIVIDUAL SALARY DISBURSEMENT                           */}
       {/* ========================================================================= */}
-      {slipSalary && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-white text-slate-900 shadow-2xl p-6 sm:p-8 space-y-6 my-auto print:shadow-none print:p-0 print:border-none print:m-0 print:w-full">
-            {/* Modal Controls (No print) */}
-            <div className="flex items-center justify-between no-print border-b pb-3">
-              <span className="text-xs font-black uppercase text-teal-700 tracking-wider">
-                Official Salary Slip Preview
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+      {disburseModalSalary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in no-print">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-teal-600" />
+                  <span>Disburse Staff Salary</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {disburseModalSalary.staffName} • {disburseModalSalary.staffRole}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDisburseModalSalary(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Salary Attribution Card */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Salary For Month:</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 font-extrabold text-[11px]">
+                  {disburseModalSalary.monthLabel}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Net Disbursed Pay:</span>
+                <span className="font-mono font-black text-teal-600 dark:text-teal-400 text-base">
+                  {formatPKR(disburseModalSalary.netSalary)}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                📌 <strong>P&amp;L Matching:</strong> Ye kharcha Profit &amp; Loss mein <strong>{disburseModalSalary.monthLabel}</strong> ke munafay se minus hoga, chahe payment kisi bhi din di jaye.
+              </p>
+            </div>
+
+            {/* Payment Details Inputs */}
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Payment / Disbursement Date *
+                </label>
+                <input
+                  type="date"
+                  value={disburseDate}
+                  onChange={(e) => setDisburseDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Payment Mode *
+                </label>
+                <select
+                  value={disbursePaymentMethod}
+                  onChange={(e) => setDisbursePaymentMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>Print Slip Now</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSlipSalary(null)}
-                  className="p-1 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                  <option value="cash">Cash in Hand</option>
+                  <option value="bank_transfer">Bank Transfer (IBFT)</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="online">Online / EasyPaisa / JazzCash</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Transaction / Cheque Ref # (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. IBFT-91823 or Cheque # 4019"
+                  value={disbursePaymentRef}
+                  onChange={(e) => setDisbursePaymentRef(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                />
               </div>
             </div>
 
-            {/* Printable Slip Content */}
-            <div className="border border-slate-300 rounded-2xl p-6 sm:p-8 space-y-6 bg-white text-slate-900">
-              {/* Slip Header */}
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
-                <div>
-                  <h1 className="text-xl font-black uppercase tracking-tight text-black">
-                    NOXDERMA PHARMACEUTICALS
-                  </h1>
-                  <p className="text-xs text-slate-600 font-semibold">
-                    Derma &amp; Healthcare Solutions
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Suite # 402, Trade Heights, Karachi, Pakistan
-                  </p>
-                </div>
-                <div className="text-right">
-                  <span className="inline-block px-3 py-1 rounded bg-slate-100 border border-slate-400 text-[11px] font-black uppercase tracking-wider text-black mb-1">
-                    Salary Disbursement Slip
-                  </span>
-                  <p className="text-[10px] text-slate-600">
-                    <strong>Slip Ref:</strong> {slipSalary.id.toUpperCase().slice(-10)}
-                  </p>
-                  <p className="text-[10px] text-slate-600">
-                    <strong>Period:</strong> {slipSalary.monthLabel}
-                  </p>
-                </div>
-              </div>
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDisburseModalSalary(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSingleDisburse}
+                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs shadow-md shadow-teal-600/30 flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Confirm &amp; Disburse {formatPKR(disburseModalSalary.netSalary)}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Employee Meta Info */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-medium block">Employee Name:</span>
-                  <strong className="text-slate-900 font-bold">{slipSalary.staffName}</strong>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-medium block">Designation / Role:</span>
-                  <span className="font-semibold text-slate-800">{slipSalary.staffRole}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-medium block">Contact Phone:</span>
-                  <span className="font-mono text-slate-800">{slipSalary.phone || "—"}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-medium block">Payment Status:</span>
-                  <span
-                    className={`font-black uppercase text-[10px] px-2 py-0.5 rounded ${
-                      slipSalary.status === "paid"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-amber-100 text-amber-800"
-                    }`}
+      {/* Closes Main Ledger Content (print:hidden when slipSalary is open) */}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: OFFICIAL PRINTABLE SALARY SLIP (A4 / VOUCHER)                     */}
+      {/* ========================================================================= */}
+      {slipSalary && (
+        <>
+          {/* Isolated Print Stylesheet for Salary Slip (Prevents background tables/headers from bleeding through) */}
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-salary-slip,
+              #printable-salary-slip * {
+                visibility: visible !important;
+              }
+              #printable-salary-slip {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 24px !important;
+                background: #ffffff !important;
+                box-shadow: none !important;
+                border: 1px solid #0f172a !important;
+                border-radius: 12px !important;
+                z-index: 999999 !important;
+              }
+            }
+          `}</style>
+
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:backdrop-blur-none print:overflow-visible print:block">
+            <div className="w-full max-w-2xl rounded-3xl bg-white text-slate-900 shadow-2xl p-6 sm:p-8 space-y-6 my-auto print:max-w-none print:w-full print:rounded-none print:shadow-none print:p-0 print:m-0 print:border-none print:space-y-4">
+              {/* Modal Controls (No print) */}
+              <div className="flex items-center justify-between no-print border-b pb-3">
+                <span className="text-xs font-black uppercase text-teal-700 tracking-wider">
+                  Official Salary Slip Preview
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
                   >
-                    {slipSalary.status === "paid" ? "PAID (Disbursed)" : "PENDING"}
-                  </span>
+                    <Printer className="w-4 h-4" />
+                    <span>Print Slip Now</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSlipSalary(null)}
+                    className="p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
 
-              {/* Breakdown 2-Column Statement: Earnings vs Deductions */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* Earnings Table */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 border-b border-slate-200 uppercase text-[11px] flex justify-between">
-                    <span>Earnings</span>
-                    <span>Amount (PKR)</span>
+              {/* Printable Slip Content */}
+              <div
+                id="printable-salary-slip"
+                className="border border-slate-300 rounded-2xl p-6 sm:p-8 space-y-6 bg-white text-slate-900 print:border print:border-slate-800 print:rounded-xl print:p-6 print:space-y-4 print:m-0 print:w-full"
+              >
+                {/* Slip Header */}
+                <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
+                  <div>
+                    <h1 className="text-xl font-black uppercase tracking-tight text-black">
+                      NOXDERMA PHARMACEUTICALS
+                    </h1>
+                    <p className="text-xs text-slate-600 font-semibold">
+                      Derma &amp; Healthcare Solutions
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Suite # 402, Trade Heights, Karachi, Pakistan
+                    </p>
                   </div>
-                  <div className="p-3 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Basic Pay</span>
-                      <span className="font-mono font-bold text-slate-900">{formatPKR(slipSalary.baseSalary)}</span>
-                    </div>
-                    {slipSalary.fuelAllowance > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Fuel &amp; Travel Allowance</span>
-                        <span className="font-mono font-bold text-slate-900">+{formatPKR(slipSalary.fuelAllowance)}</span>
-                      </div>
-                    )}
-                    {slipSalary.bonus > 0 && (
-                      <div className="flex justify-between">
-                        <div>
-                          <span className="text-slate-600 block">Performance Bonus</span>
-                          {slipSalary.bonusReason && (
-                            <span className="text-[9px] text-slate-400 block">{slipSalary.bonusReason}</span>
-                          )}
-                        </div>
-                        <span className="font-mono font-bold text-slate-900">+{formatPKR(slipSalary.bonus)}</span>
-                      </div>
-                    )}
-                    {slipSalary.otherAllowances > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Other Allowances</span>
-                        <span className="font-mono font-bold text-slate-900">+{formatPKR(slipSalary.otherAllowances)}</span>
-                      </div>
-                    )}
-                    <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
-                      <span>Total Earnings:</span>
-                      <span className="font-mono">
-                        {formatPKR(slipSalary.baseSalary + slipSalary.fuelAllowance + slipSalary.bonus + slipSalary.otherAllowances)}
-                      </span>
-                    </div>
+                  <div className="text-right">
+                    <span className="inline-block px-3 py-1 rounded bg-slate-100 border border-slate-400 text-[11px] font-black uppercase tracking-wider text-black mb-1">
+                      Salary Disbursement Slip
+                    </span>
+                    <p className="text-[10px] text-slate-600">
+                      <strong>Slip Ref:</strong> {slipSalary.id.toUpperCase().slice(-10)}
+                    </p>
+                    <p className="text-[10px] text-slate-600">
+                      <strong>Period:</strong> {slipSalary.monthLabel}
+                    </p>
                   </div>
                 </div>
 
-                {/* Deductions Table */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 border-b border-slate-200 uppercase text-[11px] flex justify-between">
-                    <span>Deductions</span>
-                    <span>Amount (PKR)</span>
+                {/* Employee Meta Info */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-medium block">Employee Name:</span>
+                    <strong className="text-slate-900 font-bold">{slipSalary.staffName}</strong>
                   </div>
-                  <div className="p-3 space-y-2">
-                    {slipSalary.deductions > 0 ? (
-                      <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-medium block">Designation / Role:</span>
+                    <span className="font-semibold text-slate-800">{slipSalary.staffRole}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-medium block">Contact Phone:</span>
+                    <span className="font-mono text-slate-800">{slipSalary.phone || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-medium block">Payment Status:</span>
+                    <span
+                      className={`font-black uppercase text-[10px] px-2 py-0.5 rounded ${
+                        slipSalary.status === "paid"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {slipSalary.status === "paid" ? "PAID (Disbursed)" : "PENDING"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Breakdown 2-Column Statement: Earnings vs Deductions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  {/* Earnings Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 border-b border-slate-200 uppercase text-[11px] flex justify-between">
+                      <span>Earnings</span>
+                      <span>Amount (PKR)</span>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Basic Pay</span>
+                        <span className="font-mono font-bold text-slate-900">{formatPKR(slipSalary.baseSalary)}</span>
+                      </div>
+                      {slipSalary.fuelAllowance > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Fuel &amp; Travel Allowance</span>
+                          <span className="font-mono font-bold text-slate-900">+{formatPKR(slipSalary.fuelAllowance)}</span>
+                        </div>
+                      )}
+                      {slipSalary.bonus > 0 && (
                         <div className="flex justify-between">
                           <div>
-                            <span className="text-slate-600 block">Salary Deductions</span>
-                            {slipSalary.deductionReason && (
-                              <span className="text-[9px] text-slate-400 block">{slipSalary.deductionReason}</span>
+                            <span className="text-slate-600 block">Performance Bonus</span>
+                            {slipSalary.bonusReason && (
+                              <span className="text-[9px] text-slate-400 block">{slipSalary.bonusReason}</span>
                             )}
                           </div>
-                          <span className="font-mono font-bold text-rose-600">-{formatPKR(slipSalary.deductions)}</span>
+                          <span className="font-mono font-bold text-slate-900">+{formatPKR(slipSalary.bonus)}</span>
                         </div>
-                        <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
-                          <span>Total Deductions:</span>
-                          <span className="font-mono text-rose-600">-{formatPKR(slipSalary.deductions)}</span>
+                      )}
+                      {slipSalary.otherAllowances > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Other Allowances</span>
+                          <span className="font-mono font-bold text-slate-900">+{formatPKR(slipSalary.otherAllowances)}</span>
                         </div>
-                      </>
-                    ) : (
-                      <p className="text-center text-slate-400 py-6">No deductions applied</p>
-                    )}
+                      )}
+                      <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
+                        <span>Total Earnings:</span>
+                        <span className="font-mono">
+                          {formatPKR(slipSalary.baseSalary + slipSalary.fuelAllowance + slipSalary.bonus + slipSalary.otherAllowances)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Deductions Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 border-b border-slate-200 uppercase text-[11px] flex justify-between">
+                      <span>Deductions</span>
+                      <span>Amount (PKR)</span>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      {slipSalary.deductions > 0 ? (
+                        <>
+                          <div className="flex justify-between">
+                            <div>
+                              <span className="text-slate-600 block">Salary Deductions</span>
+                              {slipSalary.deductionReason && (
+                                <span className="text-[9px] text-slate-400 block">{slipSalary.deductionReason}</span>
+                              )}
+                            </div>
+                            <span className="font-mono font-bold text-rose-600">-{formatPKR(slipSalary.deductions)}</span>
+                          </div>
+                          <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
+                            <span>Total Deductions:</span>
+                            <span className="font-mono text-rose-600">-{formatPKR(slipSalary.deductions)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-center text-slate-400 py-6">No deductions applied</p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Net Pay Grand Box */}
-              <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">
-                    Net Disbursed Salary
-                  </span>
-                  <span className="text-xs text-slate-300 font-medium">
-                    {numberToWordsPKR(slipSalary.netSalary)}
-                  </span>
+                {/* Net Pay Grand Box */}
+                <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">
+                      Net Disbursed Salary
+                    </span>
+                    <span className="text-xs text-slate-300 font-medium">
+                      {numberToWordsPKR(slipSalary.netSalary)}
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black font-mono text-teal-400">
+                    {formatPKR(slipSalary.netSalary)}
+                  </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-teal-400">
-                  {formatPKR(slipSalary.netSalary)}
-                </div>
-              </div>
 
-              {/* Payment Details */}
-              <div className="text-[11px] text-slate-600 space-y-1">
-                <p>
-                  <strong>Payment Mode:</strong> {slipSalary.paymentMethod.toUpperCase()}
-                  {slipSalary.paymentReference ? ` &bull; Ref #${slipSalary.paymentReference}` : ""}
-                  {slipSalary.disbursedAt ? ` &bull; Disbursed on ${formatKarachiDate(slipSalary.disbursedAt, true)}` : ""}
-                </p>
-                {slipSalary.notes && <p><strong>Notes:</strong> {slipSalary.notes}</p>}
-              </div>
+                {/* Payment Details */}
+                <div className="text-[11px] text-slate-600 space-y-1">
+                  <p>
+                    <strong>Payment Mode:</strong> {slipSalary.paymentMethod.toUpperCase()}
+                    {slipSalary.paymentReference ? ` • Ref #${slipSalary.paymentReference}` : ""}
+                    {slipSalary.disbursedAt ? ` • Disbursed on ${formatKarachiDate(slipSalary.disbursedAt, true)}` : ""}
+                  </p>
+                  {slipSalary.notes && <p><strong>Notes:</strong> {slipSalary.notes}</p>}
+                </div>
 
-              {/* Signatures */}
-              <div className="grid grid-cols-3 gap-6 pt-8 mt-6 border-t border-slate-300 text-center text-[10px]">
-                <div>
-                  <div className="border-b border-slate-400 pb-8 mb-1"></div>
-                  <p className="font-bold text-slate-900">Prepared By</p>
-                  <p className="text-slate-500">Finance &amp; Accounts</p>
-                </div>
-                <div>
-                  <div className="border-b border-slate-400 pb-8 mb-1"></div>
-                  <p className="font-bold text-slate-900">Employee Signature</p>
-                  <p className="text-slate-500">Received with thanks</p>
-                </div>
-                <div>
-                  <div className="border-b border-slate-400 pb-8 mb-1"></div>
-                  <p className="font-bold text-slate-900">Approved By</p>
-                  <p className="text-slate-500">Owner / Director</p>
+                {/* Signatures */}
+                <div className="grid grid-cols-3 gap-6 pt-8 mt-6 border-t border-slate-300 text-center text-[10px]">
+                  <div>
+                    <div className="border-b border-slate-400 pb-8 mb-1"></div>
+                    <p className="font-bold text-slate-900">Prepared By</p>
+                    <p className="text-slate-500">Finance &amp; Accounts</p>
+                  </div>
+                  <div>
+                    <div className="border-b border-slate-400 pb-8 mb-1"></div>
+                    <p className="font-bold text-slate-900">Employee Signature</p>
+                    <p className="text-slate-500">Received with thanks</p>
+                  </div>
+                  <div>
+                    <div className="border-b border-slate-400 pb-8 mb-1"></div>
+                    <p className="font-bold text-slate-900">Approved By</p>
+                    <p className="text-slate-500">Owner / Director</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
