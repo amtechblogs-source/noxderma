@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import { imageStorageService } from "@/lib/image-storage/service";
 import { ImageCropModal } from "@/components/common/ImageCropModal";
 import { useCategory } from "@/context/CategoryContext";
@@ -514,6 +515,20 @@ export function ProductCatalogView() {
       }
     });
 
+    await recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "product",
+      entityId: prodId,
+      entityTitle: `${newProduct.name} (${newProduct.sku})`,
+      details: `Added medicine "${newProduct.name}" (${newProduct.sku}) in category "${newProduct.categoryName}" — Pack: ${newProduct.packSize}, TP: ${formatPKR(newPricing.tradePricePerPack)}, MRP: ${formatPKR(newPricing.mrpPerPack)}${hasOpeningStock ? `, Opening Stock: ${Number(initialStock)} packs` : ""}.`,
+      snapshotAfter: { product: newProduct, pricing: newPricing },
+      canUndo: true,
+    });
+
     await refreshCatalog();
     const wasCloned = Boolean(clonedFromProduct);
     setIsAdding(false);
@@ -612,6 +627,15 @@ export function ProductCatalogView() {
     };
 
     try {
+      const prevPricing = await offlineDb.productPricing.get(editingProduct.id);
+      const prevBatches = await offlineDb.inventoryBatches
+        .where("productId")
+        .equals(editingProduct.id)
+        .toArray();
+      const prevStock = prevBatches
+        .filter((b) => b.status === "active")
+        .reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
+
       await offlineDb.transaction(
         "rw",
         [offlineDb.products, offlineDb.productPricing, offlineDb.inventoryBatches, offlineDb.stockMovements],
@@ -704,6 +728,26 @@ export function ProductCatalogView() {
         }
       );
 
+      const nextBatches = await offlineDb.inventoryBatches
+        .where("productId")
+        .equals(editingProduct.id)
+        .toArray();
+
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "update",
+        entityType: "product",
+        entityId: editingProduct.id,
+        entityTitle: `${updatedProduct.name} (${updatedProduct.sku})`,
+        details: `Updated medicine "${updatedProduct.name}" (${updatedProduct.sku}) — Pack: ${updatedProduct.packSize}, TP: ${formatPKR(updatedPricing.tradePricePerPack)}, MRP: ${formatPKR(updatedPricing.mrpPerPack)}, Stock: ${prevStock} -> ${Math.max(0, Number(editCurrentStock) || 0)} packs.`,
+        snapshotBefore: { product: editingProduct, pricing: prevPricing, batches: prevBatches },
+        snapshotAfter: { product: updatedProduct, pricing: updatedPricing, batches: nextBatches },
+        canUndo: true,
+      });
+
       await refreshCatalog();
       setEditingProduct(null);
       setSuccessNotice(`Medicine "${updatedProduct.name}" aur real-time stock (${editCurrentStock} pk) update ho gaya!`);
@@ -754,6 +798,12 @@ export function ProductCatalogView() {
   const handleDeleteProduct = async (product: Product) => {
     setIsDeletingLoading(true);
     try {
+      const prevPricing = await offlineDb.productPricing.get(product.id);
+      const prevBatches = await offlineDb.inventoryBatches
+        .where("productId")
+        .equals(product.id)
+        .toArray();
+
       await offlineDb.transaction(
         "rw",
         [offlineDb.products, offlineDb.productPricing, offlineDb.inventoryBatches, offlineDb.stockMovements],
@@ -766,6 +816,20 @@ export function ProductCatalogView() {
       );
       setSelectedProductIds((prev) => prev.filter((id) => id !== product.id));
       setDeletingProduct(null);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "product",
+        entityId: product.id,
+        entityTitle: `${product.name} (${product.sku})`,
+        details: `Deleted medicine "${product.name}" (${product.sku}) from category "${product.categoryName}".`,
+        snapshotBefore: { product, pricing: prevPricing, batches: prevBatches },
+        canUndo: true,
+      });
+
       await refreshCatalog();
       setSuccessNotice(`Medicine "${product.name}" (${product.sku}) catalog se delete ho gai.`);
       setTimeout(() => setSuccessNotice(null), 4000);
@@ -783,6 +847,21 @@ export function ProductCatalogView() {
     setIsDeletingLoading(true);
     try {
       const count = selectedProductIds.length;
+      const snapshotsToLog: Array<{
+        product: Product;
+        pricing?: ProductPricing;
+        batches: any[];
+      }> = [];
+
+      for (const id of selectedProductIds) {
+        const prod = await offlineDb.products.get(id);
+        if (prod) {
+          const pricing = await offlineDb.productPricing.get(id);
+          const batches = await offlineDb.inventoryBatches.where("productId").equals(id).toArray();
+          snapshotsToLog.push({ product: prod, pricing, batches });
+        }
+      }
+
       await offlineDb.transaction(
         "rw",
         [offlineDb.products, offlineDb.productPricing, offlineDb.inventoryBatches, offlineDb.stockMovements],
@@ -797,6 +876,23 @@ export function ProductCatalogView() {
       );
       setSelectedProductIds([]);
       setIsBulkDeleting(false);
+
+      for (const snap of snapshotsToLog) {
+        await recordActivity({
+          userId: currentUser?.id,
+          userName: currentUser?.displayName || "Owner",
+          userRole: currentUser?.role || "owner",
+          userEmail: currentUser?.email,
+          action: "delete",
+          entityType: "product",
+          entityId: snap.product.id,
+          entityTitle: `${snap.product.name} (${snap.product.sku})`,
+          details: `Bulk deleted medicine "${snap.product.name}" (${snap.product.sku}) from category "${snap.product.categoryName}".`,
+          snapshotBefore: snap,
+          canUndo: true,
+        });
+      }
+
       await refreshCatalog();
       setSuccessNotice(`${count} medicines kamyabi se catalog se delete ho gaien.`);
       setTimeout(() => setSuccessNotice(null), 4000);

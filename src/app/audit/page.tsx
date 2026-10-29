@@ -4,46 +4,215 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   History,
-  ShieldAlert,
   ShieldCheck,
   Undo2,
   Search,
-  Filter,
   Printer,
   Download,
   CheckCircle2,
   AlertTriangle,
   Clock,
   User,
-  FileText,
   RotateCcw,
   ArrowLeft,
   Eye,
   X,
   Lock,
-  Layers,
-  Sparkles,
-  Building,
-  CreditCard,
-  Pill,
-  Trash2,
   Check,
   RefreshCw,
+  ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { offlineDb, type LocalAuditLog } from "@/lib/offline/db";
+import { type LocalAuditLog } from "@/lib/offline/db";
 import {
   getAuditLogs,
   undoActivity,
   seedInitialAuditLogsIfEmpty,
 } from "@/lib/audit/auditTracker";
-import { formatPKR, formatKarachiDate } from "@/lib/formatting";
+import { formatKarachiDate } from "@/lib/formatting";
 import {
   formatNameWithRole,
   getUserRoleLabel,
   isRoleRedundantForName,
   normalizeUserDisplayName,
 } from "@/types";
+
+interface FieldDiffRow {
+  field: string;
+  before: string;
+  after: string;
+}
+
+function formatActionMeta(action: string): { label: string; badgeClass: string } {
+  const normalized = (action || "").toLowerCase();
+  if (normalized === "create") {
+    return {
+      label: "CREATED",
+      badgeClass:
+        "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60",
+    };
+  }
+  if (normalized === "update") {
+    return {
+      label: "EDITED",
+      badgeClass:
+        "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/60",
+    };
+  }
+  if (normalized === "delete") {
+    return {
+      label: "DELETED",
+      badgeClass:
+        "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200/70 dark:border-rose-800/60",
+    };
+  }
+  if (normalized === "undo") {
+    return {
+      label: "UNDONE",
+      badgeClass:
+        "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200/70 dark:border-purple-800/60",
+    };
+  }
+  return {
+    label: (action || "EVENT").toUpperCase(),
+    badgeClass:
+      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
+  };
+}
+
+function formatEntityMeta(entityType: string): { label: string; badgeClass: string } {
+  const normalized = (entityType || "").toLowerCase();
+  if (normalized === "visit" || normalized === "customervisit") {
+    return {
+      label: "VISIT",
+      badgeClass: "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/80 dark:text-cyan-300",
+    };
+  }
+  if (normalized === "invoice") {
+    return {
+      label: "INVOICE",
+      badgeClass: "bg-teal-50 text-teal-700 dark:bg-teal-950/80 dark:text-teal-300",
+    };
+  }
+  if (normalized === "customer") {
+    return {
+      label: "CUSTOMER",
+      badgeClass: "bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300",
+    };
+  }
+  if (normalized === "product") {
+    return {
+      label: "MEDICINE",
+      badgeClass: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300",
+    };
+  }
+  if (normalized === "payment") {
+    return {
+      label: "PAYMENT",
+      badgeClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300",
+    };
+  }
+  if (normalized === "inventory_batch") {
+    return {
+      label: "STOCK BATCH",
+      badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300",
+    };
+  }
+  return {
+    label: (entityType || "SYSTEM").replace(/_/g, " ").toUpperCase(),
+    badgeClass: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  };
+}
+
+function stringifyDiffValue(val: unknown): string {
+  if (val === null || val === undefined || val === "") return "—";
+  if (Array.isArray(val)) {
+    if (val.length === 0) return "None";
+    if (typeof val[0] === "string" || typeof val[0] === "number") {
+      return val.join(", ");
+    }
+    return `${val.length} item(s)`;
+  }
+  if (typeof val === "object") {
+    try {
+      const str = JSON.stringify(val);
+      return str.length > 140 ? str.slice(0, 137) + "..." : str;
+    } catch {
+      return "[Object]";
+    }
+  }
+  return String(val);
+}
+
+function humanizeFieldKey(key: string): string {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .replace(/^\w/, (c) => c.toUpperCase())
+    .trim();
+}
+
+function extractLogFieldDiffs(log: LocalAuditLog): FieldDiffRow[] {
+  // 1. If this is a visit edit with explicit VisitFieldDiffs recorded on editHistory[0]
+  const latestVisitEdit = log.snapshotAfter?.editHistory?.[0];
+  if (
+    log.action === "update" &&
+    Array.isArray(latestVisitEdit?.changes) &&
+    latestVisitEdit.changes.length > 0
+  ) {
+    return latestVisitEdit.changes.map((c: any) => ({
+      field: String(c.label || c.field || "Field"),
+      before: String(c.before ?? "—"),
+      after: String(c.after ?? "—"),
+    }));
+  }
+
+  // 2. Generic object diff between snapshotBefore and snapshotAfter
+  if (
+    log.snapshotBefore &&
+    log.snapshotAfter &&
+    typeof log.snapshotBefore === "object" &&
+    typeof log.snapshotAfter === "object"
+  ) {
+    const beforeObj =
+      log.snapshotBefore.product && typeof log.snapshotBefore.product === "object"
+        ? { ...log.snapshotBefore.product, ...(log.snapshotBefore.pricing || {}) }
+        : log.snapshotBefore;
+    const afterObj =
+      log.snapshotAfter.product && typeof log.snapshotAfter.product === "object"
+        ? { ...log.snapshotAfter.product, ...(log.snapshotAfter.pricing || {}) }
+        : log.snapshotAfter;
+
+    const ignoredKeys = new Set([
+      "updatedAt",
+      "createdAt",
+      "editHistory",
+      "editCount",
+      "lastEditedBy",
+      "lastEditedByRole",
+      "images",
+    ]);
+
+    const keys = Array.from(new Set([...Object.keys(beforeObj), ...Object.keys(afterObj)]));
+    const diffs: FieldDiffRow[] = [];
+
+    for (const key of keys) {
+      if (ignoredKeys.has(key)) continue;
+      const bStr = stringifyDiffValue(beforeObj[key]);
+      const aStr = stringifyDiffValue(afterObj[key]);
+      if (bStr !== aStr) {
+        diffs.push({
+          field: humanizeFieldKey(key),
+          before: bStr,
+          after: aStr,
+        });
+      }
+    }
+    return diffs;
+  }
+
+  return [];
+}
 
 export default function AuditLogsPage() {
   const { currentUser, hasPermission } = useAuth();
@@ -57,7 +226,10 @@ export default function AuditLogsPage() {
   // Undo confirmation modal state
   const [undoTargetLog, setUndoTargetLog] = useState<LocalAuditLog | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
-  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [notification, setNotification] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Snapshot / Diff Inspector modal state
   const [inspectLog, setInspectLog] = useState<LocalAuditLog | null>(null);
@@ -101,6 +273,7 @@ export default function AuditLogsPage() {
       if (res.success) {
         setNotification({ type: "success", message: res.message });
         setUndoTargetLog(null);
+        setInspectLog(null);
         await loadLogs();
       } else {
         setNotification({ type: "error", message: res.message });
@@ -116,36 +289,9 @@ export default function AuditLogsPage() {
     }
   };
 
-  // Export logs to CSV
-  const handleExportCSV = () => {
-    if (logs.length === 0) return;
-    const headers = ["Log ID", "Date Time", "Staff Member", "Role", "Action", "Module", "Target Title", "Details", "Status"];
-    const rows = filteredLogs.map((l) => [
-      l.id,
-      formatKarachiDate(l.timestamp, true),
-      l.userName,
-      l.userRole || "staff",
-      l.action.toUpperCase(),
-      l.entityType,
-      `"${(l.entityTitle || "").replace(/"/g, '""')}"`,
-      `"${(l.details || "").replace(/"/g, '""')}"`,
-      l.isUndone ? "UNDONE" : "ACTIVE",
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Noxderma_Activity_Audit_Log_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   // Filtered logs
   const filteredLogs = useMemo(() => {
     return logs.filter((l) => {
-      // Search
       if (search.trim()) {
         const q = search.toLowerCase();
         const matches =
@@ -153,21 +299,24 @@ export default function AuditLogsPage() {
           (l.entityTitle && l.entityTitle.toLowerCase().includes(q)) ||
           l.details.toLowerCase().includes(q) ||
           l.action.toLowerCase().includes(q) ||
+          l.entityType.toLowerCase().includes(q) ||
           l.entityId.toLowerCase().includes(q);
         if (!matches) return false;
       }
 
-      // Action Filter
       if (actionFilter !== "all" && l.action.toLowerCase() !== actionFilter.toLowerCase()) {
         return false;
       }
 
-      // Entity Filter
-      if (entityFilter !== "all" && l.entityType.toLowerCase() !== entityFilter.toLowerCase()) {
-        return false;
+      if (entityFilter !== "all") {
+        const typeLower = l.entityType.toLowerCase();
+        if (entityFilter === "visit") {
+          if (typeLower !== "visit" && typeLower !== "customervisit") return false;
+        } else if (typeLower !== entityFilter.toLowerCase()) {
+          return false;
+        }
       }
 
-      // Status Filter
       if (statusFilter === "active" && l.isUndone) return false;
       if (statusFilter === "undone" && !l.isUndone) return false;
 
@@ -175,22 +324,65 @@ export default function AuditLogsPage() {
     });
   }, [logs, search, actionFilter, entityFilter, statusFilter]);
 
+  // Export logs to CSV
+  const handleExportCSV = () => {
+    if (filteredLogs.length === 0) return;
+    const headers = [
+      "Log ID",
+      "Date & Time",
+      "Staff Member",
+      "Role",
+      "Action",
+      "Module",
+      "Target Title",
+      "Details",
+      "Status",
+    ];
+    const rows = filteredLogs.map((l) => [
+      l.id,
+      `"${formatKarachiDate(l.timestamp, true)}"`,
+      `"${normalizeUserDisplayName(l.userName, "Owner").replace(/"/g, '""')}"`,
+      `"${getUserRoleLabel(l.userRole || "staff")}"`,
+      l.action.toUpperCase(),
+      formatEntityMeta(l.entityType).label,
+      `"${(l.entityTitle || "").replace(/"/g, '""')}"`,
+      `"${(l.details || "").replace(/\r?\n/g, " | ").replace(/"/g, '""')}"`,
+      l.isUndone ? "UNDONE" : "ACTIVE",
+    ]);
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `Noxderma_Activity_Audit_Log_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Statistics
   const stats = useMemo(() => {
     const total = logs.length;
     const undoable = logs.filter((l) => l.canUndo && !l.isUndone).length;
     const undoneCount = logs.filter((l) => l.isUndone).length;
-    const uniqueUsers = new Set(logs.map((l) => l.userName)).size;
+    const uniqueUsers = new Set(
+      logs.map((l) => normalizeUserDisplayName(l.userName, "Owner"))
+    ).size;
     return { total, undoable, undoneCount, uniqueUsers };
   }, [logs]);
 
   // =========================================================================
-  // ACCESS DENIED VIEW: NON-OWNER BARRIER
+  // ACCESS DENIED VIEW: NON-AUTHORIZED BARRIER (100% ENGLISH)
   // =========================================================================
   if (!isOwner) {
     return (
-      <div className="max-w-xl mx-auto py-16 px-4">
-        <div className="p-8 rounded-3xl border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-slate-900 shadow-2xl text-center space-y-5">
+      <div className="max-w-xl mx-auto py-12 sm:py-16 px-4 overflow-x-hidden">
+        <div className="p-6 sm:p-8 rounded-3xl border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-slate-900 shadow-2xl text-center space-y-5">
           <div className="w-16 h-16 rounded-3xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
             <Lock className="w-8 h-8 text-rose-600" />
           </div>
@@ -199,22 +391,28 @@ export default function AuditLogsPage() {
             <span className="inline-block px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
               Restricted Module
             </span>
-            <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-              Owner Access Only (صرف مالک کی رسائی)
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+              Owner Access Only
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Yeh Activity History aur Audit Tracker module sirf company owner / proprietor ke liye makhsoos hai. Staff accounts ya booking users ko yahan rasai ki ijazat nahi hai.
+              This Activity Log &amp; Audit Tracker module is strictly restricted to the business
+              owner and authorized auditors. Your account does not have permission to view audit
+              logs.
             </p>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-left text-xs space-y-1.5">
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <span className="text-slate-500">Current Logged-in User:</span>
-              <strong className="text-slate-900 dark:text-slate-100">{currentUser?.displayName || "Guest Staff"}</strong>
+              <strong className="text-slate-900 dark:text-slate-100 break-words text-right">
+                {normalizeUserDisplayName(currentUser?.displayName, "Staff")}
+              </strong>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <span className="text-slate-500">Assigned Role:</span>
-              <span className="font-mono font-bold uppercase text-amber-600">{currentUser?.role || "staff"}</span>
+              <span className="font-mono font-bold uppercase text-amber-600">
+                {getUserRoleLabel(currentUser?.role || "staff")}
+              </span>
             </div>
           </div>
 
@@ -233,7 +431,7 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-5 sm:space-y-6 w-full max-w-7xl mx-auto pb-20 overflow-x-hidden">
       {/* ========================================================================= */}
       {/* OFFICIAL PRINT-ONLY HEADER (CLEAN A4 AUDIT SHEET)                        */}
       {/* ========================================================================= */}
@@ -244,68 +442,80 @@ export default function AuditLogsPage() {
               NOXDERMA PHARMACEUTICALS
             </h1>
             <p className="text-xs text-black font-semibold">
-              Master Activity History & Audit Tracking Report
+              Master Activity History &amp; Audit Tracking Report
             </p>
             <p className="text-[11px] text-slate-700 mt-0.5">
-              CONFIDENTIAL: Strictly Restricted to Business Owner / Proprietor
+              CONFIDENTIAL: Strictly Restricted to Business Owner
             </p>
           </div>
           <div className="text-right text-xs text-black">
             <span className="inline-block px-2.5 py-1 rounded border border-black font-black uppercase mb-1">
               Owner Audit Ledger
             </span>
-            <p><strong>Printed On:</strong> {formatKarachiDate(new Date(), true)}</p>
-            <p><strong>Audited By:</strong> {formatNameWithRole(currentUser?.displayName, "Owner")}</p>
+            <p>
+              <strong>Printed On:</strong> {formatKarachiDate(new Date(), true)}
+            </p>
+            <p>
+              <strong>Audited By:</strong>{" "}
+              {formatNameWithRole(currentUser?.displayName, currentUser?.role || "Owner")}
+            </p>
           </div>
         </div>
       </div>
 
       {/* Screen Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print border-b border-slate-200/80 dark:border-slate-800 pb-4">
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 no-print border-b border-slate-200/80 dark:border-slate-800 pb-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <Link
               href="/"
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 shrink-0"
+              aria-label="Back to Dashboard"
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 flex items-center gap-1.5 border border-purple-200 dark:border-purple-800">
-              <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-              Owner Security Vault
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 inline-flex items-center gap-1.5 border border-purple-200 dark:border-purple-800">
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+              <span>Owner Security Vault</span>
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2.5">
-            <History className="w-7 h-7 text-teal-600" />
-            Activity Log & Action Tracker (ہسٹری)
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2.5">
+            <History className="w-6 h-6 sm:w-7 sm:h-7 text-teal-600 shrink-0" />
+            <span className="break-words">Activity Log &amp; Audit Tracker</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Track who performed which action across invoices, customers, and stock—with instant single-click <strong>UNDO</strong> capability.
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+            Detailed audit trail across doctor visits, invoices, customers, payments, and stock—with
+            instant single-click <strong>Undo Action</strong> recovery.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="grid grid-cols-3 sm:flex items-center gap-2 w-full sm:w-auto shrink-0">
           <button
+            type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-xs shadow-sm transition-all btn-interactive"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-2.5 sm:px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-xs shadow-sm transition-all btn-interactive"
           >
-            <Printer className="w-4 h-4 text-slate-500" />
-            <span>Print Report</span>
+            <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 shrink-0" />
+            <span className="truncate">Print</span>
           </button>
           <button
+            type="button"
             onClick={handleExportCSV}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-xs shadow-sm transition-all btn-interactive"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-2.5 sm:px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-xs shadow-sm transition-all btn-interactive"
           >
-            <Download className="w-4 h-4 text-slate-500" />
-            <span>Export CSV</span>
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 shrink-0" />
+            <span className="truncate">Export CSV</span>
           </button>
           <button
+            type="button"
             onClick={loadLogs}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all btn-interactive disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-2.5 sm:px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all btn-interactive disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
+            <RefreshCw
+              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${loading ? "animate-spin" : ""}`}
+            />
+            <span className="truncate">Refresh</span>
           </button>
         </div>
       </div>
@@ -313,134 +523,156 @@ export default function AuditLogsPage() {
       {/* Floating Notification */}
       {notification && (
         <div
-          className={`p-4 rounded-2xl border text-xs sm:text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2 no-print ${
+          className={`p-3.5 sm:p-4 rounded-2xl border text-xs sm:text-sm flex items-start sm:items-center gap-3 animate-in fade-in slide-in-from-top-2 no-print ${
             notification.type === "success"
               ? "bg-teal-50 dark:bg-teal-950/70 border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200"
               : "bg-rose-50 dark:bg-rose-950/70 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200"
           }`}
         >
           {notification.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0 mt-0.5 sm:mt-0" />
           ) : (
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5 sm:mt-0" />
           )}
-          <span className="font-semibold">{notification.message}</span>
+          <span className="font-semibold break-words min-w-0">{notification.message}</span>
         </div>
       )}
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 no-print">
-        <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Actions</span>
-            <History className="w-4 h-4 text-teal-600" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 no-print">
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft min-w-0">
+          <div className="flex items-center justify-between gap-2 text-slate-500 mb-1.5 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate">
+              Total Actions
+            </span>
+            <History className="w-4 h-4 text-teal-600 shrink-0" />
           </div>
           <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100">
             {stats.total}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Staff actions recorded</span>
+          <span className="text-[11px] text-slate-400 mt-1 block truncate">
+            Recorded in audit vault
+          </span>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Undoable Actions</span>
-            <Undo2 className="w-4 h-4 text-amber-600" />
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft min-w-0">
+          <div className="flex items-center justify-between gap-2 text-slate-500 mb-1.5 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate">
+              Undoable
+            </span>
+            <Undo2 className="w-4 h-4 text-amber-600 shrink-0" />
           </div>
           <div className="text-2xl sm:text-3xl font-black font-mono text-amber-600 dark:text-amber-400">
             {stats.undoable}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Can be reverted right now</span>
+          <span className="text-[11px] text-slate-400 mt-1 block truncate">
+            Ready to revert anytime
+          </span>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Actions Reverted</span>
-            <RotateCcw className="w-4 h-4 text-purple-600" />
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft min-w-0">
+          <div className="flex items-center justify-between gap-2 text-slate-500 mb-1.5 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate">
+              Reverted
+            </span>
+            <RotateCcw className="w-4 h-4 text-purple-600 shrink-0" />
           </div>
           <div className="text-2xl sm:text-3xl font-black font-mono text-purple-600 dark:text-purple-400">
             {stats.undoneCount}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Successfully undone by owner</span>
+          <span className="text-[11px] text-slate-400 mt-1 block truncate">
+            Undone by owner
+          </span>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Staff Tracked</span>
-            <User className="w-4 h-4 text-blue-600" />
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft min-w-0">
+          <div className="flex items-center justify-between gap-2 text-slate-500 mb-1.5 sm:mb-2">
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate">
+              Users Tracked
+            </span>
+            <User className="w-4 h-4 text-blue-600 shrink-0" />
           </div>
           <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100">
             {stats.uniqueUsers}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Different users in activity log</span>
+          <span className="text-[11px] text-slate-400 mt-1 block truncate">
+            Distinct active accounts
+          </span>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
           {/* Search */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <div className="relative min-w-0">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search user, action, medicine, bill #..."
+              placeholder="Search user, visit, medicine, bill #..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 font-medium"
+              className="w-full min-h-[42px] pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
             />
           </div>
 
           {/* Action Filter */}
-          <div>
+          <div className="min-w-0">
             <select
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold"
+              className="w-full min-h-[42px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <option value="all">⚡ All Actions (تمام کارروائیاں)</option>
-              <option value="create">➕ Creation (نیا اندراج)</option>
-              <option value="update">✏️ Modifications (ترمیم)</option>
-              <option value="delete">🗑️ Deletions (حذف شدہ)</option>
-              <option value="undo">↩️ Reverted Undos (واپس شدہ)</option>
+              <option value="all">All Actions</option>
+              <option value="create">Created (New Entries)</option>
+              <option value="update">Edited (Modifications)</option>
+              <option value="delete">Deleted (Removals)</option>
+              <option value="undo">Undone (Reverted)</option>
             </select>
           </div>
 
           {/* Module / Entity Filter */}
-          <div>
+          <div className="min-w-0">
             <select
               value={entityFilter}
               onChange={(e) => setEntityFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold"
+              className="w-full min-h-[42px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <option value="all">📦 All Modules (تمام ماڈیولز)</option>
-              <option value="invoice">🧾 Customer Invoices (بلز)</option>
-              <option value="customer">🏥 Customers & Stores (کسٹمرز)</option>
-              <option value="product">💊 Medicines & Catalog (ادویات)</option>
-              <option value="payment">💵 Payments & Receipts (ادائیگیاں)</option>
-              <option value="inventory_batch">📦 Warehouse Batches (بیچز)</option>
+              <option value="all">All Modules</option>
+              <option value="visit">Doctor &amp; Field Visits</option>
+              <option value="invoice">Customer Invoices</option>
+              <option value="customer">Customers &amp; Stores</option>
+              <option value="product">Medicines &amp; Catalog</option>
+              <option value="payment">Payments &amp; Receipts</option>
+              <option value="inventory_batch">Warehouse Batches</option>
             </select>
           </div>
 
           {/* Status Filter */}
-          <div>
+          <div className="min-w-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold"
+              className="w-full min-h-[42px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
-              <option value="all">🔍 All Statuses (تمام ریکارڈز)</option>
-              <option value="active">🟢 Active Actions (فعال)</option>
-              <option value="undone">↩️ Already Undone (واپس ہو چکا)</option>
+              <option value="all">All Statuses</option>
+              <option value="active">Active Actions</option>
+              <option value="undone">Already Undone</option>
             </select>
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800/80">
           <span>
-            Showing <strong>{filteredLogs.length}</strong> of <strong>{logs.length}</strong> recorded actions
+            Showing <strong>{filteredLogs.length}</strong> of <strong>{logs.length}</strong>{" "}
+            recorded actions
           </span>
-          {(search || actionFilter !== "all" || entityFilter !== "all" || statusFilter !== "all") && (
+          {(search ||
+            actionFilter !== "all" ||
+            entityFilter !== "all" ||
+            statusFilter !== "all") && (
             <button
+              type="button"
               onClick={() => {
                 setSearch("");
                 setActionFilter("all");
@@ -455,270 +687,384 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
-      {/* Main Table / Timeline View */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft overflow-hidden">
+      {/* Main Audit Logs Container: Dedicated Mobile Cards + Desktop/Print Table */}
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft overflow-hidden min-w-0">
         {loading ? (
           <div className="p-12 text-center text-slate-400 space-y-3">
             <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="font-bold text-sm">Loading activity audit logs...</p>
           </div>
         ) : filteredLogs.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 space-y-3">
+          <div className="p-10 sm:p-12 text-center text-slate-400 space-y-3">
             <History className="w-12 h-12 mx-auto opacity-30 text-teal-600" />
             <p className="font-bold text-base text-slate-700 dark:text-slate-300">
               No matching activity records found
             </p>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Any actions performed by staff across billing, customer khata, or inventory will be automatically recorded here.
+              Any actions performed across visits, billing, customer accounts, or inventory will be
+              automatically recorded here.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black">
-                <tr>
-                  <th className="p-3.5">Action & Timestamp</th>
-                  <th className="p-3.5">Staff Member (کس نے کیا)</th>
-                  <th className="p-3.5">Target & Module</th>
-                  <th className="p-3.5">Action Details (کیا کیا گیا)</th>
-                  <th className="p-3.5 text-center">Status</th>
-                  <th className="p-3.5 text-right no-print">Undo Option</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
-                {filteredLogs.map((log) => {
-                  const isUndone = log.isUndone;
-                  const canUndo = canPerformUndo && log.canUndo && !isUndone;
+          <>
+            {/* =============================================================== */}
+            {/* MOBILE VERTICAL CARD FEED (< md): ZERO HORIZONTAL SCROLL        */}
+            {/* =============================================================== */}
+            <div className="block md:hidden print:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredLogs.map((log) => {
+                const isUndone = Boolean(log.isUndone);
+                const canUndo = canPerformUndo && log.canUndo && !isUndone;
+                const actionMeta = formatActionMeta(log.action);
+                const entityMeta = formatEntityMeta(log.entityType);
+                const cleanLogName = normalizeUserDisplayName(log.userName, "Owner");
+                const cleanLogRole = getUserRoleLabel(log.userRole || "staff");
+                const showRolePill = !isRoleRedundantForName(cleanLogName, cleanLogRole);
 
-                  // Action badge styling
-                  let actionColor = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
-                  let actionLabel = log.action.toUpperCase();
-                  if (log.action === "create") {
-                    actionColor = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300";
-                    actionLabel = "NEW / تخلیق";
-                  } else if (log.action === "update") {
-                    actionColor = "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300";
-                    actionLabel = "EDIT / ترمیم";
-                  } else if (log.action === "delete") {
-                    actionColor = "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300";
-                    actionLabel = "DELETE / حذف";
-                  } else if (log.action === "undo") {
-                    actionColor = "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300";
-                    actionLabel = "UNDO / بحالی";
-                  }
+                return (
+                  <div
+                    key={log.id}
+                    className={`p-3.5 sm:p-4 space-y-2.5 w-full min-w-0 transition-colors ${
+                      isUndone
+                        ? "bg-slate-50/60 dark:bg-slate-900/40 opacity-85"
+                        : "bg-white dark:bg-slate-900"
+                    }`}
+                  >
+                    {/* Row 1: Action, Module, and Status Badges */}
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${actionMeta.badgeClass}`}
+                        >
+                          {actionMeta.label}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${entityMeta.badgeClass}`}
+                        >
+                          {entityMeta.label}
+                        </span>
+                      </div>
 
-                  // Entity badge
-                  const entityBadge =
-                    log.entityType === "invoice"
-                      ? "bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
-                      : log.entityType === "customer"
-                      ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                      : log.entityType === "product"
-                      ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                      : log.entityType === "payment"
-                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+                      {isUndone ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                          <Check className="w-3 h-3 shrink-0" />
+                          <span>UNDONE</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
 
-                  return (
-                    <tr
-                      key={log.id}
-                      className={`transition-colors ${
-                        isUndone
-                          ? "bg-slate-50/50 dark:bg-slate-900/30 opacity-75"
-                          : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
-                      }`}
-                    >
-                      {/* Action & Date */}
-                      <td className="p-3.5 align-top">
-                        <div className="flex flex-col gap-1">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider w-max ${actionColor}`}
-                          >
-                            {actionLabel}
+                    {/* Row 2: Target Item Title */}
+                    <div className="min-w-0">
+                      <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 break-words leading-snug">
+                        {log.entityTitle || log.entityId}
+                      </h3>
+                    </div>
+
+                    {/* Row 3: Staff Member & Timestamp */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-[10px] text-slate-700 dark:text-slate-300 shrink-0">
+                          {cleanLogName.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                          {cleanLogName}
+                        </span>
+                        {showRolePill && (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 shrink-0">
+                            {cleanLogRole}
                           </span>
-                          <span className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
-                            {formatKarachiDate(log.timestamp, true)}
+                        )}
+                      </div>
+
+                      <div className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                        <Clock className="w-3 h-3 shrink-0" />
+                        <span>{formatKarachiDate(log.timestamp, true)}</span>
+                      </div>
+                    </div>
+
+                    {/* Row 4: Full Wrapped Action Details */}
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800/90 space-y-1.5 min-w-0">
+                      <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed break-words whitespace-pre-line">
+                        {log.details}
+                      </p>
+                      {isUndone && log.undoneBy && (
+                        <div className="flex items-start gap-1.5 pt-1 border-t border-purple-200/50 dark:border-purple-900/50 text-[11px] font-bold text-purple-700 dark:text-purple-300">
+                          <RotateCcw className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          <span className="break-words">
+                            Undone by {normalizeUserDisplayName(log.undoneBy, "Owner")} on{" "}
+                            {formatKarachiDate(log.undoneAt || "", true)}
                           </span>
                         </div>
-                      </td>
+                      )}
+                    </div>
 
-                      {/* Staff Member */}
-                      <td className="p-3.5 align-top">
-                        {(() => {
-                          const cleanLogName = normalizeUserDisplayName(log.userName, "Owner");
-                          const cleanLogRole = getUserRoleLabel(log.userRole || "staff");
-                          return (
-                            <div className="flex items-start gap-2">
-                              <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 shrink-0">
-                                {cleanLogName.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm">
-                                  {cleanLogName}
-                                </span>
-                                {!isRoleRedundantForName(cleanLogName, cleanLogRole) && (
-                                  <span className="text-[10px] font-mono uppercase text-slate-400 block">
-                                    {cleanLogRole}
-                                  </span>
-                                )}
-                              </div>
+                    {/* Row 5: Mobile Action Buttons (Details + Undo Action) */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setInspectLog(log)}
+                        className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-xs btn-interactive"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                        <span>View Details</span>
+                      </button>
+
+                      {canUndo ? (
+                        <button
+                          type="button"
+                          onClick={() => setUndoTargetLog(log)}
+                          className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-extrabold text-xs shadow-sm transition-all btn-interactive"
+                        >
+                          <Undo2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>Undo Action</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 font-semibold px-2 py-1">
+                          {isUndone ? "Reverted" : "No Undo"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* =============================================================== */}
+            {/* DESKTOP & PRINT TABLE VIEW (md+ and print)                      */}
+            {/* =============================================================== */}
+            <div className="hidden md:block print:block overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black">
+                  <tr>
+                    <th className="p-3.5">Action &amp; Timestamp</th>
+                    <th className="p-3.5">Staff Member</th>
+                    <th className="p-3.5">Target &amp; Module</th>
+                    <th className="p-3.5">Action Details</th>
+                    <th className="p-3.5 text-center">Status</th>
+                    <th className="p-3.5 text-right no-print">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
+                  {filteredLogs.map((log) => {
+                    const isUndone = Boolean(log.isUndone);
+                    const canUndo = canPerformUndo && log.canUndo && !isUndone;
+                    const actionMeta = formatActionMeta(log.action);
+                    const entityMeta = formatEntityMeta(log.entityType);
+                    const cleanLogName = normalizeUserDisplayName(log.userName, "Owner");
+                    const cleanLogRole = getUserRoleLabel(log.userRole || "staff");
+
+                    return (
+                      <tr
+                        key={log.id}
+                        className={`transition-colors ${
+                          isUndone
+                            ? "bg-slate-50/50 dark:bg-slate-900/30 opacity-75"
+                            : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
+                        {/* Action & Date */}
+                        <td className="p-3.5 align-top whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider w-max ${actionMeta.badgeClass}`}
+                            >
+                              {actionMeta.label}
+                            </span>
+                            <span className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
+                              {formatKarachiDate(log.timestamp, true)}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Staff Member */}
+                        <td className="p-3.5 align-top">
+                          <div className="flex items-start gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 shrink-0">
+                              {cleanLogName.charAt(0).toUpperCase()}
                             </div>
-                          );
-                        })()}
-                      </td>
+                            <div className="min-w-0">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm">
+                                {cleanLogName}
+                              </span>
+                              {!isRoleRedundantForName(cleanLogName, cleanLogRole) && (
+                                <span className="text-[10px] font-mono uppercase text-slate-400 block">
+                                  {cleanLogRole}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
 
-                      {/* Target Item & Module */}
-                      <td className="p-3.5 align-top">
-                        <div className="space-y-1">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${entityBadge}`}
-                          >
-                            {log.entityType}
-                          </span>
-                          <span className="font-extrabold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm truncate max-w-[200px]">
-                            {log.entityTitle || log.entityId}
-                          </span>
-                        </div>
-                      </td>
+                        {/* Target Item & Module */}
+                        <td className="p-3.5 align-top">
+                          <div className="space-y-1 max-w-[220px]">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${entityMeta.badgeClass}`}
+                            >
+                              {entityMeta.label}
+                            </span>
+                            <span className="font-extrabold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm break-words">
+                              {log.entityTitle || log.entityId}
+                            </span>
+                          </div>
+                        </td>
 
-                      {/* Details of action */}
-                      <td className="p-3.5 align-top">
-                        <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed max-w-md">
-                          {log.details}
-                        </p>
-                        {isUndone && log.undoneBy && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 mt-1">
-                            <RotateCcw className="w-3 h-3" />
-                            Undone by {normalizeUserDisplayName(log.undoneBy, "Owner")} on {formatKarachiDate(log.undoneAt || "", true)}
-                          </span>
-                        )}
-                      </td>
+                        {/* Details of action */}
+                        <td className="p-3.5 align-top">
+                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed max-w-md break-words whitespace-pre-line">
+                            {log.details}
+                          </p>
+                          {isUndone && log.undoneBy && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 mt-1">
+                              <RotateCcw className="w-3 h-3 shrink-0" />
+                              <span>
+                                Undone by {normalizeUserDisplayName(log.undoneBy, "Owner")} on{" "}
+                                {formatKarachiDate(log.undoneAt || "", true)}
+                              </span>
+                            </span>
+                          )}
+                        </td>
 
-                      {/* Status */}
-                      <td className="p-3.5 text-center align-top">
-                        {isUndone ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                            <Check className="w-3 h-3" />
-                            UNDONE
-                          </span>
-                        ) : (
-                          <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            ACTIVE
-                          </span>
-                        )}
-                      </td>
+                        {/* Status */}
+                        <td className="p-3.5 text-center align-top whitespace-nowrap">
+                          {isUndone ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                              <Check className="w-3 h-3" />
+                              UNDONE
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                              ACTIVE
+                            </span>
+                          )}
+                        </td>
 
-                      {/* Undo / Inspect Actions */}
-                      <td className="p-3.5 text-right align-top no-print">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {(log.snapshotBefore || log.snapshotAfter) && (
+                        {/* Undo / Inspect Actions */}
+                        <td className="p-3.5 text-right align-top no-print whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => setInspectLog(log)}
-                              title="Inspect Snapshot Details"
-                              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
+                              title="Inspect Audit Details & Snapshots"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs btn-interactive"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5 text-teal-600" />
+                              <span>Details</span>
                             </button>
-                          )}
 
-                          {canUndo ? (
-                            <button
-                              type="button"
-                              onClick={() => setUndoTargetLog(log)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-extrabold text-xs shadow-sm transition-all btn-interactive"
-                              title="Undo this action"
-                            >
-                              <Undo2 className="w-3.5 h-3.5" />
-                              <span>Undo Action</span>
-                            </button>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 font-semibold px-2">
-                              {isUndone ? "Reverted" : "No Undo"}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {canUndo ? (
+                              <button
+                                type="button"
+                                onClick={() => setUndoTargetLog(log)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-extrabold text-xs shadow-sm transition-all btn-interactive"
+                                title="Undo this action"
+                              >
+                                <Undo2 className="w-3.5 h-3.5" />
+                                <span>Undo Action</span>
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-semibold px-2">
+                                {isUndone ? "Reverted" : "No Undo"}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* UNDO CONFIRMATION MODAL                                                   */}
+      {/* UNDO CONFIRMATION MODAL (100% ENGLISH & MOBILE-RESPONSIVE)                */}
       {/* ========================================================================= */}
       {undoTargetLog && (
-        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-lg w-full p-6 sm:p-7 space-y-5 animate-in zoom-in-95">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center shrink-0">
+        <div className="fixed inset-0 !mt-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-lg w-full p-5 sm:p-7 space-y-4 sm:space-y-5 animate-in zoom-in-95 overflow-x-hidden">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center shrink-0">
                   <Undo2 className="w-6 h-6" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">
-                    Undo This Action? (کارروائی واپس کریں)
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                    Undo This Action?
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Are you sure you want to revert this staff action?
+                    Confirm reverting this recorded action to its previous state.
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setUndoTargetLog(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-xs space-y-2 text-slate-800 dark:text-slate-200">
-              <div className="flex justify-between py-0.5 border-b border-amber-200/50">
-                <span className="font-bold text-slate-500">Target Item:</span>
-                <span className="font-black text-slate-900 dark:text-slate-100">
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-xs space-y-2 text-slate-800 dark:text-slate-200">
+              <div className="flex justify-between gap-3 py-0.5 border-b border-amber-200/50 dark:border-amber-800/50">
+                <span className="font-bold text-slate-500 shrink-0">Target Item:</span>
+                <span className="font-black text-slate-900 dark:text-slate-100 text-right break-words">
                   {undoTargetLog.entityTitle || undoTargetLog.entityId}
                 </span>
               </div>
-              <div className="flex justify-between py-0.5 border-b border-amber-200/50">
-                <span className="font-bold text-slate-500">Performed By:</span>
-                <span className="font-bold">
+              <div className="flex justify-between gap-3 py-0.5 border-b border-amber-200/50 dark:border-amber-800/50">
+                <span className="font-bold text-slate-500 shrink-0">Module:</span>
+                <span className="font-bold uppercase text-right">
+                  {formatEntityMeta(undoTargetLog.entityType).label}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3 py-0.5 border-b border-amber-200/50 dark:border-amber-800/50">
+                <span className="font-bold text-slate-500 shrink-0">Performed By:</span>
+                <span className="font-bold text-right break-words">
                   {formatNameWithRole(undoTargetLog.userName, undoTargetLog.userRole)}
                 </span>
               </div>
-              <div className="flex justify-between py-0.5 border-b border-amber-200/50">
-                <span className="font-bold text-slate-500">Action:</span>
-                <span className="font-mono font-black uppercase text-amber-700">{undoTargetLog.action}</span>
+              <div className="flex justify-between gap-3 py-0.5 border-b border-amber-200/50 dark:border-amber-800/50">
+                <span className="font-bold text-slate-500 shrink-0">Action Type:</span>
+                <span className="font-mono font-black uppercase text-amber-700 dark:text-amber-300">
+                  {formatActionMeta(undoTargetLog.action).label}
+                </span>
               </div>
               <div className="pt-1">
-                <span className="font-bold text-slate-500 block mb-0.5">What was done:</span>
-                <p className="text-slate-700 dark:text-slate-300 font-medium">
+                <span className="font-bold text-slate-500 block mb-0.5">Recorded Details:</span>
+                <p className="text-slate-700 dark:text-slate-300 font-medium break-words whitespace-pre-line">
                   {undoTargetLog.details}
                 </p>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400">
-              <strong className="text-slate-900 dark:text-slate-100">Automatic Adjustment:</strong> Undoing this action will restore previous database records, restore batch inventory quantities, and adjust customer khata accordingly.
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              <strong className="text-slate-900 dark:text-slate-100">Automatic Rollback:</strong>{" "}
+              Undoing this action restores the previous database record (including visit history,
+              batch stock quantities, and customer account balances) and syncs automatically to the
+              cloud database.
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => setUndoTargetLog(null)}
                 disabled={isUndoing}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-50 btn-interactive"
+                className="w-full sm:w-auto min-h-[42px] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive"
               >
-                Cancel (منسوخ کریں)
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={handleExecuteUndo}
                 disabled={isUndoing}
-                className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-extrabold text-xs shadow-md shadow-amber-600/30 transition-all btn-interactive flex items-center gap-1.5"
+                className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-extrabold text-xs shadow-md shadow-amber-600/30 transition-all btn-interactive inline-flex items-center justify-center gap-1.5"
               >
                 {isUndoing ? (
                   <>
@@ -728,7 +1074,7 @@ export default function AuditLogsPage() {
                 ) : (
                   <>
                     <Undo2 className="w-3.5 h-3.5" />
-                    <span>Confirm & Undo Now (واپس کریں)</span>
+                    <span>Confirm &amp; Undo Now</span>
                   </>
                 )}
               </button>
@@ -738,69 +1084,162 @@ export default function AuditLogsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* SNAPSHOT & DIFF VIEWER MODAL                                              */}
+      {/* SNAPSHOT & FIELD DIFF VIEWER MODAL (MOBILE-OPTIMIZED)                     */}
       {/* ========================================================================= */}
       {inspectLog && (
-        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-2xl w-full p-6 space-y-4 animate-in zoom-in-95 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center">
+        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-2xl w-full p-4 sm:p-6 space-y-4 animate-in zoom-in-95 max-h-[88vh] flex flex-col overflow-x-hidden">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center shrink-0">
                   <Eye className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                    Activity Snapshot Inspector
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    {inspectLog.entityTitle || inspectLog.entityId} ({inspectLog.entityType})
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                      Audit Entry Inspector
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                        formatActionMeta(inspectLog.action).badgeClass
+                      }`}
+                    >
+                      {formatActionMeta(inspectLog.action).label}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                        formatEntityMeta(inspectLog.entityType).badgeClass
+                      }`}
+                    >
+                      {formatEntityMeta(inspectLog.entityType).label}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 break-words mt-0.5">
+                    {inspectLog.entityTitle || inspectLog.entityId}
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setInspectLog(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="overflow-y-auto space-y-4 flex-1 pr-1 text-xs">
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-1">
-                <span className="font-bold text-slate-500">Summary:</span>
-                <p className="font-medium text-slate-800 dark:text-slate-200">{inspectLog.details}</p>
-                <div className="text-[11px] text-slate-400 pt-1">
-                  Recorded by <strong>{normalizeUserDisplayName(inspectLog.userName, "Owner")}</strong> on {formatKarachiDate(inspectLog.timestamp, true)}
+            <div className="overflow-y-auto overflow-x-hidden space-y-4 flex-1 pr-0.5 text-xs min-w-0">
+              {/* Summary Block */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 space-y-1.5">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">
+                  Recorded Summary
+                </span>
+                <p className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed break-words whitespace-pre-line">
+                  {inspectLog.details}
+                </p>
+                <div className="text-[11px] text-slate-400 pt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>
+                    By{" "}
+                    <strong className="text-slate-700 dark:text-slate-200">
+                      {formatNameWithRole(inspectLog.userName, inspectLog.userRole)}
+                    </strong>
+                  </span>
+                  <span>•</span>
+                  <span className="font-mono">{formatKarachiDate(inspectLog.timestamp, true)}</span>
                 </div>
+                {inspectLog.isUndone && inspectLog.undoneBy && (
+                  <div className="pt-1.5 text-[11px] font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                    <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                    <span className="break-words">
+                      Reverted by {normalizeUserDisplayName(inspectLog.undoneBy, "Owner")} on{" "}
+                      {formatKarachiDate(inspectLog.undoneAt || "", true)}
+                    </span>
+                  </div>
+                )}
               </div>
 
+              {/* Structured Field-by-Field Diffs (if available) */}
+              {(() => {
+                const diffs = extractLogFieldDiffs(inspectLog);
+                if (diffs.length === 0) return null;
+                return (
+                  <div className="space-y-2">
+                    <span className="font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider text-[11px] block">
+                      Field-by-Field Changes ({diffs.length})
+                    </span>
+                    <div className="space-y-2">
+                      {diffs.map((d, idx) => (
+                        <div
+                          key={`${d.field}_${idx}`}
+                          className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 space-y-1.5"
+                        >
+                          <div className="font-extrabold text-slate-800 dark:text-slate-200 text-xs">
+                            {d.field}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            <div className="p-2 rounded-lg bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-900/50 min-w-0">
+                              <span className="text-[10px] font-black uppercase text-rose-600 dark:text-rose-400 block mb-0.5">
+                                Before
+                              </span>
+                              <span className="text-slate-700 dark:text-slate-300 break-words block">
+                                {d.before}
+                              </span>
+                            </div>
+                            <div className="p-2 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/50 min-w-0">
+                              <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mb-0.5">
+                                <ArrowRight className="w-3 h-3" />
+                                After
+                              </span>
+                              <span className="text-slate-800 dark:text-slate-100 font-semibold break-words block">
+                                {d.after}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {inspectLog.snapshotBefore && (
-                <div>
-                  <span className="font-black text-rose-600 block mb-1">
-                    Previous State (Snapshot Before Action):
+                <div className="min-w-0">
+                  <span className="font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider text-[11px] block mb-1">
+                    Previous State (Snapshot Before Action)
                   </span>
-                  <pre className="p-3 rounded-xl bg-slate-950 text-emerald-400 font-mono text-[11px] overflow-x-auto max-h-48 border border-slate-800">
+                  <pre className="p-3 rounded-xl bg-slate-950 text-rose-200 font-mono text-[11px] whitespace-pre-wrap break-all overflow-y-auto max-h-48 border border-slate-800">
                     {JSON.stringify(inspectLog.snapshotBefore, null, 2)}
                   </pre>
                 </div>
               )}
 
               {inspectLog.snapshotAfter && (
-                <div>
-                  <span className="font-black text-teal-600 block mb-1">
-                    New State (Snapshot After Action):
+                <div className="min-w-0">
+                  <span className="font-black text-teal-600 dark:text-teal-400 uppercase tracking-wider text-[11px] block mb-1">
+                    Updated State (Snapshot After Action)
                   </span>
-                  <pre className="p-3 rounded-xl bg-slate-950 text-teal-300 font-mono text-[11px] overflow-x-auto max-h-48 border border-slate-800">
+                  <pre className="p-3 rounded-xl bg-slate-950 text-teal-300 font-mono text-[11px] whitespace-pre-wrap break-all overflow-y-auto max-h-48 border border-slate-800">
                     {JSON.stringify(inspectLog.snapshotAfter, null, 2)}
                   </pre>
                 </div>
               )}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-end gap-2">
+              {canPerformUndo && inspectLog.canUndo && !inspectLog.isUndone && (
+                <button
+                  type="button"
+                  onClick={() => setUndoTargetLog(inspectLog)}
+                  className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs shadow-sm btn-interactive"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  <span>Undo This Action</span>
+                </button>
+              )}
               <button
+                type="button"
                 onClick={() => setInspectLog(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs"
+                className="min-h-[38px] px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs btn-interactive"
               >
                 Close Inspector
               </button>
@@ -820,8 +1259,8 @@ export default function AuditLogsPage() {
           <p className="text-[10px] text-slate-600 mt-0.5">Data Integrity Verified</p>
         </div>
         <div className="border-t border-black pt-2">
-          <strong>Proprietor / Owner Signature</strong>
-          <p className="text-[10px] text-slate-600 mt-0.5">Approved & Reviewed</p>
+          <strong>Owner Signature</strong>
+          <p className="text-[10px] text-slate-600 mt-0.5">Approved &amp; Reviewed</p>
         </div>
       </div>
     </div>

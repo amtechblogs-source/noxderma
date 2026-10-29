@@ -17,11 +17,12 @@ import {
 } from "lucide-react";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import { useAuth } from "@/context/AuthContext";
 import type { Customer, CustomerCategory } from "@/types";
 
 export default function CustomersDirectoryPage() {
-  const { hasPermission, hasAnyPermission } = useAuth();
+  const { currentUser, hasPermission, hasAnyPermission } = useAuth();
   const canCreateBill = hasPermission("invoices:create");
   const canViewFinance = hasAnyPermission([
     "finance:aging",
@@ -82,6 +83,19 @@ export default function CustomersDirectoryPage() {
     };
 
     await offlineDb.customers.add(newCust);
+    await recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "customer",
+      entityId: newCust.id,
+      entityTitle: `${newCust.name}${newCust.city ? ` (${newCust.city})` : ""}`,
+      details: `Added new ${newCust.category.replace(/_/g, " ")} "${newCust.name}" — Contact: ${newCust.contactPerson}, Phone: ${newCust.phone}${newCust.city ? `, City: ${newCust.city}` : ""}, Credit Limit: ${formatPKR(newCust.creditLimit)}.`,
+      snapshotAfter: newCust,
+      canUndo: true,
+    });
     await refreshCustomers();
     setIsAdding(false);
     setName("");

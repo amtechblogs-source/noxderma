@@ -9,6 +9,7 @@ export interface RecordActivityParams {
   userEmail?: string;
   action: "create" | "update" | "delete" | "undo" | string;
   entityType:
+    | "visit"
     | "invoice"
     | "customer"
     | "product"
@@ -259,6 +260,16 @@ export async function undoActivity(
           }
         }
       );
+    } else if (log.entityType === "visit" || log.entityType === "customerVisit") {
+      await offlineDb.transaction("rw", [offlineDb.customerVisits], async () => {
+        if (log.action === "create") {
+          await offlineDb.customerVisits.delete(log.entityId);
+        } else if (log.action === "delete" || log.action === "update") {
+          if (log.snapshotBefore) {
+            await offlineDb.customerVisits.put(log.snapshotBefore);
+          }
+        }
+      });
     } else if (log.entityType === "customer") {
       await offlineDb.transaction("rw", [offlineDb.customers], async () => {
         if (log.action === "create") {
@@ -270,15 +281,40 @@ export async function undoActivity(
         }
       });
     } else if (log.entityType === "product") {
-      await offlineDb.transaction("rw", [offlineDb.products], async () => {
-        if (log.action === "create") {
-          await offlineDb.products.delete(log.entityId);
-        } else if (log.action === "delete" || log.action === "update") {
-          if (log.snapshotBefore) {
-            await offlineDb.products.put(log.snapshotBefore);
+      await offlineDb.transaction(
+        "rw",
+        [
+          offlineDb.products,
+          offlineDb.productPricing,
+          offlineDb.inventoryBatches,
+          offlineDb.stockMovements,
+        ],
+        async () => {
+          if (log.action === "create") {
+            await offlineDb.products.delete(log.entityId);
+            await offlineDb.productPricing.delete(log.entityId);
+            await offlineDb.inventoryBatches.where("productId").equals(log.entityId).delete();
+            await offlineDb.stockMovements.where("productId").equals(log.entityId).delete();
+          } else if (log.action === "delete" || log.action === "update") {
+            if (log.snapshotBefore) {
+              if (log.snapshotBefore.product && log.snapshotBefore.product.id) {
+                await offlineDb.products.put(log.snapshotBefore.product);
+                if (log.snapshotBefore.pricing) {
+                  await offlineDb.productPricing.put(log.snapshotBefore.pricing);
+                }
+                if (Array.isArray(log.snapshotBefore.batches)) {
+                  await offlineDb.inventoryBatches.where("productId").equals(log.entityId).delete();
+                  if (log.snapshotBefore.batches.length > 0) {
+                    await offlineDb.inventoryBatches.bulkPut(log.snapshotBefore.batches);
+                  }
+                }
+              } else {
+                await offlineDb.products.put(log.snapshotBefore);
+              }
+            }
           }
         }
-      });
+      );
     } else if (log.entityType === "payment") {
       await offlineDb.transaction("rw", [offlineDb.payments, offlineDb.customers], async () => {
         if (log.action === "create") {
@@ -396,10 +432,11 @@ export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
     const count = await offlineDb.auditLogs.count();
     if (count > 0) return;
 
-    const [invoices, customers, products] = await Promise.all([
+    const [invoices, customers, products, visits] = await Promise.all([
       offlineDb.invoices.toArray(),
       offlineDb.customers.toArray(),
       offlineDb.products.toArray(),
+      offlineDb.customerVisits.toArray(),
     ]);
 
     const logsToSeed: LocalAuditLog[] = [];
@@ -459,6 +496,26 @@ export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
         details: `Added new pharmaceutical product: ${p.name} (${p.genericName || p.packSize || "Medicine"})`,
         timestamp: p.createdAt || new Date().toISOString(),
         snapshotAfter: p,
+        canUndo: true,
+        isUndone: false,
+      });
+    }
+
+    // Seed visits
+    for (const v of visits || []) {
+      logsToSeed.push({
+        id: `log_init_visit_${v.id}`,
+        userId: v.employeeId || "usr_admin",
+        userName: v.employeeName || "Owner",
+        userRole: "owner",
+        deviceId: "dev_01",
+        action: "create",
+        entityType: "visit",
+        entityId: v.id,
+        entityTitle: `Visit: ${v.customerName} (${v.contactPerson})`,
+        details: `Recorded visit to "${v.customerName}" (Contact: ${v.contactPerson}, Interest: ${v.productInterestLevel || "medium"}). Notes: ${v.visitNotes || "No notes"}`,
+        timestamp: v.createdAt || v.visitDate || new Date().toISOString(),
+        snapshotAfter: v,
         canUndo: true,
         isUndone: false,
       });

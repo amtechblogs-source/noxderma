@@ -30,6 +30,23 @@ export interface Lead {
   lastContactedAt?: string;
 }
 
+export interface VisitFieldDiff {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
+export interface VisitEditHistoryEntry {
+  id: string;
+  editedAt: string;
+  editedById: string;
+  editedByName: string;
+  editedByRole?: string;
+  summary: string;
+  changes: VisitFieldDiff[];
+}
+
 export interface CustomerVisit {
   id: string;
   customerId?: string;
@@ -51,4 +68,9 @@ export interface CustomerVisit {
   followUpDate?: string;
   followUpNotes?: string;
   createdAt: string;
+  updatedAt?: string;
+  lastEditedBy?: string;
+  lastEditedByRole?: string;
+  editCount?: number;
+  editHistory?: VisitEditHistoryEntry[];
 }

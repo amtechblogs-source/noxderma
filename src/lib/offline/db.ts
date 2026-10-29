@@ -139,6 +139,10 @@ export class NoxdermaDexieDB extends Dexie {
       liveMapPins: "id, type, staffId, timestamp",
       geoVerifiedPhotos: "id, staffId, capturedAt, auditStatus",
     });
+
+    this.version(7).stores({
+      customerVisits: "id, customerId, employeeId, visitDate",
+    });
   }
 }
 

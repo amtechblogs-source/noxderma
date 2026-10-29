@@ -88,12 +88,19 @@ function CustomerDetailContent() {
 
   const loadData = async () => {
     try {
-      const [cust, invList, payList, visitList] = await Promise.all([
+      const [cust, invList, payList, allVisits] = await Promise.all([
         offlineDb.customers.get(customerId),
         offlineDb.invoices.where("customerId").equals(customerId).toArray(),
         offlineDb.payments.where("customerId").equals(customerId).toArray(),
-        offlineDb.customerVisits.where("customerId").equals(customerId).toArray(),
+        offlineDb.customerVisits.toArray(),
       ]);
+
+      const visitList = (allVisits || []).filter(
+        (v) =>
+          v.customerId === customerId ||
+          (cust &&
+            v.customerName.trim().toLowerCase() === cust.name.trim().toLowerCase())
+      );
 
       if (cust) {
         setCustomer(cust);
@@ -765,7 +772,7 @@ function CustomerDetailContent() {
               href={`/crm/visits`}
               className="text-xs font-bold text-teal-600 hover:underline"
             >
-              Add Visit Note
+              Add / Edit Visits &rarr;
             </Link>
           </div>
 
@@ -780,16 +787,25 @@ function CustomerDetailContent() {
                   key={v.id}
                   className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 text-xs space-y-1.5"
                 >
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap justify-between items-center gap-1.5">
                     <span className="font-bold text-slate-800 dark:text-slate-200">
-                      Visited by {v.employeeName}
+                      Visited by {v.employeeName} (Contact: {v.contactPerson})
                     </span>
-                    <span className="text-slate-400 font-mono text-[11px]">{v.visitDate}</span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-slate-400 font-mono text-[11px]">
+                        {formatKarachiDate(v.visitDate, true)}
+                      </span>
+                      {v.updatedAt && (
+                        <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[10px]">
+                          Edited {formatKarachiDate(v.updatedAt, true)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-slate-600 dark:text-slate-400">{v.visitNotes}</p>
-                  {v.competitorOffers && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                      <strong>Market Note:</strong> {v.competitorOffers}
+                  <p className="text-slate-600 dark:text-slate-400 break-words">{v.visitNotes}</p>
+                  {(v.competitorProducts || v.competitorOffers) && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 break-words">
+                      <strong>Market Note:</strong> {v.competitorProducts || v.competitorOffers}
                     </p>
                   )}
                 </div>
