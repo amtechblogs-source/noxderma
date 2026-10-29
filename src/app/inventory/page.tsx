@@ -143,7 +143,7 @@ export default function InventoryOverviewPage() {
       referenceId: `DMG-${Date.now().toString().slice(-4)}`,
       referenceType: "damage",
       userId: currentUser?.id || "usr_admin",
-      userName: currentUser?.displayName || "Admin",
+      userName: currentUser?.displayName || "Owner",
       reason: damageReason,
       timestamp: now,
     };
@@ -184,7 +184,7 @@ export default function InventoryOverviewPage() {
       referenceId: `SMP-${Date.now().toString().slice(-4)}`,
       referenceType: "sample",
       userId: currentUser?.id || "usr_admin",
-      userName: currentUser?.displayName || "Admin",
+      userName: currentUser?.displayName || "Owner",
       reason: `Issued to ${sampleRecipient} (${sampleOrg}) - ${samplePurpose}`,
       timestamp: now,
     };

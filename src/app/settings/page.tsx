@@ -188,7 +188,7 @@ export default function BusinessSettingsPage() {
             "update",
             updated as unknown as Record<string, unknown>,
             "usr_admin",
-            "Administrator"
+            "Owner"
           );
         }
 

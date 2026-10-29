@@ -143,7 +143,7 @@ export default function SalesReturnsPage() {
       disposition,
       status: "approved",
       returnDate: now.slice(0, 10),
-      recordedByName: currentUser?.displayName || "Admin",
+      recordedByName: currentUser?.displayName || "Owner",
     };
 
     // 1. Stock Movement
@@ -158,7 +158,7 @@ export default function SalesReturnsPage() {
       referenceId: cnNumber,
       referenceType: "adjustment",
       userId: currentUser?.id || "usr_admin",
-      userName: currentUser?.displayName || "Admin",
+      userName: currentUser?.displayName || "Owner",
       reason: `Customer Return (${reason}) routed to ${disposition}`,
       timestamp: now,
     };

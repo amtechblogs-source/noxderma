@@ -1077,7 +1077,9 @@ export default function ReportsExportPage() {
                 Prepared by:
               </span>
               <span className="text-[11px] font-black text-black block">
-                {preparerName} ({preparerRole})
+                {preparerName.trim().toLowerCase() === preparerRole.trim().toLowerCase()
+                  ? preparerName
+                  : `${preparerName} (${preparerRole})`}
               </span>
             </div>
           </div>

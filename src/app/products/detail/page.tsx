@@ -246,7 +246,7 @@ function ProductDetailContent() {
       referenceId: `GRN-MANUAL-${Date.now().toString().slice(-4)}`,
       referenceType: "goods_receipt",
       userId: currentUser?.id || "usr_admin",
-      userName: currentUser?.displayName || "Admin",
+      userName: currentUser?.displayName || "Owner",
       reason: "Manual Initial Stock Batch Intake",
       timestamp: now,
     };

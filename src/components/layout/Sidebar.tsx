@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { offlineDb } from "@/lib/offline/db";
+import { getUserRoleLabel } from "@/types";
 import type { Permission } from "@/types";
 
 interface SidebarProps {
@@ -278,7 +279,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                   {brandName}
                 </span>
                 <span className="text-[10px] font-semibold text-teal-400 tracking-wider uppercase truncate">
-                  Pharma ERP &bull; {currentUser?.role === "owner" ? "Owner" : currentUser?.role === "admin" ? "Admin" : currentUser?.role?.replace("_", " ")}
+                  Pharma ERP &bull; {getUserRoleLabel(currentUser?.role)}
                 </span>
               </div>
             </Link>

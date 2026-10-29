@@ -38,8 +38,8 @@ export async function recordActivity(params: RecordActivityParams): Promise<stri
   const entry: LocalAuditLog = {
     id,
     userId: params.userId || "usr_admin",
-    userName: params.userName || "System Administrator",
-    userRole: params.userRole || "admin",
+    userName: params.userName || "Owner",
+    userRole: params.userRole === "admin" ? "owner" : params.userRole || "owner",
     userEmail: params.userEmail,
     deviceId,
     action: params.action,
@@ -409,8 +409,8 @@ export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
       logsToSeed.push({
         id: `log_init_inv_${inv.id}`,
         userId: inv.salesRepId || "usr_admin",
-        userName: inv.salesRepName || "System Administrator",
-        userRole: "admin",
+        userName: inv.salesRepName || "Owner",
+        userRole: "owner",
         deviceId: inv.deviceId || "dev_01",
         action: "create",
         entityType: "invoice",
@@ -429,7 +429,7 @@ export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
       logsToSeed.push({
         id: `log_init_cust_${c.id}`,
         userId: "usr_admin",
-        userName: "System Administrator (Owner)",
+        userName: "Owner",
         userRole: "owner",
         deviceId: "dev_01",
         action: "create",
@@ -449,7 +449,7 @@ export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
       logsToSeed.push({
         id: `log_init_prod_${p.id}`,
         userId: "usr_admin",
-        userName: "System Administrator (Owner)",
+        userName: "Owner",
         userRole: "owner",
         deviceId: "dev_01",
         action: "create",

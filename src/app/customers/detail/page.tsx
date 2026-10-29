@@ -56,7 +56,7 @@ export default function CustomerDetailPage() {
 }
 
 function CustomerDetailContent() {
-  const { hasPermission, hasAnyPermission } = useAuth();
+  const { currentUser, hasPermission, hasAnyPermission } = useAuth();
   const canCreateBill = hasPermission("invoices:create");
   const canViewInvoices = hasPermission("invoices:view");
   const canReceivePayment = hasPermission("finance:payments");
@@ -173,7 +173,7 @@ function CustomerDetailContent() {
         referenceNumber: payRef || undefined,
         allocations,
         unallocatedAmount: remainingToAllocate > 0 ? remainingToAllocate : 0,
-        recordedByUserId: "usr_admin",
+        recordedByUserId: currentUser?.id || "usr_admin",
         notes: payNotes || "Customer payment receipt",
         syncStatus: "local_only",
         createdAt: now,
@@ -189,9 +189,9 @@ function CustomerDetailContent() {
       });
 
       await recordActivity({
-        userId: "usr_admin",
-        userName: "System Administrator",
-        userRole: "admin",
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
         action: "create",
         entityType: "payment",
         entityId: paymentId,

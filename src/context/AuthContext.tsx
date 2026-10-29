@@ -12,6 +12,7 @@ import {
   Permission,
   ROLE_PERMISSIONS,
   ALL_PERMISSIONS,
+  normalizeUserDisplayName,
 } from "@/types";
 
 export interface AuthenticatedUser extends UserProfile {
@@ -35,7 +36,7 @@ const ACTIVE_USER_STORAGE_KEY = "noxderma_active_user_session";
 export const DEFAULT_ADMIN_USER: AuthenticatedUser = {
   id: "usr_admin",
   email: "admin@noxderma.com",
-  displayName: "System Administrator (Owner)",
+  displayName: "Owner",
   role: "owner",
   password: "admin",
   permissions: ALL_PERMISSIONS,
@@ -52,10 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function initAuth() {
       try {
-        // Ensure default admin user is seeded into offlineDb.users if not present
+        // Ensure default owner user is seeded into offlineDb.users if not present,
+        // and auto-migrate legacy "System Administrator (Owner)" / "Admin" records to "Owner"
         const dbUsers: UserProfile[] = (await (offlineDb as any).users?.toArray()) || [];
         const existingAdmin = dbUsers.find(
-          (u: UserProfile) => u.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
+          (u: UserProfile) =>
+            u.id === "usr_admin" ||
+            u.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
         );
 
         if (!existingAdmin) {
@@ -65,7 +69,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               permissions: ALL_PERMISSIONS,
             });
           } catch (e) {
-            console.warn("Could not seed default admin into offlineDb:", e);
+            console.warn("Could not seed default owner into offlineDb:", e);
+          }
+        } else {
+          const cleanedOwnerName = normalizeUserDisplayName(existingAdmin.displayName, "Owner");
+          if (existingAdmin.displayName !== cleanedOwnerName || existingAdmin.role === "admin") {
+            existingAdmin.displayName = cleanedOwnerName;
+            existingAdmin.role = "owner";
+            try {
+              await (offlineDb as any).users?.update(existingAdmin.id, {
+                displayName: cleanedOwnerName,
+                role: "owner",
+              });
+            } catch {}
           }
         }
 
@@ -97,7 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const isPrimaryOwner =
                   baseUser.id === "usr_admin" ||
                   baseUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase() ||
-                  baseUser.role === "owner";
+                  baseUser.role === "owner" ||
+                  baseUser.role === "admin";
 
                 const perms = isPrimaryOwner
                   ? ALL_PERMISSIONS
@@ -105,9 +122,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   ? baseUser.permissions
                   : ROLE_PERMISSIONS[baseUser.role] || [];
 
+                const normalizedDisplayName = normalizeUserDisplayName(
+                  baseUser.displayName,
+                  isPrimaryOwner ? "Owner" : baseUser.email
+                );
+
                 const syncedSession: AuthenticatedUser = {
                   ...parsed,
                   ...baseUser,
+                  displayName: normalizedDisplayName,
+                  role: baseUser.role === "admin" ? "owner" : baseUser.role,
                   permissions: perms,
                 };
 
@@ -203,7 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (!user.active) {
             return {
               success: false,
-              error: "This account has been deactivated. Please contact your administrator.",
+              error: "This account has been deactivated. Please contact the Owner.",
             };
           }
 
@@ -218,7 +242,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const isPrimaryOwner =
             user.id === "usr_admin" ||
             user.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase() ||
-            user.role === "owner";
+            user.role === "owner" ||
+            user.role === "admin";
 
           const resolvedPerms = isPrimaryOwner
             ? ALL_PERMISSIONS
@@ -226,8 +251,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? user.permissions
             : ROLE_PERMISSIONS[user.role] || [];
 
+          const normalizedName = normalizeUserDisplayName(
+            user.displayName,
+            isPrimaryOwner ? "Owner" : user.email
+          );
+          const normalizedRole = user.role === "admin" ? "owner" : user.role;
+
           const authSession: AuthenticatedUser = {
             ...user,
+            displayName: normalizedName,
+            role: normalizedRole,
             permissions: resolvedPerms,
             lastLoginAt: new Date().toISOString(),
           };
@@ -245,6 +278,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           try {
             await (offlineDb as any).users?.update(user.id, {
+              displayName: normalizedName,
+              role: normalizedRole,
               lastLoginAt: authSession.lastLoginAt,
             });
           } catch {}
@@ -322,6 +357,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) return false;
     if (
       currentUser.role === "owner" ||
+      currentUser.role === "admin" ||
       currentUser.id === "usr_admin" ||
       currentUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
     ) {
@@ -334,6 +370,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) return false;
     if (
       currentUser.role === "owner" ||
+      currentUser.role === "admin" ||
       currentUser.id === "usr_admin" ||
       currentUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
     ) {
@@ -347,6 +384,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) return false;
     if (
       currentUser.role === "owner" ||
+      currentUser.role === "admin" ||
       currentUser.id === "usr_admin" ||
       currentUser.email.toLowerCase() === DEFAULT_ADMIN_USER.email.toLowerCase()
     ) {

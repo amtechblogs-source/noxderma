@@ -199,7 +199,7 @@ export default function PurchasesPage() {
       referenceId: grnNumber,
       referenceType: "goods_receipt",
       userId: currentUser?.id || "usr_admin",
-      userName: currentUser?.displayName || "Admin",
+      userName: currentUser?.displayName || "Owner",
       reason: `Goods Receipt from ${selectedPO.manufacturerName} (Landed Cost: ${formatPKR(
         landedCostPerUnit
       )}/unit)`,

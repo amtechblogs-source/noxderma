@@ -33,7 +33,17 @@ import { offlineDb } from "@/lib/offline/db";
 import { syncManager } from "@/lib/offline/sync";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
-import type { Invoice, InventoryBatch, StockMovement, OutboxOperation, Product, Permission } from "@/types";
+import {
+  getUserRoleLabel,
+  isRoleRedundantForName,
+  normalizeUserDisplayName,
+  type Invoice,
+  type InventoryBatch,
+  type StockMovement,
+  type OutboxOperation,
+  type Product,
+  type Permission,
+} from "@/types";
 
 export function DashboardView() {
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
@@ -319,10 +329,27 @@ export function DashboardView() {
             Daily Business Overview
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Logged in as <strong>{currentUser?.displayName}</strong> &bull;{" "}
-            <span className="uppercase font-bold text-teal-600 dark:text-teal-400">
-              {currentUser?.role === "owner" ? "Owner" : currentUser?.role?.replace("_", " ")}
-            </span>
+            Logged in as{" "}
+            <strong>
+              {normalizeUserDisplayName(
+                currentUser?.displayName,
+                currentUser?.role === "owner" || currentUser?.role === "admin"
+                  ? "Owner"
+                  : "Staff"
+              )}
+            </strong>
+            {!isRoleRedundantForName(
+              currentUser?.displayName,
+              currentUser?.role
+            ) && (
+              <>
+                {" "}
+                &bull;{" "}
+                <span className="uppercase font-bold text-teal-600 dark:text-teal-400">
+                  {getUserRoleLabel(currentUser?.role)}
+                </span>
+              </>
+            )}
           </p>
         </div>
 
@@ -801,7 +828,7 @@ export function DashboardView() {
           </div>
         ) : (
           <div className="p-6 text-center text-xs text-slate-400 rounded-xl bg-slate-50 dark:bg-slate-800/40">
-            No additional modules assigned yet. Please ask the Owner/Administrator to enable modules for your account in Staff Accounts.
+            No additional modules assigned yet. Please ask the Owner to enable modules for your account in Staff Accounts.
           </div>
         )}
       </div>

@@ -53,7 +53,11 @@ const IGNORED_DEMO_IDS = new Set([
 ]);
 
 function isIgnoredStaffMonitorDoc(docId: string): boolean {
-  return IGNORED_DEMO_IDS.has(docId) || docId.startsWith("user_");
+  return (
+    IGNORED_DEMO_IDS.has(docId) ||
+    docId.startsWith("user_") ||
+    docId.startsWith("manual_device_")
+  );
 }
 
 let isApplyingRemoteCount = 0;

@@ -532,7 +532,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
       });
 
       const currentUserId = currentUser?.id || "usr_admin";
-      const currentUserName = currentUser?.displayName || "System Administrator";
+      const currentUserName = currentUser?.displayName || "Owner";
 
       if (originalInvoice) {
         // ==========================================
@@ -728,7 +728,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         await recordActivity({
           userId: currentUserId,
           userName: currentUserName,
-          userRole: currentUser?.role || "admin",
+          userRole: currentUser?.role || "owner",
           userEmail: currentUser?.email,
           action: "update",
           entityType: "invoice",
@@ -876,7 +876,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
       await recordActivity({
         userId: currentUserId,
         userName: currentUserName,
-        userRole: currentUser?.role || "admin",
+        userRole: currentUser?.role || "owner",
         userEmail: currentUser?.email,
         action: "create",
         entityType: "invoice",

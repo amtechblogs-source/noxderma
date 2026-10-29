@@ -97,7 +97,7 @@ export interface StaffMonitoringProfile {
   hasRealGpsFix?: boolean;
   lastUpdatedIso?: string;
   name: string;
-  roleTitle: "Order Booker" | "Medical Rep" | "Recovery Officer" | "Field Supervisor" | "Owner / Admin" | "Accountant" | "Store Staff";
+  roleTitle: "Order Booker" | "Medical Rep" | "Recovery Officer" | "Field Supervisor" | "Owner" | "Accountant" | "Store Staff";
   phone: string;
   vehicleType: "bike" | "car";
   territory: string;

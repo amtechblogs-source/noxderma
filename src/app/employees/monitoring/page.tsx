@@ -11,7 +11,6 @@ import {
   Monitor,
   Tablet,
   RefreshCw,
-  Plus,
   ExternalLink,
   ArrowLeft,
   Search,
@@ -23,11 +22,13 @@ import {
   Clock,
 } from "lucide-react";
 import { offlineDb } from "@/lib/offline/db";
+import { getOrCreateDeviceInstanceId } from "@/lib/monitoring/deviceIdentity";
 import {
-  detectDeviceMetadata,
-  getOrCreateDeviceInstanceId,
-} from "@/lib/monitoring/deviceIdentity";
-import type { StaffMonitoringProfile } from "@/types";
+  formatNameWithRole,
+  isRoleRedundantForName,
+  normalizeUserDisplayName,
+  type StaffMonitoringProfile,
+} from "@/types";
 
 const DEMO_OR_LEGACY_PREFIXES = ["staff_ali", "staff_bilal", "staff_kamran", "staff_usman"];
 
@@ -95,10 +96,10 @@ function computeEffectivePresence(
     };
   }
 
-  // Manual custom device record without ISO timestamp
+  // Legacy session record without ISO timestamp
   return {
     tier: "recent",
-    badgeText: "MANUAL TRACKER",
+    badgeText: "ACTIVE SESSION",
     lastSeenText: relative,
   };
 }
@@ -112,15 +113,6 @@ export default function StaffLocationAndPhoneStatusPage() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  // Add Custom Staff Device Modal State
-  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
-  const [staffName, setStaffName] = useState<string>("");
-  const [staffRole, setStaffRole] = useState<StaffMonitoringProfile["roleTitle"]>("Order Booker");
-  const [staffPhone, setStaffPhone] = useState<string>("");
-  const [deviceModel, setDeviceModel] = useState<string>("");
-  const [currentLocationText, setCurrentLocationText] = useState<string>("");
-  const [batteryPct, setBatteryPct] = useState<number>(100);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -145,8 +137,12 @@ export default function StaffLocationAndPhoneStatusPage() {
 
       for (const s of dbRecords) {
         if (!s || !s.id) continue;
-        // Purge demo entries & old single-key `user_*` records that caused PC/Mobile battery conflicts
-        if (DEMO_OR_LEGACY_PREFIXES.includes(s.id) || s.id.startsWith("user_")) {
+        // Purge demo entries, old single-key `user_*` records, and removed `manual_device_*` records
+        if (
+          DEMO_OR_LEGACY_PREFIXES.includes(s.id) ||
+          s.id.startsWith("user_") ||
+          s.id.startsWith("manual_device_")
+        ) {
           legacyIdsToDelete.push(s.id);
           continue;
         }
@@ -158,8 +154,8 @@ export default function StaffLocationAndPhoneStatusPage() {
       }
 
       const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
-        owner: "Owner / Admin",
-        admin: "Owner / Admin",
+        owner: "Owner",
+        admin: "Owner",
         manager: "Field Supervisor",
         accountant: "Accountant",
         warehouse_staff: "Store Staff",
@@ -169,16 +165,34 @@ export default function StaffLocationAndPhoneStatusPage() {
         recovery_officer: "Recovery Officer",
       };
 
+      const normalizeRoleTitle = (
+        rawRole?: string
+      ): StaffMonitoringProfile["roleTitle"] => {
+        if (!rawRole) return "Order Booker";
+        if (rawRole === "Owner / Admin" || rawRole === "Owner") return "Owner";
+        return (roleMap[rawRole] || rawRole) as StaffMonitoringProfile["roleTitle"];
+      };
+
       const userById = new Map(realUsers.map((u) => [u.id, u]));
 
-      // Enrich each device session with latest user displayName / role / phone without touching its independent battery or deviceModel
+      // Enrich each device session with latest normalized user displayName / role / phone without touching its independent battery or deviceModel
       const enrichedSessions = validSessions.map((session) => {
         const matchedUser = session.userId ? userById.get(session.userId) : undefined;
-        if (!matchedUser) return session;
+        if (!matchedUser) {
+          return {
+            ...session,
+            name: normalizeUserDisplayName(session.name, "Owner"),
+            roleTitle: normalizeRoleTitle(session.roleTitle),
+          };
+        }
+        const resolvedRole = roleMap[matchedUser.role] || normalizeRoleTitle(session.roleTitle);
         return {
           ...session,
-          name: matchedUser.displayName || matchedUser.email || session.name,
-          roleTitle: roleMap[matchedUser.role] || session.roleTitle,
+          name: normalizeUserDisplayName(
+            matchedUser.displayName,
+            resolvedRole === "Owner" ? "Owner" : matchedUser.email || session.name
+          ),
+          roleTitle: resolvedRole,
           phone: matchedUser.phone || matchedUser.email || session.phone,
           userEmail: matchedUser.email,
         };
@@ -192,13 +206,17 @@ export default function StaffLocationAndPhoneStatusPage() {
       const unconnectedPlaceholders: StaffMonitoringProfile[] = [];
       for (const u of realUsers) {
         if (!usersWithSessions.has(u.id)) {
+          const resolvedRole = roleMap[u.role] || "Order Booker";
           unconnectedPlaceholders.push({
             id: `unconnected_${u.id}`,
             userId: u.id,
             userEmail: u.email,
             accountRole: u.role,
-            name: u.displayName || u.email,
-            roleTitle: roleMap[u.role] || "Order Booker",
+            name: normalizeUserDisplayName(
+              u.displayName,
+              resolvedRole === "Owner" ? "Owner" : u.email
+            ),
+            roleTitle: resolvedRole,
             phone: u.phone || u.email,
             vehicleType: "bike",
             territory: "Karachi",
@@ -303,53 +321,6 @@ export default function StaffLocationAndPhoneStatusPage() {
 
     return { countsByUser, mobileIdxBySession };
   }, [staffList]);
-
-  // Add manual staff mobile tracker
-  const handleAddStaffMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!staffName.trim()) return;
-
-    const meta = await detectDeviceMetadata();
-    const idx = staffList.length + 1;
-    const now = new Date();
-    const newStaff: StaffMonitoringProfile = {
-      id: `manual_device_${Date.now()}`,
-      deviceCategory: "mobile",
-      hasBatteryApi: true,
-      hasRealGpsFix: false,
-      lastUpdatedIso: now.toISOString(),
-      name: staffName.trim(),
-      roleTitle: staffRole,
-      phone: staffPhone.trim() || "0300-0000000",
-      vehicleType: "bike",
-      territory: currentLocationText.trim() || "Karachi",
-      liveState: "moving",
-      statusHeadline: "Manual Device Entry",
-      currentSpeedKmh: 0,
-      currentRoadOrLocation: currentLocationText.trim() || "Tariq Road, Karachi",
-      shiftStartTime: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      batteryLevel: Math.min(100, Math.max(1, Number(batteryPct) || 85)),
-      isCharging: false,
-      gpsAccuracyMeters: 10,
-      gpsSignal: "Moderate Signal",
-      lastPingTime: "Just now",
-      deviceModel: deviceModel.trim() || meta.deviceModel,
-      lat: 24.8689 + (idx % 5) * 0.004,
-      lng: 67.0612 + (idx % 5) * 0.004,
-      x: 30 + ((idx * 14) % 50),
-      y: 28 + ((idx * 12) % 48),
-      dayRoute: [],
-    };
-
-    await offlineDb.staffMonitors?.put(newStaff);
-    await loadAndAutoFetchStaff();
-    setSelectedStaffId(newStaff.id);
-    setStaffName("");
-    setStaffPhone("");
-    setDeviceModel("");
-    setIsAddModalOpen(false);
-    showToast(`Added ${newStaff.name} (${newStaff.deviceModel}) to device monitor.`);
-  };
 
   const connectedDevices = useMemo(
     () => staffList.filter((s) => !s.id.startsWith("unconnected_")),
@@ -469,15 +440,6 @@ export default function StaffLocationAndPhoneStatusPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-teal-600" : ""}`} />
             <span>Refresh</span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20"
-          >
-            <Plus className="w-4 h-4 shrink-0" />
-            <span>Add Manual Mobile</span>
-          </button>
         </div>
       </div>
 
@@ -509,7 +471,9 @@ export default function StaffLocationAndPhoneStatusPage() {
               {selectedStaff?.deviceModel || "No Device Selected"}
             </span>
             <span className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold truncate block mt-0.5">
-              {selectedStaff ? `${selectedStaff.name} (${selectedStaff.roleTitle})` : "—"}
+              {selectedStaff
+                ? formatNameWithRole(selectedStaff.name, selectedStaff.roleTitle)
+                : "—"}
             </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shrink-0">
@@ -655,9 +619,11 @@ export default function StaffLocationAndPhoneStatusPage() {
                           <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 truncate">
                             {rep.name}
                           </h3>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                            {rep.roleTitle}
-                          </span>
+                          {!isRoleRedundantForName(rep.name, rep.roleTitle) && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              {rep.roleTitle}
+                            </span>
+                          )}
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               isDesktop
@@ -920,7 +886,7 @@ export default function StaffLocationAndPhoneStatusPage() {
                 <div className="flex items-center justify-between py-1 border-b border-slate-200/70 dark:border-slate-800 gap-2">
                   <span className="text-slate-500">Account &amp; Role:</span>
                   <span className="font-bold text-slate-900 dark:text-slate-100 text-right">
-                    {selectedStaff.name} ({selectedStaff.roleTitle})
+                    {formatNameWithRole(selectedStaff.name, selectedStaff.roleTitle)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-1 border-b border-slate-200/70 dark:border-slate-800 gap-2">
@@ -955,130 +921,6 @@ export default function StaffLocationAndPhoneStatusPage() {
           )}
         </div>
       </div>
-
-      {/* ADD MANUAL STAFF MOBILE MODAL */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
-                Add Manual Staff Mobile Tracker
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddStaffMember} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Staff Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={staffName}
-                  onChange={(e) => setStaffName(e.target.value)}
-                  placeholder="e.g. Hassan Ali"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Role
-                  </label>
-                  <select
-                    value={staffRole}
-                    onChange={(e) => setStaffRole(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                  >
-                    <option value="Order Booker">Order Booker</option>
-                    <option value="Medical Rep">Medical Rep</option>
-                    <option value="Recovery Officer">Recovery Officer</option>
-                    <option value="Field Supervisor">Field Supervisor</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="text"
-                    value={staffPhone}
-                    onChange={(e) => setStaffPhone(e.target.value)}
-                    placeholder="0300-1234567"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Mobile Name / Model *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={deviceModel}
-                  onChange={(e) => setDeviceModel(e.target.value)}
-                  placeholder="e.g. Samsung Galaxy A54 / Redmi Note 13"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Current Location / Area
-                  </label>
-                  <input
-                    type="text"
-                    value={currentLocationText}
-                    onChange={(e) => setCurrentLocationText(e.target.value)}
-                    placeholder="e.g. Tariq Road, Karachi"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Battery %
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={batteryPct}
-                    onChange={(e) => setBatteryPct(Number(e.target.value) || 80)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md"
-                >
-                  Save Staff Mobile
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

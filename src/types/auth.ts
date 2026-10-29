@@ -205,3 +205,108 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "crm:visits",
   ],
 };
+
+const LEGACY_OWNER_DISPLAY_NAMES = new Set([
+  "system administrator",
+  "system administrator (owner)",
+  "system admin",
+  "administrator",
+  "administrator (admin)",
+  "admin",
+  "admin user",
+  "owner / admin",
+  "shop owner / admin",
+  "owner (owner)",
+]);
+
+/**
+ * Normalizes legacy "System Administrator" / "Admin" names to "Owner"
+ * and strips redundant "(Owner)" / "(Admin)" suffixes.
+ */
+export function normalizeUserDisplayName(
+  rawName?: string | null,
+  fallback = "Owner"
+): string {
+  const trimmed = (rawName || "").trim();
+  if (!trimmed) return fallback;
+
+  if (LEGACY_OWNER_DISPLAY_NAMES.has(trimmed.toLowerCase())) {
+    return "Owner";
+  }
+
+  const stripped = trimmed
+    .replace(/\s*\((?:System Administrator|Administrator|Owner\s*\/\s*Admin|Admin|Owner)\)/gi, "")
+    .trim();
+
+  if (!stripped || LEGACY_OWNER_DISPLAY_NAMES.has(stripped.toLowerCase())) {
+    return "Owner";
+  }
+
+  return stripped;
+}
+
+/**
+ * Returns a clean user-facing role title ("Owner" instead of "Admin" / "System Administrator").
+ */
+export function getUserRoleLabel(roleOrTitle?: string | null): string {
+  const raw = (roleOrTitle || "").trim();
+  if (!raw) return "Staff";
+
+  const key = raw.toLowerCase();
+  if (
+    key === "owner" ||
+    key === "admin" ||
+    key === "owner / admin" ||
+    key === "system administrator" ||
+    key === "administrator"
+  ) {
+    return "Owner";
+  }
+  if (key === "manager") return "Manager";
+  if (key === "accountant") return "Accountant";
+  if (key === "warehouse_staff") return "Store Staff";
+  if (key === "booking_user") return "Order Booker";
+  if (key === "sales_rep" || key === "medical_rep") return "Medical Rep";
+  if (key === "recovery_officer") return "Recovery Officer";
+
+  // Preserve already-formatted human titles like "Field Supervisor", "Order Booker", etc.
+  if (raw.includes(" ") || /^[A-Z]/.test(raw)) {
+    return raw;
+  }
+
+  return raw.replace(/_/g, " ");
+}
+
+/**
+ * True when displaying the role next to the user's name would cause duplication
+ * (e.g., name="Owner" and role="Owner").
+ */
+export function isRoleRedundantForName(
+  name?: string | null,
+  roleOrTitle?: string | null
+): boolean {
+  const cleanRole = getUserRoleLabel(roleOrTitle).trim().toLowerCase();
+  if (!cleanRole) return true;
+  const cleanName = normalizeUserDisplayName(name, "").trim().toLowerCase();
+  if (!cleanName) return false;
+  return cleanName === cleanRole || cleanName.includes(cleanRole);
+}
+
+/**
+ * Formats "Name (Role)" or "Name • Role" without ever duplicating "Owner (Owner)".
+ */
+export function formatNameWithRole(
+  name?: string | null,
+  roleOrTitle?: string | null,
+  style: "parens" | "bullet" = "parens"
+): string {
+  const cleanName = normalizeUserDisplayName(name, "Owner");
+  if (!roleOrTitle) return cleanName;
+  const cleanRole = getUserRoleLabel(roleOrTitle);
+  if (isRoleRedundantForName(cleanName, cleanRole)) {
+    return cleanName;
+  }
+  return style === "bullet"
+    ? `${cleanName} • ${cleanRole}`
+    : `${cleanName} (${cleanRole})`;
+}

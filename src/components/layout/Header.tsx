@@ -39,7 +39,13 @@ import { syncManager } from "@/lib/offline/sync";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
-import type { DynamicCategory, UserProfile } from "@/types";
+import {
+  getUserRoleLabel,
+  isRoleRedundantForName,
+  normalizeUserDisplayName,
+  type DynamicCategory,
+  type UserProfile,
+} from "@/types";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -511,7 +517,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
 
   const roleLabel =
     currentUser?.role === "owner" || currentUser?.role === "admin"
-      ? "Owner / Admin"
+      ? "Owner"
       : currentUser?.role === "manager"
       ? "Manager"
       : currentUser?.role === "accountant"
@@ -520,9 +526,13 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
       ? "Store & Stock Staff"
       : currentUser?.role === "sales_rep" || currentUser?.role === "booking_user"
       ? "Order Booking Staff"
-      : currentUser?.role === "recovery_officer"
-      ? "Recovery Officer"
-      : "Medical Rep";
+      : getUserRoleLabel(currentUser?.role);
+
+  const displayUserName = normalizeUserDisplayName(
+    currentUser?.displayName,
+    roleLabel === "Owner" ? "Owner" : "Staff"
+  );
+  const roleIsDuplicateOfName = isRoleRedundantForName(displayUserName, roleLabel);
 
   const hasAnyResults =
     searchResults.navItems.length > 0 ||
@@ -848,14 +858,16 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
               className="flex items-center gap-1.5 sm:gap-2 p-1 min-h-[40px] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all btn-interactive"
             >
               <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
-                {currentUser?.displayName ? currentUser.displayName[0].toUpperCase() : "A"}
+                {displayUserName ? displayUserName[0].toUpperCase() : "O"}
               </div>
               <div className="hidden sm:flex flex-col text-left">
                 <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
-                  {currentUser?.displayName || "Admin User"}
+                  {displayUserName}
                 </span>
-                <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 leading-tight">
-                  {roleLabel}
+                <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 leading-tight truncate max-w-[140px]">
+                  {roleIsDuplicateOfName
+                    ? currentUser?.email || "Full Access"
+                    : roleLabel}
                 </span>
               </div>
               <ChevronDown className="hidden sm:block w-4 h-4 text-slate-400 shrink-0" />
@@ -868,14 +880,14 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
               >
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
                   <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                    {currentUser?.displayName || "Shop Owner / Admin"}
+                    {displayUserName}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                     {currentUser?.email || "admin@noxderma.com"}
                   </p>
                   <span className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
                     <Shield className="w-3.5 h-3.5" />
-                    {roleLabel}
+                    {roleIsDuplicateOfName ? "Full System Access" : roleLabel}
                   </span>
                 </div>
 

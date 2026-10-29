@@ -257,7 +257,7 @@ export default function LoginPage() {
               </label>
 
               <span className="text-xs text-slate-500">
-                Forgot password? Contact admin
+                Forgot password? Contact Owner
               </span>
             </div>
 

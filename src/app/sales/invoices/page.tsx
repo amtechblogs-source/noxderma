@@ -136,8 +136,8 @@ export default function SalesInvoicesListPage() {
               balanceAfter: restoredQty,
               referenceId: inv.id,
               referenceType: "invoice",
-              userId: "usr_admin",
-              userName: "Admin",
+              userId: currentUser?.id || "usr_admin",
+              userName: currentUser?.displayName || "Owner",
               reason: `Invoice deleted: ${inv.provisionalReference || inv.id}`,
               timestamp: now,
             });
@@ -182,8 +182,8 @@ export default function SalesInvoicesListPage() {
       setDeletingInvoice(null);
       await recordActivity({
         userId: currentUser?.id || "usr_admin",
-        userName: currentUser?.displayName || "System Administrator",
-        userRole: currentUser?.role || "admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
         userEmail: currentUser?.email,
         action: "delete",
         entityType: "invoice",
@@ -232,8 +232,8 @@ export default function SalesInvoicesListPage() {
         if (inv) {
           await recordActivity({
             userId: currentUser?.id || "usr_admin",
-            userName: currentUser?.displayName || "System Administrator",
-            userRole: currentUser?.role || "admin",
+            userName: currentUser?.displayName || "Owner",
+            userRole: currentUser?.role || "owner",
             userEmail: currentUser?.email,
             action: "delete",
             entityType: "invoice",

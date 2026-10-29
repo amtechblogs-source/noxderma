@@ -38,6 +38,12 @@ import {
   seedInitialAuditLogsIfEmpty,
 } from "@/lib/audit/auditTracker";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
+import {
+  formatNameWithRole,
+  getUserRoleLabel,
+  isRoleRedundantForName,
+  normalizeUserDisplayName,
+} from "@/types";
 
 export default function AuditLogsPage() {
   const { currentUser, hasPermission } = useAuth();
@@ -249,7 +255,7 @@ export default function AuditLogsPage() {
               Owner Audit Ledger
             </span>
             <p><strong>Printed On:</strong> {formatKarachiDate(new Date(), true)}</p>
-            <p><strong>Audited By:</strong> {currentUser?.displayName} (Owner)</p>
+            <p><strong>Audited By:</strong> {formatNameWithRole(currentUser?.displayName, "Owner")}</p>
           </div>
         </div>
       </div>
@@ -538,19 +544,27 @@ export default function AuditLogsPage() {
 
                       {/* Staff Member */}
                       <td className="p-3.5 align-top">
-                        <div className="flex items-start gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 shrink-0">
-                            {log.userName.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm">
-                              {log.userName}
-                            </span>
-                            <span className="text-[10px] font-mono uppercase text-slate-400 block">
-                              {log.userRole || "staff"}
-                            </span>
-                          </div>
-                        </div>
+                        {(() => {
+                          const cleanLogName = normalizeUserDisplayName(log.userName, "Owner");
+                          const cleanLogRole = getUserRoleLabel(log.userRole || "staff");
+                          return (
+                            <div className="flex items-start gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 shrink-0">
+                                {cleanLogName.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm">
+                                  {cleanLogName}
+                                </span>
+                                {!isRoleRedundantForName(cleanLogName, cleanLogRole) && (
+                                  <span className="text-[10px] font-mono uppercase text-slate-400 block">
+                                    {cleanLogRole}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Target Item & Module */}
@@ -575,7 +589,7 @@ export default function AuditLogsPage() {
                         {isUndone && log.undoneBy && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 mt-1">
                             <RotateCcw className="w-3 h-3" />
-                            Undone by {log.undoneBy} on {formatKarachiDate(log.undoneAt || "", true)}
+                            Undone by {normalizeUserDisplayName(log.undoneBy, "Owner")} on {formatKarachiDate(log.undoneAt || "", true)}
                           </span>
                         )}
                       </td>
@@ -671,7 +685,9 @@ export default function AuditLogsPage() {
               </div>
               <div className="flex justify-between py-0.5 border-b border-amber-200/50">
                 <span className="font-bold text-slate-500">Performed By:</span>
-                <span className="font-bold">{undoTargetLog.userName} ({undoTargetLog.userRole})</span>
+                <span className="font-bold">
+                  {formatNameWithRole(undoTargetLog.userName, undoTargetLog.userRole)}
+                </span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-amber-200/50">
                 <span className="font-bold text-slate-500">Action:</span>
@@ -754,7 +770,7 @@ export default function AuditLogsPage() {
                 <span className="font-bold text-slate-500">Summary:</span>
                 <p className="font-medium text-slate-800 dark:text-slate-200">{inspectLog.details}</p>
                 <div className="text-[11px] text-slate-400 pt-1">
-                  Recorded by <strong>{inspectLog.userName}</strong> on {formatKarachiDate(inspectLog.timestamp, true)}
+                  Recorded by <strong>{normalizeUserDisplayName(inspectLog.userName, "Owner")}</strong> on {formatKarachiDate(inspectLog.timestamp, true)}
                 </div>
               </div>
 

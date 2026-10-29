@@ -156,7 +156,10 @@ export default function SyncReconciliationPage() {
                   </span>
                   <p className="text-rose-600 font-medium mt-0.5">{conf.conflictMessage}</p>
                   <p className="text-[10px] text-slate-500">
-                    Detected: {formatKarachiDate(conf.createdAt, true)} • Status: {conf.resolutionStatus}
+                    Detected: {formatKarachiDate(conf.createdAt, true)} • Status:{" "}
+                    {conf.resolutionStatus === "pending_admin_review"
+                      ? "Pending Owner Review"
+                      : conf.resolutionStatus.replace(/_/g, " ")}
                   </p>
                 </div>
                 {conf.resolutionStatus === "pending_admin_review" && (

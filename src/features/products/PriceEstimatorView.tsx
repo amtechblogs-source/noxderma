@@ -732,7 +732,7 @@ export function PriceEstimatorView() {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Warehouse & Admin Overheads
+                      Warehouse & Office Overheads
                     </label>
                     <div className="relative">
                       <Building2 className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -1597,7 +1597,9 @@ export function PriceEstimatorView() {
               Prepared by:
             </span>
             <span className="text-xs sm:text-sm font-black text-black block mt-0.5">
-              {preparerName} ({preparerRole})
+              {preparerName.trim().toLowerCase() === preparerRole.trim().toLowerCase()
+                ? preparerName
+                : `${preparerName} (${preparerRole})`}
             </span>
           </div>
         </div>

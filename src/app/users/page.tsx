@@ -28,6 +28,8 @@ import {
   PERMISSION_GROUPS,
   ROLE_PERMISSIONS,
   ALL_PERMISSIONS,
+  getUserRoleLabel,
+  normalizeUserDisplayName,
 } from "@/types/auth";
 import { offlineDb } from "@/lib/offline/db";
 
@@ -57,8 +59,8 @@ export default function UserManagementPage() {
       const defaultAdminUser: UserProfile = {
         id: "usr_admin",
         email: "admin@noxderma.com",
-        displayName: "System Administrator (Owner)",
-        role: "admin",
+        displayName: "Owner",
+        role: "owner",
         password: "admin",
         permissions: ALL_PERMISSIONS,
         active: true,
@@ -66,10 +68,24 @@ export default function UserManagementPage() {
         lastLoginAt: new Date().toISOString(),
       };
 
+      const normalizeLoadedUsers = (list: UserProfile[]): UserProfile[] =>
+        list.map((u) => {
+          const isOwnerAccount =
+            u.id === "usr_admin" || u.role === "owner" || u.role === "admin";
+          return {
+            ...u,
+            displayName: normalizeUserDisplayName(
+              u.displayName,
+              isOwnerAccount ? "Owner" : u.email
+            ),
+            role: u.role === "admin" ? "owner" : u.role,
+          };
+        });
+
       try {
         const dbUsers = await (offlineDb as any).users?.toArray();
         if (dbUsers && dbUsers.length > 0) {
-          setUsers(dbUsers as UserProfile[]);
+          setUsers(normalizeLoadedUsers(dbUsers as UserProfile[]));
           return;
         }
       } catch {
@@ -81,7 +97,7 @@ export default function UserManagementPage() {
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setUsers(parsed);
+            setUsers(normalizeLoadedUsers(parsed));
             return;
           }
         } catch {
@@ -139,10 +155,15 @@ export default function UserManagementPage() {
   // Open modal for editing user
   const handleOpenEditModal = (u: UserProfile) => {
     setEditingUserId(u.id);
-    setDisplayName(u.displayName);
+    setDisplayName(
+      normalizeUserDisplayName(
+        u.displayName,
+        u.role === "owner" || u.role === "admin" || u.id === "usr_admin" ? "Owner" : u.email
+      )
+    );
     setEmail(u.email);
     setPassword(u.password || "admin");
-    setRole(u.role);
+    setRole(u.role === "admin" ? "owner" : u.role);
     setPhone(u.phone || "");
     const perms = Array.isArray(u.permissions)
       ? u.permissions
@@ -215,7 +236,7 @@ export default function UserManagementPage() {
   // Toggle user active status
   const toggleUserActive = (userId: string) => {
     if (userId === "usr_admin") {
-      alert("System Administrator account ko deactivate nahi kiya ja sakta.");
+      alert("Owner account ko deactivate nahi kiya ja sakta.");
       return;
     }
     const updated = users.map((u) => (u.id === userId ? { ...u, active: !u.active } : u));
@@ -225,7 +246,7 @@ export default function UserManagementPage() {
   // Delete user
   const handleDeleteUser = (userId: string) => {
     if (userId === "usr_admin") {
-      alert("System Administrator account delete nahi kiya ja sakta.");
+      alert("Owner account delete nahi kiya ja sakta.");
       return;
     }
     if (confirm("Kiya aap waqai is staff user ko delete karna chahte hain?")) {
@@ -238,7 +259,8 @@ export default function UserManagementPage() {
     const matchesSearch =
       u.displayName.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase());
-    const matchesRole = roleFilter === "all" || u.role === roleFilter;
+    const effectiveRole = u.role === "admin" ? "owner" : u.role;
+    const matchesRole = roleFilter === "all" || effectiveRole === roleFilter;
     return matchesSearch && matchesRole;
   });
 
@@ -304,8 +326,7 @@ export default function UserManagementPage() {
             className="w-full sm:w-auto min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
           >
             <option value="all">All Roles</option>
-            <option value="owner">Company Owner</option>
-            <option value="admin">Administrator (Admin)</option>
+            <option value="owner">Owner</option>
             <option value="manager">Manager</option>
             <option value="accountant">Accountant</option>
             <option value="warehouse_staff">Warehouse / Godown Staff</option>
@@ -334,16 +355,14 @@ export default function UserManagementPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-base leading-snug">
-                      {user.displayName}
+                      {normalizeUserDisplayName(user.displayName, "Owner")}
                     </h3>
                     <p className="font-mono text-xs text-slate-400 font-medium">{user.email}</p>
                   </div>
                   <span
                     className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase ${
-                      user.role === "owner"
+                      user.role === "owner" || user.role === "admin"
                         ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/30"
-                        : user.role === "admin"
-                        ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
                         : user.role === "manager"
                         ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                         : user.role === "accountant"
@@ -353,7 +372,7 @@ export default function UserManagementPage() {
                         : "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
                     }`}
                   >
-                    {user.role === "owner" ? "Owner" : user.role.replace("_", " ")}
+                    {getUserRoleLabel(user.role)}
                   </span>
                 </div>
 
@@ -361,7 +380,7 @@ export default function UserManagementPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500 font-medium">Modular Permissions:</span>
                     <span className="font-bold text-teal-600 dark:text-teal-400">
-                      {user.role === "owner" || user.id === "usr_admin"
+                      {user.role === "owner" || user.role === "admin" || user.id === "usr_admin"
                         ? "All (Owner Full Access)"
                         : `${userPermCount} / ${ALL_PERMISSIONS.length} Selected`}
                     </span>
@@ -435,7 +454,7 @@ export default function UserManagementPage() {
                   >
                     <td className="py-3.5 px-3">
                       <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                        {user.displayName}
+                        {normalizeUserDisplayName(user.displayName, "Owner")}
                       </span>
                       <span className="font-mono text-xs text-slate-400">{user.id}</span>
                     </td>
@@ -448,10 +467,8 @@ export default function UserManagementPage() {
                     <td className="py-3.5 px-3">
                       <span
                         className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase ${
-                          user.role === "owner"
+                          user.role === "owner" || user.role === "admin"
                             ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/30"
-                            : user.role === "admin"
-                            ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
                             : user.role === "manager"
                             ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                             : user.role === "accountant"
@@ -461,19 +478,19 @@ export default function UserManagementPage() {
                             : "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
                         }`}
                       >
-                        {user.role === "owner" ? "Owner" : user.role.replace("_", " ")}
+                        {getUserRoleLabel(user.role)}
                       </span>
                     </td>
 
                     <td className="py-3.5 px-3">
                       <div className="flex items-center gap-1.5">
                         <span className="px-2.5 py-1 rounded-md font-bold font-mono text-xs bg-slate-100 dark:bg-slate-800 text-teal-600 dark:text-teal-400">
-                          {user.role === "owner" || user.id === "usr_admin"
+                          {user.role === "owner" || user.role === "admin" || user.id === "usr_admin"
                             ? "All (Owner Full Access)"
                             : `${userPermCount} / ${ALL_PERMISSIONS.length} Selected`}
                         </span>
                         <span className="text-xs text-slate-400">
-                          {user.role === "owner" || user.id === "usr_admin"
+                          {user.role === "owner" || user.role === "admin" || user.id === "usr_admin"
                             ? "Master Unrestricted"
                             : user.permissions
                             ? "Customized"
@@ -614,8 +631,7 @@ export default function UserManagementPage() {
                     onChange={(e) => handleRoleChange(e.target.value as UserRole)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
-                    <option value="owner">Company Owner (Master Access & Audit Undo)</option>
-                    <option value="admin">System Administrator (Full All Modules)</option>
+                    <option value="owner">Owner (Master Access & Audit Undo)</option>
                     <option value="manager">Operations Manager (Sales, Stock, Khata)</option>
                     <option value="accountant">Accountant / Cashier (Khata, Payments, P&L)</option>
                     <option value="warehouse_staff">Warehouse / Godown Staff (Stock In/Out, GRN)</option>

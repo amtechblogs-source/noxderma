@@ -507,7 +507,7 @@ export function ProductCatalogView() {
           referenceId: `INIT-${bchNum}`,
           referenceType: "goods_receipt",
           userId: currentUser?.id || "usr_admin",
-          userName: currentUser?.displayName || "Admin",
+          userName: currentUser?.displayName || "Owner",
           reason: "Initial warehouse stock added during product setup",
           timestamp: now,
         });
@@ -689,7 +689,7 @@ export function ProductCatalogView() {
               referenceId: `EDIT-${editingProduct.sku}`,
               referenceType: "adjustment",
               userId: currentUser?.id || "usr_admin",
-              userName: currentUser?.displayName || "Admin",
+              userName: currentUser?.displayName || "Owner",
               reason: "Real-time stock updated from Medicine Catalog",
               timestamp: now,
             });

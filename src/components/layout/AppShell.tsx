@@ -30,7 +30,7 @@ import {
   detectDeviceMetadata,
   readDevicePowerState,
 } from "@/lib/monitoring/deviceIdentity";
-import type { StaffMonitoringProfile } from "@/types";
+import { normalizeUserDisplayName, type StaffMonitoringProfile } from "@/types";
 
 const TELEMETRY_AUTO_SYNC_DELAY_MS = 10_000; // 10-second throttle for GPS & battery updates
 
@@ -142,8 +142,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     let isUnmounted = false;
 
     const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
-      owner: "Owner / Admin",
-      admin: "Owner / Admin",
+      owner: "Owner",
+      admin: "Owner",
       manager: "Field Supervisor",
       accountant: "Accountant",
       warehouse_staff: "Store Staff",
@@ -208,7 +208,12 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           hasBatteryApi: power.hasBatteryApi,
           hasRealGpsFix: hasRealGps,
           lastUpdatedIso: now.toISOString(),
-          name: currentUser.displayName || currentUser.email,
+          name: normalizeUserDisplayName(
+            currentUser.displayName,
+            currentUser.role === "owner" || currentUser.role === "admin"
+              ? "Owner"
+              : currentUser.email
+          ),
           roleTitle: roleMap[currentUser.role] || "Order Booker",
           phone: currentUser.phone || currentUser.email,
           vehicleType: existing?.vehicleType || (meta.deviceCategory === "desktop" ? "car" : "bike"),
