@@ -511,6 +511,17 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
 
       const invoiceLines: InvoiceLine[] = lines.map((l, idx) => {
         const lineTotal = l.quantity * l.unitPrice * (1 - l.discountPercent / 100);
+        const matchingPricing = pricings.find((p) => p.productId === l.productId);
+        const matchingBatch = batches.find((b) => b.id === l.batchId);
+        const matchingProd = products.find((p) => p.id === l.productId);
+        const unitCost =
+          matchingPricing?.purchaseCostPerPack ||
+          (matchingBatch as any)?.purchasePrice ||
+          (matchingBatch as any)?.unitCost ||
+          (matchingProd as any)?.purchaseCostPerPack ||
+          (matchingProd as any)?.costPrice ||
+          0;
+
         return {
           id: `line_${idx + 1}`,
           productId: l.productId,
@@ -528,6 +539,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               batchNumber: l.batchNumber,
               expiryDate: l.expiryDate,
               quantity: l.quantity,
+              unitCostAtAllocation: Number(unitCost) || 0,
             },
           ],
         };

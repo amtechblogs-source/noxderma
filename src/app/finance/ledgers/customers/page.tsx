@@ -33,9 +33,45 @@ export default function CustomerLedgersPage() {
         offlineDb.invoices.toArray(),
         offlineDb.payments.toArray(),
       ]);
+
+      const invoiceIds = new Set(invList.map((i) => i.id));
+      const invoiceRefs = new Set(invList.map((i) => i.provisionalReference).filter(Boolean));
+
+      // Filter out orphan payments created for invoices that have since been deleted
+      const validPayments: Payment[] = [];
+      const orphanPayments: Payment[] = [];
+
+      for (const p of payList) {
+        const isAutoInvoicePay =
+          (p.allocations && p.allocations.length > 0) ||
+          (p.referenceNumber && p.referenceNumber.startsWith("INV-"));
+
+        if (isAutoInvoicePay) {
+          const hasExistingInvoice =
+            (p.allocations &&
+              p.allocations.some(
+                (a) => invoiceIds.has(a.invoiceId) || invoiceRefs.has(a.invoiceReference)
+              )) ||
+            (p.referenceNumber && invoiceRefs.has(p.referenceNumber));
+
+          if (!hasExistingInvoice) {
+            orphanPayments.push(p);
+            continue;
+          }
+        }
+        validPayments.push(p);
+      }
+
+      // Automatically purge orphan payments from local storage
+      if (orphanPayments.length > 0) {
+        for (const op of orphanPayments) {
+          offlineDb.payments.delete(op.id).catch(() => {});
+        }
+      }
+
       setCustomers(custList);
       setInvoices(invList);
-      setPayments(payList);
+      setPayments(validPayments);
     } finally {
       setLoading(false);
     }
@@ -51,7 +87,7 @@ export default function CustomerLedgersPage() {
       id: `ledg_inv_${inv.id}`,
       customerId: inv.customerId,
       customerName: inv.customerName,
-      date: inv.invoiceDate || inv.createdAt.slice(0, 10),
+      date: (inv.invoiceDate || inv.createdAt).slice(0, 10),
       referenceNumber: inv.provisionalReference || inv.id,
       type: "Sales Bill",
       description: `Bill Issued (${inv.lines?.length || 1} medicines)`,
@@ -63,7 +99,7 @@ export default function CustomerLedgersPage() {
       id: `ledg_pay_${pay.id}`,
       customerId: pay.customerId,
       customerName: pay.customerName,
-      date: pay.paymentDate,
+      date: (pay.paymentDate || pay.createdAt).slice(0, 10),
       referenceNumber: pay.referenceNumber || pay.id,
       type: "Payment Received",
       description: `Cash Received (${pay.paymentMethod === "cash" ? "Cash" : "Bank Transfer"})`,
@@ -83,23 +119,38 @@ export default function CustomerLedgersPage() {
     return matchesCustomer && matchesSearch;
   });
 
-  // Calculate Running Balance (Baqaya)
-  let currentRunningBalance = 0;
+  // Calculate Running Balance (Baqaya) per customer so balances never cross-contaminate
+  const customerRunningMap: Record<string, number> = {};
   const computedLedger = filteredEntries.map((e) => {
-    currentRunningBalance += e.debit - e.credit;
+    const prev = customerRunningMap[e.customerId] || 0;
+    const next = prev + (e.debit - e.credit);
+    customerRunningMap[e.customerId] = next;
     return {
       ...e,
-      runningBalance: currentRunningBalance,
+      runningBalance: next,
     };
   });
 
-  const totalReceivables = customers.reduce(
-    (sum, c) => sum + (c.currentOutstandingBalance || 0),
-    0
-  );
-
   const selectedCustomerObj =
     selectedCustomerId === "all" ? null : customers.find((c) => c.id === selectedCustomerId);
+
+  const relevantInvoices =
+    selectedCustomerId === "all"
+      ? invoices
+      : invoices.filter((i) => i.customerId === selectedCustomerId);
+
+  const relevantPayments =
+    selectedCustomerId === "all"
+      ? payments
+      : payments.filter((p) => p.customerId === selectedCustomerId);
+
+  const totalReceivables =
+    selectedCustomerId === "all"
+      ? customers.reduce((sum, c) => sum + (c.currentOutstandingBalance || 0), 0)
+      : selectedCustomerObj?.currentOutstandingBalance || 0;
+
+  const totalBillsAmount = relevantInvoices.reduce((sum, i) => sum + (i.netTotal || 0), 0);
+  const totalCashReceived = relevantPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -164,7 +215,9 @@ export default function CustomerLedgersPage() {
           <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
             {formatPKR(totalReceivables)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">From {customers.length} Customers</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">
+            {selectedCustomerObj ? selectedCustomerObj.name : `From ${customers.length} Customers`}
+          </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -172,9 +225,11 @@ export default function CustomerLedgersPage() {
             Total Bills Given (+)
           </span>
           <span className="text-2xl font-black font-mono text-rose-600">
-            {formatPKR(invoices.reduce((sum, i) => sum + i.netTotal, 0))}
+            {formatPKR(totalBillsAmount)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">{invoices.length} Bills Made</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">
+            {relevantInvoices.length} Bills Made
+          </span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -182,9 +237,11 @@ export default function CustomerLedgersPage() {
             Total Cash Received (-)
           </span>
           <span className="text-2xl font-black font-mono text-emerald-600">
-            {formatPKR(payments.reduce((sum, p) => sum + p.amount, 0))}
+            {formatPKR(totalCashReceived)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">{payments.length} Payments Collected</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">
+            {relevantPayments.length} Payments Collected
+          </span>
         </div>
       </div>
 
@@ -268,8 +325,20 @@ export default function CustomerLedgersPage() {
                     <td className="p-2.5 print:p-1.5 text-right font-mono font-bold text-emerald-600 print:text-black print:border-r print:border-slate-200">
                       {row.credit > 0 ? formatPKR(row.credit) : "—"}
                     </td>
-                    <td className="p-2.5 print:p-1.5 text-right font-mono font-black text-slate-900 dark:text-slate-100 print:text-black">
-                      {formatPKR(row.runningBalance)}
+                    <td className="p-2.5 print:p-1.5 text-right font-mono font-black print:text-black">
+                      <span
+                        className={
+                          row.runningBalance > 0
+                            ? "text-rose-600 dark:text-rose-400"
+                            : row.runningBalance < 0
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-slate-900 dark:text-slate-100"
+                        }
+                      >
+                        {row.runningBalance < 0
+                          ? `Adv ${formatPKR(Math.abs(row.runningBalance))}`
+                          : formatPKR(row.runningBalance)}
+                      </span>
                     </td>
                   </tr>
                 ))}

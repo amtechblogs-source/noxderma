@@ -43,6 +43,7 @@ export const SYNCED_TABLES: SyncedTableConfig[] = [
   { tableName: "liveMapPins", primaryKey: "id" },
   { tableName: "geoVerifiedPhotos", primaryKey: "id" },
   { tableName: "auditLogs", primaryKey: "id" },
+  { tableName: "operatingExpenses", primaryKey: "id", localStorageMirrorKey: "noxderma_operating_expenses" },
 ];
 
 const IGNORED_DEMO_IDS = new Set([

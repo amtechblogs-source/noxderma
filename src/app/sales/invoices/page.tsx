@@ -158,7 +158,20 @@ export default function SalesInvoicesListPage() {
       }
     }
 
-    // 3. Delete invoice from Dexie offline database
+    // 3. Delete any associated payment records for this invoice
+    const linkedPayments = await offlineDb.payments
+      .filter((p) => {
+        if (p.referenceNumber === inv.provisionalReference || p.referenceNumber === inv.id) return true;
+        if (p.allocations?.some((a) => a.invoiceId === inv.id || a.invoiceReference === inv.provisionalReference)) return true;
+        return false;
+      })
+      .toArray();
+
+    for (const p of linkedPayments) {
+      await offlineDb.payments.delete(p.id);
+    }
+
+    // 4. Delete invoice from Dexie offline database
     await offlineDb.invoices.delete(inv.id);
   };
 
@@ -173,6 +186,7 @@ export default function SalesInvoicesListPage() {
           offlineDb.inventoryBatches,
           offlineDb.stockMovements,
           offlineDb.customers,
+          offlineDb.payments,
         ],
         async () => {
           await deleteInvoiceRecord(inv);
@@ -217,6 +231,7 @@ export default function SalesInvoicesListPage() {
           offlineDb.inventoryBatches,
           offlineDb.stockMovements,
           offlineDb.customers,
+          offlineDb.payments,
         ],
         async () => {
           for (const id of selectedInvoiceIds) {

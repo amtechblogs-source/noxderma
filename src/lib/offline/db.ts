@@ -19,6 +19,7 @@ import type {
   DailyBeatPlan,
   LiveMapTransactionPin,
   GeoVerifiedPhoto,
+  OperatingExpense,
 } from "@/types";
 
 export interface PendingImageRecord {
@@ -86,6 +87,7 @@ export class NoxdermaDexieDB extends Dexie {
   dailyBeatPlans!: Table<DailyBeatPlan, string>;
   liveMapPins!: Table<LiveMapTransactionPin, string>;
   geoVerifiedPhotos!: Table<GeoVerifiedPhoto, string>;
+  operatingExpenses!: Table<OperatingExpense, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -142,6 +144,10 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(7).stores({
       customerVisits: "id, customerId, employeeId, visitDate",
+    });
+
+    this.version(8).stores({
+      operatingExpenses: "id, category, date, paymentMethod, amount, createdAt",
     });
   }
 }

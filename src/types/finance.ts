@@ -46,6 +46,31 @@ export interface AgingBucket {
   invoiceCount: number;
 }
 
+export type ExpenseCategory =
+  | "traveling_fuel"
+  | "staff_salaries"
+  | "office_utilities"
+  | "marketing_promotion"
+  | "courier_delivery"
+  | "misc_other";
+
+export interface OperatingExpense {
+  id: string;
+  category: ExpenseCategory;
+  categoryLabel?: string;
+  title: string;
+  amount: number;
+  date: string;
+  paidTo?: string;
+  paymentMethod: "cash" | "bank_transfer" | "cheque" | "online";
+  referenceNumber?: string;
+  notes?: string;
+  createdById?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface ProfitAndLossReport {
   periodStart: string;
   periodEnd: string;
@@ -57,8 +82,13 @@ export interface ProfitAndLossReport {
   grossProfit: number;
   grossProfitMarginPercentage: number;
   operatingExpenses: {
+    travelingExpenses: number;
+    staffSalaries: number;
     damagedStockLoss: number;
     sampleExpense: number;
+    courierAndLogistics: number;
+    officeUtilities: number;
+    marketingExpenses: number;
     otherExpenses: number;
     totalOperatingExpenses: number;
   };

@@ -89,13 +89,15 @@ export default function ManufacturerLedgersPage() {
     return matchesMfr && matchesSearch;
   });
 
-  // Calculate Running Balance for filtered manufacturer
-  let currentBalance = 0;
+  // Calculate Running Balance per manufacturer
+  const mfrRunningMap: Record<string, number> = {};
   const computedList = filtered.map((e) => {
-    currentBalance += e.credit - e.debit;
+    const prev = mfrRunningMap[e.manufacturerId] || 0;
+    const next = prev + (e.credit - e.debit);
+    mfrRunningMap[e.manufacturerId] = next;
     return {
       ...e,
-      runningBalance: currentBalance,
+      runningBalance: next,
     };
   });
 

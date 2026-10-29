@@ -218,6 +218,27 @@ function CustomerDetailContent() {
         offlineDb.customerVisits.toArray(),
       ]);
 
+      const invoiceIds = new Set((invList || []).map((i) => i.id));
+      const invoiceRefs = new Set((invList || []).map((i) => i.provisionalReference).filter(Boolean));
+
+      // Filter out orphan payments from deleted invoices
+      const validPayList = (payList || []).filter((p) => {
+        const isAutoInvoicePay =
+          (p.allocations && p.allocations.length > 0) ||
+          (p.referenceNumber && p.referenceNumber.startsWith("INV-"));
+
+        if (isAutoInvoicePay) {
+          return (
+            (p.allocations &&
+              p.allocations.some(
+                (a) => invoiceIds.has(a.invoiceId) || invoiceRefs.has(a.invoiceReference)
+              )) ||
+            (p.referenceNumber && invoiceRefs.has(p.referenceNumber))
+          );
+        }
+        return true;
+      });
+
       const matchingInvoices = (invList || []).filter(
         (i) =>
           i.customerId === activeCustId ||
@@ -225,7 +246,7 @@ function CustomerDetailContent() {
             (i.customerName || "").trim().toLowerCase() === activeCustName.toLowerCase())
       );
 
-      const matchingPayments = (payList || []).filter(
+      const matchingPayments = validPayList.filter(
         (p) =>
           p.customerId === activeCustId ||
           (activeCustName &&
@@ -419,7 +440,7 @@ function CustomerDetailContent() {
   const ledgerEntries = [
     ...invoices.map((i) => ({
       id: `ledg_inv_${i.id}`,
-      date: i.invoiceDate || i.createdAt.slice(0, 10),
+      date: (i.invoiceDate || i.createdAt).slice(0, 10),
       type: "invoice" as const,
       reference: i.provisionalReference || i.id,
       description: `Sales Invoice (${i.lines?.length || 1} items)`,
@@ -429,7 +450,7 @@ function CustomerDetailContent() {
     })),
     ...payments.map((p) => ({
       id: `ledg_pay_${p.id}`,
-      date: p.paymentDate,
+      date: (p.paymentDate || p.createdAt).slice(0, 10),
       type: "payment" as const,
       reference: p.referenceNumber || p.id,
       description: `Payment Received (${p.paymentMethod.toUpperCase()})`,
@@ -900,8 +921,20 @@ function CustomerDetailContent() {
                     <td className="p-2.5 print:p-1.5 text-right font-mono font-semibold text-emerald-600 print:text-black print:border-r print:border-slate-200">
                       {row.credit > 0 ? formatPKR(row.credit) : "-"}
                     </td>
-                    <td className="p-2.5 print:p-1.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100 print:text-black">
-                      {formatPKR(row.runningBalance)}
+                    <td className="p-2.5 print:p-1.5 text-right font-mono font-bold print:text-black">
+                      <span
+                        className={
+                          row.runningBalance > 0
+                            ? "text-rose-600 dark:text-rose-400"
+                            : row.runningBalance < 0
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-slate-900 dark:text-slate-100"
+                        }
+                      >
+                        {row.runningBalance < 0
+                          ? `Adv ${formatPKR(Math.abs(row.runningBalance))}`
+                          : formatPKR(row.runningBalance)}
+                      </span>
                     </td>
                   </tr>
                 ))}
