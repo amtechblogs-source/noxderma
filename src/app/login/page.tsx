@@ -50,7 +50,7 @@ export default function LoginPage() {
         const res = await fetch("/api/settings");
         if (res.ok) {
           const data = await res.json();
-          if (data?.settings) {
+          if (data?.settings && !data.isDefaultFallback) {
             if (data.settings.appLogoUrl) setUiLogo(data.settings.appLogoUrl);
             else if (data.settings.businessLogoUrl) setUiLogo(data.settings.businessLogoUrl);
 
@@ -64,7 +64,11 @@ export default function LoginPage() {
 
     const handleSettingsUpdated = () => loadBrandSettings();
     window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
-    return () => window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    window.addEventListener("noxderma-cloud-synced", loadBrandSettings);
+    return () => {
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+      window.removeEventListener("noxderma-cloud-synced", loadBrandSettings);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

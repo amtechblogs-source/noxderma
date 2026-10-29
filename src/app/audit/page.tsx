@@ -21,6 +21,9 @@ import {
   Check,
   RefreshCw,
   ArrowRight,
+  Trash2,
+  Calendar,
+  Filter,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { type LocalAuditLog } from "@/lib/offline/db";
@@ -28,6 +31,8 @@ import {
   getAuditLogs,
   undoActivity,
   seedInitialAuditLogsIfEmpty,
+  deleteAuditLogEntries,
+  clearAllAuditLogs,
 } from "@/lib/audit/auditTracker";
 import { formatKarachiDate } from "@/lib/formatting";
 import {
@@ -42,6 +47,9 @@ interface FieldDiffRow {
   before: string;
   after: string;
 }
+
+type DateRangeOption = "all" | "today" | "weekly" | "monthly" | "custom";
+type DeleteScopeOption = "selected" | "today" | "weekly" | "monthly" | "custom" | "all";
 
 function formatActionMeta(action: string): { label: string; badgeClass: string } {
   const normalized = (action || "").toLowerCase();
@@ -153,7 +161,6 @@ function humanizeFieldKey(key: string): string {
 }
 
 function extractLogFieldDiffs(log: LocalAuditLog): FieldDiffRow[] {
-  // 1. If this is a visit edit with explicit VisitFieldDiffs recorded on editHistory[0]
   const latestVisitEdit = log.snapshotAfter?.editHistory?.[0];
   if (
     log.action === "update" &&
@@ -167,7 +174,6 @@ function extractLogFieldDiffs(log: LocalAuditLog): FieldDiffRow[] {
     }));
   }
 
-  // 2. Generic object diff between snapshotBefore and snapshotAfter
   if (
     log.snapshotBefore &&
     log.snapshotAfter &&
@@ -214,14 +220,91 @@ function extractLogFieldDiffs(log: LocalAuditLog): FieldDiffRow[] {
   return [];
 }
 
+/**
+ * Checks whether an ISO timestamp matches a selected date range.
+ */
+function matchesDateRange(
+  timestamp: string | number | Date,
+  range: DateRangeOption,
+  customStart?: string,
+  customEnd?: string
+): boolean {
+  if (range === "all") return true;
+  const time = new Date(timestamp).getTime();
+  if (isNaN(time)) return false;
+
+  const now = new Date();
+
+  if (range === "today") {
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0
+    ).getTime();
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    ).getTime();
+    return time >= startOfToday && time <= endOfToday;
+  }
+
+  if (range === "weekly") {
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).getTime();
+    return time >= sevenDaysAgo;
+  }
+
+  if (range === "monthly") {
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).getTime();
+    return time >= thirtyDaysAgo;
+  }
+
+  if (range === "custom") {
+    if (customStart) {
+      const s = new Date(customStart + "T00:00:00").getTime();
+      if (!isNaN(s) && time < s) return false;
+    }
+    if (customEnd) {
+      const e = new Date(customEnd + "T23:59:59.999").getTime();
+      if (!isNaN(e) && time > e) return false;
+    }
+    return true;
+  }
+
+  return true;
+}
+
 export default function AuditLogsPage() {
   const { currentUser, hasPermission } = useAuth();
   const [logs, setLogs] = useState<LocalAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters
   const [search, setSearch] = useState("");
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeOption>("all");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all"); // "all" | "active" | "undone"
+
+  // Multi-Selection State
+  const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
+
+  // Bulk Delete Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<DeleteScopeOption>("selected");
+  const [modalCustomStart, setModalCustomStart] = useState("");
+  const [modalCustomEnd, setModalCustomEnd] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Undo confirmation modal state
   const [undoTargetLog, setUndoTargetLog] = useState<LocalAuditLog | null>(null);
@@ -234,7 +317,7 @@ export default function AuditLogsPage() {
   // Snapshot / Diff Inspector modal state
   const [inspectLog, setInspectLog] = useState<LocalAuditLog | null>(null);
 
-  // Strictly enforce audit:view & audit:undo permissions without hardcoded role bypasses
+  // Strictly enforce owner permissions
   const isOwner = hasPermission("audit:view");
   const canPerformUndo = hasPermission("audit:undo");
 
@@ -259,7 +342,7 @@ export default function AuditLogsPage() {
     }
   }, [isOwner]);
 
-  // Execute undo action
+  // Execute single log undo action
   const handleExecuteUndo = async () => {
     if (!undoTargetLog || !currentUser || !canPerformUndo) return;
     setIsUndoing(true);
@@ -320,9 +403,142 @@ export default function AuditLogsPage() {
       if (statusFilter === "active" && l.isUndone) return false;
       if (statusFilter === "undone" && !l.isUndone) return false;
 
+      if (!matchesDateRange(l.timestamp, dateRangeFilter, customStartDate, customEndDate)) {
+        return false;
+      }
+
       return true;
     });
-  }, [logs, search, actionFilter, entityFilter, statusFilter]);
+  }, [logs, search, actionFilter, entityFilter, statusFilter, dateRangeFilter, customStartDate, customEndDate]);
+
+  // Selection helpers
+  const toggleSelectLog = (id: string) => {
+    setSelectedLogIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const isAllFilteredSelected =
+    filteredLogs.length > 0 && filteredLogs.every((l) => selectedLogIds.includes(l.id));
+
+  const toggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      const filteredSet = new Set(filteredLogs.map((l) => l.id));
+      setSelectedLogIds((prev) => prev.filter((id) => !filteredSet.has(id)));
+    } else {
+      const combined = Array.from(new Set([...selectedLogIds, ...filteredLogs.map((l) => l.id)]));
+      setSelectedLogIds(combined);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedLogIds([]);
+  };
+
+  // Helper to determine target logs for deletion given a scope
+  const getTargetLogsForScope = (
+    scope: DeleteScopeOption,
+    start?: string,
+    end?: string
+  ): LocalAuditLog[] => {
+    if (scope === "selected") {
+      const selectedSet = new Set(selectedLogIds);
+      return logs.filter((l) => selectedSet.has(l.id));
+    }
+    if (scope === "all") {
+      return logs;
+    }
+    return logs.filter((l) => matchesDateRange(l.timestamp, scope as any, start, end));
+  };
+
+  // Counts for delete modal options
+  const deleteScopeCounts = useMemo(() => {
+    const selectedCount = logs.filter((l) => selectedLogIds.includes(l.id)).length;
+    const todayCount = logs.filter((l) => matchesDateRange(l.timestamp, "today")).length;
+    const weeklyCount = logs.filter((l) => matchesDateRange(l.timestamp, "weekly")).length;
+    const monthlyCount = logs.filter((l) => matchesDateRange(l.timestamp, "monthly")).length;
+    const customCount = logs.filter((l) =>
+      matchesDateRange(
+        l.timestamp,
+        "custom",
+        modalCustomStart || customStartDate,
+        modalCustomEnd || customEndDate
+      )
+    ).length;
+    const allCount = logs.length;
+    return {
+      selected: selectedCount,
+      today: todayCount,
+      weekly: weeklyCount,
+      monthly: monthlyCount,
+      custom: customCount,
+      all: allCount,
+    };
+  }, [logs, selectedLogIds, modalCustomStart, modalCustomEnd, customStartDate, customEndDate]);
+
+  // Open delete modal with intelligent pre-selected scope
+  const handleOpenDeleteModal = (scope?: DeleteScopeOption) => {
+    if (scope) {
+      setDeleteScope(scope);
+    } else if (selectedLogIds.length > 0) {
+      setDeleteScope("selected");
+    } else if (dateRangeFilter !== "all") {
+      setDeleteScope(dateRangeFilter);
+    } else {
+      setDeleteScope("today");
+    }
+    setModalCustomStart(customStartDate);
+    setModalCustomEnd(customEndDate);
+    setDeleteModalOpen(true);
+  };
+
+  // Execute deletion across chosen criteria
+  const handleExecuteDelete = async () => {
+    if (!isOwner) return;
+    setIsDeleting(true);
+    try {
+      const targets = getTargetLogsForScope(
+        deleteScope,
+        modalCustomStart || customStartDate,
+        modalCustomEnd || customEndDate
+      );
+      const targetIds = targets.map((l) => l.id);
+
+      if (targetIds.length === 0) {
+        setNotification({
+          type: "error",
+          message: "No logs found matching the selected criteria to delete.",
+        });
+        setDeleteModalOpen(false);
+        return;
+      }
+
+      if (deleteScope === "all") {
+        await clearAllAuditLogs();
+      } else {
+        await deleteAuditLogEntries(targetIds);
+      }
+
+      const targetSet = new Set(targetIds);
+      setSelectedLogIds((prev) => prev.filter((id) => !targetSet.has(id)));
+      setNotification({
+        type: "success",
+        message: `Permanently deleted ${targetIds.length} audit log ${
+          targetIds.length === 1 ? "entry" : "entries"
+        }.`,
+      });
+      setDeleteModalOpen(false);
+      await loadLogs();
+    } catch (err: any) {
+      setNotification({
+        type: "error",
+        message: "Failed to delete audit logs: " + (err.message || "Unknown error"),
+      });
+    } finally {
+      setIsDeleting(false);
+      setTimeout(() => setNotification(null), 5000);
+    }
+  };
 
   // Export logs to CSV
   const handleExportCSV = () => {
@@ -485,11 +701,21 @@ export default function AuditLogsPage() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
             Detailed audit trail across doctor visits, invoices, customers, payments, and stock—with
-            instant single-click <strong>Undo Action</strong> recovery.
+            filters, selective purging, and instant single-click <strong>Undo Action</strong> recovery.
           </p>
         </div>
 
-        <div className="grid grid-cols-3 sm:flex items-center gap-2 w-full sm:w-auto shrink-0">
+        {/* Header Action Buttons */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => handleOpenDeleteModal()}
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-2.5 sm:px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 font-bold text-xs shadow-sm transition-all btn-interactive"
+            title="Bulk Delete / Purge Audit Logs"
+          >
+            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span className="truncate">Delete Logs</span>
+          </button>
           <button
             type="button"
             onClick={() => window.print()}
@@ -601,9 +827,50 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
+      {/* Multi-Selection Action Bar (Visible when 1+ logs are selected) */}
+      {selectedLogIds.length > 0 && isOwner && (
+        <div className="sticky top-2 z-30 p-3 sm:p-3.5 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 no-print border border-slate-700">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-6 h-6 rounded-lg bg-teal-500 text-white font-mono font-bold text-xs flex items-center justify-center shrink-0">
+              {selectedLogIds.length}
+            </span>
+            <span className="text-xs sm:text-sm font-bold text-slate-100 truncate">
+              {selectedLogIds.length} log {selectedLogIds.length === 1 ? "entry" : "entries"} selected
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={toggleSelectAllFiltered}
+              className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors btn-interactive"
+            >
+              {isAllFilteredSelected ? "Deselect All Visible" : `Select All Visible (${filteredLogs.length})`}
+            </button>
+
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors btn-interactive"
+            >
+              Clear
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleOpenDeleteModal("selected")}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-sm transition-colors btn-interactive inline-flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Delete Selected ({selectedLogIds.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
           {/* Search */}
           <div className="relative min-w-0">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -614,6 +881,21 @@ export default function AuditLogsPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="w-full min-h-[42px] pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
             />
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="min-w-0">
+            <select
+              value={dateRangeFilter}
+              onChange={(e) => setDateRangeFilter(e.target.value as DateRangeOption)}
+              className="w-full min-h-[42px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="all">All Time (All Dates)</option>
+              <option value="today">Today</option>
+              <option value="weekly">Weekly (Last 7 Days)</option>
+              <option value="monthly">Monthly (Last 30 Days)</option>
+              <option value="custom">Custom Date Range...</option>
+            </select>
           </div>
 
           {/* Action Filter */}
@@ -662,12 +944,53 @@ export default function AuditLogsPage() {
           </div>
         </div>
 
+        {/* Custom Date Range Picker Row (shown when Custom is active) */}
+        {dateRangeFilter === "custom" && (
+          <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
+              <span className="font-bold text-slate-700 dark:text-slate-300">From:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
+              <span className="font-bold text-slate-700 dark:text-slate-300">To:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            {(customStartDate || customEndDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomStartDate("");
+                  setCustomEndDate("");
+                }}
+                className="text-[11px] font-bold text-rose-600 hover:underline ml-auto"
+              >
+                Clear Custom Dates
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800/80">
           <span>
             Showing <strong>{filteredLogs.length}</strong> of <strong>{logs.length}</strong>{" "}
             recorded actions
           </span>
           {(search ||
+            dateRangeFilter !== "all" ||
+            customStartDate ||
+            customEndDate ||
             actionFilter !== "all" ||
             entityFilter !== "all" ||
             statusFilter !== "all") && (
@@ -675,6 +998,9 @@ export default function AuditLogsPage() {
               type="button"
               onClick={() => {
                 setSearch("");
+                setDateRangeFilter("all");
+                setCustomStartDate("");
+                setCustomEndDate("");
                 setActionFilter("all");
                 setEntityFilter("all");
                 setStatusFilter("all");
@@ -719,19 +1045,33 @@ export default function AuditLogsPage() {
                 const cleanLogName = normalizeUserDisplayName(log.userName, "Owner");
                 const cleanLogRole = getUserRoleLabel(log.userRole || "staff");
                 const showRolePill = !isRoleRedundantForName(cleanLogName, cleanLogRole);
+                const isSelected = selectedLogIds.includes(log.id);
 
                 return (
                   <div
                     key={log.id}
                     className={`p-3.5 sm:p-4 space-y-2.5 w-full min-w-0 transition-colors ${
-                      isUndone
+                      isSelected
+                        ? "bg-teal-50/40 dark:bg-teal-950/30 border-l-4 border-teal-500"
+                        : isUndone
                         ? "bg-slate-50/60 dark:bg-slate-900/40 opacity-85"
                         : "bg-white dark:bg-slate-900"
                     }`}
                   >
-                    {/* Row 1: Action, Module, and Status Badges */}
+                    {/* Row 1: Checkbox + Action, Module, and Status Badges */}
                     <div className="flex flex-wrap items-center justify-between gap-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectLog(log.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                            {isSelected ? "Selected" : "Select"}
+                          </span>
+                        </label>
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${actionMeta.badgeClass}`}
                         >
@@ -839,6 +1179,15 @@ export default function AuditLogsPage() {
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black">
                   <tr>
+                    <th className="p-3.5 w-10 text-center no-print">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible logs"
+                        checked={isAllFilteredSelected}
+                        onChange={toggleSelectAllFiltered}
+                        className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="p-3.5">Action &amp; Timestamp</th>
                     <th className="p-3.5">Staff Member</th>
                     <th className="p-3.5">Target &amp; Module</th>
@@ -855,16 +1204,30 @@ export default function AuditLogsPage() {
                     const entityMeta = formatEntityMeta(log.entityType);
                     const cleanLogName = normalizeUserDisplayName(log.userName, "Owner");
                     const cleanLogRole = getUserRoleLabel(log.userRole || "staff");
+                    const isSelected = selectedLogIds.includes(log.id);
 
                     return (
                       <tr
                         key={log.id}
                         className={`transition-colors ${
-                          isUndone
+                          isSelected
+                            ? "bg-teal-50/50 dark:bg-teal-950/30"
+                            : isUndone
                             ? "bg-slate-50/50 dark:bg-slate-900/30 opacity-75"
                             : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                         }`}
                       >
+                        {/* Checkbox */}
+                        <td className="p-3.5 w-10 text-center align-top no-print">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select log ${log.id}`}
+                            checked={isSelected}
+                            onChange={() => toggleSelectLog(log.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer mt-1"
+                          />
+                        </td>
+
                         {/* Action & Date */}
                         <td className="p-3.5 align-top whitespace-nowrap">
                           <div className="flex flex-col gap-1">
@@ -981,6 +1344,253 @@ export default function AuditLogsPage() {
           </>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* BULK DELETE / PURGE MODAL (ALL-TIME, TODAY, WEEKLY, MONTHLY, CUSTOM, SEL) */}
+      {/* ========================================================================= */}
+      {deleteModalOpen && isOwner && (
+        <div className="fixed inset-0 !mt-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-card-hover max-w-lg w-full p-5 sm:p-6 space-y-4 animate-in zoom-in-95 overflow-x-hidden">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-11 h-11 rounded-2xl bg-rose-50 dark:bg-rose-950 text-rose-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                    Delete Audit History Logs
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Select criteria to permanently purge recorded activity logs.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scope Selection Options */}
+            <div className="space-y-2 pt-1">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                Choose Deletion Range / Criteria:
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {/* 1. Selected */}
+                <button
+                  type="button"
+                  disabled={deleteScopeCounts.selected === 0}
+                  onClick={() => setDeleteScope("selected")}
+                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    deleteScope === "selected"
+                      ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold"
+                      : deleteScopeCounts.selected === 0
+                      ? "opacity-50 border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-extrabold flex items-center justify-between">
+                    <span>Selected Logs</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border">
+                      {deleteScopeCounts.selected}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    Checked items only
+                  </span>
+                </button>
+
+                {/* 2. Today */}
+                <button
+                  type="button"
+                  onClick={() => setDeleteScope("today")}
+                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    deleteScope === "today"
+                      ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-extrabold flex items-center justify-between">
+                    <span>Today&apos;s Logs</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border">
+                      {deleteScopeCounts.today}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    Recorded today
+                  </span>
+                </button>
+
+                {/* 3. Weekly */}
+                <button
+                  type="button"
+                  onClick={() => setDeleteScope("weekly")}
+                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    deleteScope === "weekly"
+                      ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-extrabold flex items-center justify-between">
+                    <span>Weekly Logs</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border">
+                      {deleteScopeCounts.weekly}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    Past 7 days
+                  </span>
+                </button>
+
+                {/* 4. Monthly */}
+                <button
+                  type="button"
+                  onClick={() => setDeleteScope("monthly")}
+                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    deleteScope === "monthly"
+                      ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-extrabold flex items-center justify-between">
+                    <span>Monthly Logs</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border">
+                      {deleteScopeCounts.monthly}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    Past 30 days
+                  </span>
+                </button>
+
+                {/* 5. Custom Date Range */}
+                <button
+                  type="button"
+                  onClick={() => setDeleteScope("custom")}
+                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    deleteScope === "custom"
+                      ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-extrabold flex items-center justify-between">
+                    <span>Custom Date Range</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border">
+                      {deleteScopeCounts.custom}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    Selected dates
+                  </span>
+                </button>
+
+                {/* 6. All Time */}
+                <button
+                  type="button"
+                  onClick={() => setDeleteScope("all")}
+                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    deleteScope === "all"
+                      ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold"
+                      : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-extrabold flex items-center justify-between">
+                    <span>All Time (Purge All)</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border">
+                      {deleteScopeCounts.all}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    Entire history
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Date Pickers inside modal */}
+            {deleteScope === "custom" && (
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                  Select Custom Dates to Delete:
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1">
+                      Start Date
+                    </label>
+                    <input
+                      type="date"
+                      value={modalCustomStart}
+                      onChange={(e) => setModalCustomStart(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1">
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      value={modalCustomEnd}
+                      onChange={(e) => setModalCustomEnd(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warning and Confirmation Info */}
+            <div className="p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/60 text-xs space-y-2 text-rose-900 dark:text-rose-200">
+              <div className="flex items-center justify-between font-black">
+                <span>Logs targeted for deletion:</span>
+                <span className="font-mono text-base px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800">
+                  {deleteScopeCounts[deleteScope]}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
+                <strong>Permanent Removal:</strong> These logs will be deleted from IndexedDB storage
+                and synchronized with Cloud Firestore. Once deleted, this activity history cannot be
+                reverted using Undo.
+              </p>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={isDeleting}
+                className="w-full sm:w-auto min-h-[42px] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                disabled={isDeleting || deleteScopeCounts[deleteScope] === 0}
+                className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-extrabold text-xs shadow-md shadow-rose-600/30 transition-all btn-interactive inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting Logs...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Permanently Delete ({deleteScopeCounts[deleteScope]})</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* UNDO CONFIRMATION MODAL (100% ENGLISH & MOBILE-RESPONSIVE)                */}

@@ -68,7 +68,12 @@ function CustomerDetailContent() {
     "finance:payments",
     "invoices:view",
   ]);
-  const customerId = useSearchParams().get("id") ?? "";
+  const searchParams = useSearchParams();
+  const customerId =
+    searchParams.get("id") ||
+    searchParams.get("customerId") ||
+    searchParams.get("cid") ||
+    "";
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -87,19 +92,55 @@ function CustomerDetailContent() {
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
 
   const loadData = async () => {
+    const cleanId = (customerId || "").trim();
+    if (!cleanId) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const [cust, invList, payList, allVisits] = await Promise.all([
-        offlineDb.customers.get(customerId),
-        offlineDb.invoices.where("customerId").equals(customerId).toArray(),
-        offlineDb.payments.where("customerId").equals(customerId).toArray(),
+      // 1. First attempt: exact primary key in local Dexie IndexedDB
+      let cust = await offlineDb.customers.get(cleanId);
+
+      // 2. Second attempt: search local IndexedDB by lowercase id or name or phone
+      if (!cust) {
+        const allCusts = await offlineDb.customers.toArray();
+        cust =
+          allCusts.find(
+            (c) =>
+              c.id.toLowerCase() === cleanId.toLowerCase() ||
+              c.name.trim().toLowerCase() === cleanId.toLowerCase() ||
+              (c.phone && c.phone.replace(/[^0-9]/g, "") === cleanId.replace(/[^0-9]/g, ""))
+          ) || undefined;
+      }
+
+      // 3. Third attempt: fetch directly from Cloud Firestore if not found locally
+      if (!cust) {
+        try {
+          const { db: firestoreDb } = await import("@/lib/firebase/config");
+          const { doc: fsDoc, getDoc: fsGetDoc } = await import("firebase/firestore");
+          const snap = await fsGetDoc(fsDoc(firestoreDb, "customers", cleanId));
+          if (snap.exists()) {
+            cust = { ...snap.data(), id: snap.id } as Customer;
+            await offlineDb.customers.put(cust);
+          }
+        } catch (fsErr) {
+          console.warn("Could not fetch customer directly from Cloud Firestore:", fsErr);
+        }
+      }
+
+      const activeCustId = cust?.id || cleanId;
+
+      const [invList, payList, allVisits] = await Promise.all([
+        offlineDb.invoices.where("customerId").equals(activeCustId).toArray(),
+        offlineDb.payments.where("customerId").equals(activeCustId).toArray(),
         offlineDb.customerVisits.toArray(),
       ]);
 
       const visitList = (allVisits || []).filter(
         (v) =>
-          v.customerId === customerId ||
-          (cust &&
-            v.customerName.trim().toLowerCase() === cust.name.trim().toLowerCase())
+          v.customerId === activeCustId ||
+          (cust && v.customerName.trim().toLowerCase() === cust.name.trim().toLowerCase())
       );
 
       if (cust) {
@@ -130,6 +171,10 @@ function CustomerDetailContent() {
 
   useEffect(() => {
     loadData();
+
+    const handleSync = () => loadData();
+    window.addEventListener("noxderma-cloud-synced", handleSync);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleSync);
   }, [customerId]);
 
   const handleRecordPayment = async (e: React.FormEvent) => {
@@ -230,11 +275,39 @@ function CustomerDetailContent() {
 
   if (!customer) {
     return (
-      <div className="p-8 text-center text-slate-500">
-        <p>Customer not found.</p>
-        <Link href="/customers" className="text-teal-600 font-bold mt-2 inline-block">
-          Return to Customers
-        </Link>
+      <div className="max-w-lg mx-auto py-12 px-4 text-center space-y-4">
+        <div className="p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center mx-auto">
+            <Building2 className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 dark:text-slate-100">
+            Customer Profile Not Found
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+            The requested customer record {customerId ? `("${customerId}")` : ""} could not be found
+            in local storage or Cloud Firestore.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                loadData();
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm btn-interactive"
+            >
+              <Clock className="w-4 h-4" />
+              <span>Retry / Sync from Cloud</span>
+            </button>
+            <Link
+              href="/customers"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs btn-interactive"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>All Medical Stores</span>
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }

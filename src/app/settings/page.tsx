@@ -37,28 +37,114 @@ export default function BusinessSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
+  const [logoNotice, setLogoNotice] = useState<string | null>(null);
+
+  // Helper to persist settings across all layers instantly and reliably
+  const persistBusinessSettings = async (
+    nextSettings: BusinessSettings,
+    successMessage?: string
+  ) => {
+    setSettings(nextSettings);
+
+    // 1. Instant synchronous write to localStorage mirror for zero-flicker reload
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("noxderma_business_settings", JSON.stringify([nextSettings]));
+      } catch {}
+    }
+
+    // 2. Persist to Dexie IndexedDB
+    try {
+      await offlineDb.settings.put(nextSettings);
+    } catch (dbErr) {
+      console.warn("Could not put settings in offlineDb:", dbErr);
+    }
+
+    // 3. Immediately broadcast to Sidebar, Header, Reports, etc.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("noxderma_settings_updated", { detail: nextSettings }));
+    }
+
+    // 4. Background Sync: Server Route & Direct Cloud Firestore
+    (async () => {
+      try {
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(nextSettings),
+        });
+      } catch {}
+
+      try {
+        const { db } = await import("@/lib/firebase/config");
+        const { doc, setDoc } = await import("firebase/firestore");
+        const clean = JSON.parse(
+          JSON.stringify(nextSettings, (_k, v) => (v === undefined ? null : v))
+        );
+        await Promise.allSettled([
+          setDoc(doc(db, "settings", "primary"), clean, { merge: true }),
+          setDoc(doc(db, "organizationSettings", "primary"), clean, { merge: true }),
+        ]);
+      } catch {}
+    })();
+
+    if (successMessage) {
+      setLogoNotice(successMessage);
+      setTimeout(() => setLogoNotice(null), 3500);
+    }
+  };
+
   useEffect(() => {
     async function loadSettings() {
-      // 1. Try local offline storage first for instant render
+      let localFound: BusinessSettings | null = null;
+
+      // 1. Check fast localStorage mirror first
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("noxderma_business_settings");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const item = Array.isArray(parsed) ? parsed[0] : parsed;
+            if (item && item.id === "primary") {
+              localFound = item;
+              setSettings(item);
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Try local offline storage
       try {
         const stored = await offlineDb.settings.get("primary");
         if (stored) {
+          localFound = stored;
           setSettings(stored);
         }
       } catch (err) {
         console.warn("Could not load stored business settings:", err);
       }
 
-      // 2. Fetch authoritative database settings from server (/api/settings)
+      // 3. Fetch authoritative database settings from server (/api/settings)
+      // Only apply if remote is valid and NOT an unconfigured default fallback
       try {
         const res = await fetch("/api/settings");
         if (res.ok) {
           const data = await res.json();
-          if (data?.settings) {
-            setSettings(data.settings);
-            await offlineDb.settings.put(data.settings);
-            if (data.settings.colorTheme) {
-              setTheme(data.settings.colorTheme as ThemeId);
+          if (data?.settings && !data.isDefaultFallback) {
+            const isRemoteNewer =
+              !localFound ||
+              localFound.updatedBy === "system" ||
+              new Date(data.settings.updatedAt || 0) >= new Date(localFound.updatedAt || 0);
+
+            if (isRemoteNewer) {
+              setSettings(data.settings);
+              await offlineDb.settings.put(data.settings);
+              if (typeof window !== "undefined") {
+                localStorage.setItem(
+                  "noxderma_business_settings",
+                  JSON.stringify([data.settings])
+                );
+              }
             }
           }
         }
@@ -66,7 +152,12 @@ export default function BusinessSettingsPage() {
         console.warn("Could not fetch remote settings:", err);
       }
     }
+
     loadSettings();
+
+    const handleSync = () => loadSettings();
+    window.addEventListener("noxderma-cloud-synced", handleSync);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleSync);
   }, []);
 
   // Helper to compress logo image on client-side canvas so it fits smoothly in any database
@@ -118,19 +209,37 @@ export default function BusinessSettingsPage() {
     try {
       // 1. Immediately compress for zero-lag UI display and database safety
       const compressedDataUrl = await compressImage(file);
-      setSettings((prev) => ({
-        ...prev,
+      const updatedWithLogo: BusinessSettings = {
+        ...settings,
         [field]: compressedDataUrl,
-      }));
+        businessLogoUrl: field === "appLogoUrl" ? compressedDataUrl : settings.businessLogoUrl,
+        colorTheme: themeId,
+        updatedAt: new Date().toISOString(),
+        updatedBy: "usr_admin",
+      };
+
+      // Auto-save immediately to localStorage, IndexedDB & Cloud Firestore
+      await persistBusinessSettings(
+        updatedWithLogo,
+        field === "appLogoUrl" ? "UI Brand Logo Saved!" : "Invoice Print Logo Saved!"
+      );
 
       // 2. Also attempt permanent cloud upload via ImageKit provider
       try {
         const cloudUrl = await imageStorage.uploadLogo(file, "/logos");
         if (cloudUrl) {
-          setSettings((prev) => ({
-            ...prev,
+          const updatedWithCloudUrl: BusinessSettings = {
+            ...updatedWithLogo,
             [field]: cloudUrl,
-          }));
+            businessLogoUrl: field === "appLogoUrl" ? cloudUrl : updatedWithLogo.businessLogoUrl,
+            updatedAt: new Date().toISOString(),
+          };
+          await persistBusinessSettings(
+            updatedWithCloudUrl,
+            field === "appLogoUrl"
+              ? "UI Brand Logo Uploaded & Saved to Cloud!"
+              : "Invoice Print Logo Uploaded & Saved to Cloud!"
+          );
         }
       } catch (cloudErr) {
         console.log("ImageKit upload bypassed, using high-resolution compressed data URL:", cloudErr);
@@ -154,52 +263,12 @@ export default function BusinessSettingsPage() {
         updatedBy: "usr_admin",
       };
 
-      // 1. Instantly save to local Dexie IndexedDB (< 5ms)
-      await offlineDb.settings.put(updated);
-      setSettings(updated);
+      await persistBusinessSettings(updated);
 
-      // 2. Immediately notify Sidebar, Header, Reports, and other modules
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("noxderma_settings_updated"));
-      }
-
-      // 3. Quick, crisp visual feedback (150ms) so user feels instant response
       await new Promise((resolve) => setTimeout(resolve, 150));
       setIsSaved(true);
       setIsSaving(false);
       setTimeout(() => setIsSaved(false), 3000);
-
-      // 4. Background Sync: Server Database & Cloud Firestore (Completely non-blocking)
-      (async () => {
-        try {
-          const res = await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(updated),
-          });
-          if (!res.ok) {
-            console.warn("Server settings write returned status:", res.status);
-          }
-        } catch (netErr) {
-          console.warn("Offline: enqueued settings for automatic cloud synchronization:", netErr);
-          await enqueueOperation(
-            "settings",
-            "primary",
-            "update",
-            updated as unknown as Record<string, unknown>,
-            "usr_admin",
-            "Owner"
-          );
-        }
-
-        try {
-          const { db } = await import("@/lib/firebase/config");
-          const { doc, setDoc } = await import("firebase/firestore");
-          setDoc(doc(db, "organizationSettings", "primary"), updated, { merge: true }).catch((err) => {
-            console.warn("Background Firestore sync note:", err);
-          });
-        } catch {}
-      })();
     } catch (err) {
       console.error("Failed to save settings:", err);
       alert("Error saving settings.");
@@ -367,10 +436,18 @@ export default function BusinessSettingsPage() {
 
         {/* Section 2: Software UI Logo & Print Invoice Logo */}
         <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <ImageIcon className="w-4 h-4 text-teal-600" />
-            2. Software UI Logo & Invoice Print Logo
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-teal-600" />
+              2. Software UI Logo & Invoice Print Logo
+            </h2>
+            {logoNotice && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-xs font-bold border border-teal-200 dark:border-teal-800 animate-in fade-in">
+                <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                {logoNotice}
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
             {/* UI Logo Card */}
@@ -404,11 +481,21 @@ export default function BusinessSettingsPage() {
 
               <div className="flex items-center gap-2">
                 <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer transition-colors shadow-sm">
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload UI Logo
+                  {isUploadingLogo ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Saving Logo...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5" />
+                      Upload UI Logo
+                    </>
+                  )}
                   <input
                     type="file"
                     accept="image/*"
+                    disabled={isUploadingLogo}
                     onChange={(e) => handleImageUpload(e, "appLogoUrl")}
                     className="hidden"
                   />
@@ -417,7 +504,15 @@ export default function BusinessSettingsPage() {
                 {settings.appLogoUrl && (
                   <button
                     type="button"
-                    onClick={() => setSettings({ ...settings, appLogoUrl: "" })}
+                    onClick={() => {
+                      const updated = {
+                        ...settings,
+                        appLogoUrl: "",
+                        businessLogoUrl: "",
+                        updatedAt: new Date().toISOString(),
+                      };
+                      persistBusinessSettings(updated, "UI Logo Removed");
+                    }}
                     className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
                     title="Remove Logo"
                   >
@@ -431,6 +526,16 @@ export default function BusinessSettingsPage() {
                 placeholder="Or paste image URL (e.g. https://...)"
                 value={settings.appLogoUrl || ""}
                 onChange={(e) => setSettings({ ...settings, appLogoUrl: e.target.value })}
+                onBlur={() => {
+                  if (settings.appLogoUrl !== undefined) {
+                    const updated = {
+                      ...settings,
+                      businessLogoUrl: settings.appLogoUrl,
+                      updatedAt: new Date().toISOString(),
+                    };
+                    persistBusinessSettings(updated, "UI Logo URL Saved");
+                  }
+                }}
                 className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px]"
               />
             </div>
@@ -466,11 +571,21 @@ export default function BusinessSettingsPage() {
 
               <div className="flex items-center gap-2">
                 <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer transition-colors shadow-sm">
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload Print Logo
+                  {isUploadingLogo ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Saving Logo...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5" />
+                      Upload Print Logo
+                    </>
+                  )}
                   <input
                     type="file"
                     accept="image/*"
+                    disabled={isUploadingLogo}
                     onChange={(e) => handleImageUpload(e, "invoiceLogoUrl")}
                     className="hidden"
                   />
@@ -479,7 +594,14 @@ export default function BusinessSettingsPage() {
                 {settings.invoiceLogoUrl && (
                   <button
                     type="button"
-                    onClick={() => setSettings({ ...settings, invoiceLogoUrl: "" })}
+                    onClick={() => {
+                      const updated = {
+                        ...settings,
+                        invoiceLogoUrl: "",
+                        updatedAt: new Date().toISOString(),
+                      };
+                      persistBusinessSettings(updated, "Print Logo Removed");
+                    }}
                     className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
                     title="Remove Logo"
                   >
@@ -493,6 +615,15 @@ export default function BusinessSettingsPage() {
                 placeholder="Or paste invoice logo image URL..."
                 value={settings.invoiceLogoUrl || ""}
                 onChange={(e) => setSettings({ ...settings, invoiceLogoUrl: e.target.value })}
+                onBlur={() => {
+                  if (settings.invoiceLogoUrl !== undefined) {
+                    const updated = {
+                      ...settings,
+                      updatedAt: new Date().toISOString(),
+                    };
+                    persistBusinessSettings(updated, "Print Logo URL Saved");
+                  }
+                }}
                 className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px]"
               />
             </div>

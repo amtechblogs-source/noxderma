@@ -194,7 +194,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/settings");
         if (res.ok) {
           const data = await res.json();
-          if (data?.settings?.colorTheme && COLOR_THEMES.some((t: any) => t.id === data.settings.colorTheme)) {
+          if (
+            data?.settings?.colorTheme &&
+            !data.isDefaultFallback &&
+            COLOR_THEMES.some((t: any) => t.id === data.settings.colorTheme)
+          ) {
             const serverTheme = data.settings.colorTheme as ThemeId;
             setThemeIdState(serverTheme);
             applyThemeToDOM(serverTheme);

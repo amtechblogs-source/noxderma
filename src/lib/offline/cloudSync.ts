@@ -17,7 +17,7 @@ export interface SyncedTableConfig {
 }
 
 export const SYNCED_TABLES: SyncedTableConfig[] = [
-  { tableName: "settings", primaryKey: "id" },
+  { tableName: "settings", primaryKey: "id", localStorageMirrorKey: "noxderma_business_settings" },
   { tableName: "categories", primaryKey: "id" },
   { tableName: "products", primaryKey: "id" },
   { tableName: "productPricing", primaryKey: "productId" },

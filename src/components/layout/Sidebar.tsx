@@ -165,43 +165,79 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
   }, [router]);
 
   useEffect(() => {
+    function applyBrandSettings(settings: any) {
+      if (!settings) return;
+      if (settings.appLogoUrl && settings.appLogoUrl !== "/brand/logo.svg") {
+        setUiLogo(settings.appLogoUrl);
+      } else {
+        setUiLogo(null);
+      }
+      if (settings.brandName) {
+        setBrandName(settings.brandName);
+      }
+    }
+
     async function loadBrandLogo() {
-      // 1. Instant local read from IndexedDB
+      // 1. Instant synchronous read from localStorage mirror
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("noxderma_business_settings");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const item = Array.isArray(parsed) ? parsed[0] : parsed;
+            if (item) applyBrandSettings(item);
+          }
+        } catch {}
+      }
+
+      // 2. Read from Dexie IndexedDB
+      let localRecord: any = null;
       try {
-        const stored = await offlineDb.settings.get("primary");
-        if (stored) {
-          if (stored.appLogoUrl && stored.appLogoUrl !== "/brand/logo.svg") {
-            setUiLogo(stored.appLogoUrl);
-          }
-          if (stored.brandName) {
-            setBrandName(stored.brandName);
-          }
+        localRecord = await offlineDb.settings.get("primary");
+        if (localRecord) {
+          applyBrandSettings(localRecord);
         }
       } catch {}
 
-      // 2. Authoritative server database fetch (survives cookie & site data clearing)
+      // 3. Fallback: Authoritative Cloud Firestore / Server fetch
+      // ONLY overwrite local IndexedDB if local is empty or server has newer non-default data
       try {
         const res = await fetch("/api/settings");
         if (res.ok) {
           const data = await res.json();
-          if (data?.settings) {
-            if (data.settings.appLogoUrl && data.settings.appLogoUrl !== "/brand/logo.svg") {
-              setUiLogo(data.settings.appLogoUrl);
+          if (data?.settings && !data.isDefaultFallback) {
+            const isServerNewer =
+              !localRecord ||
+              localRecord.updatedBy === "system" ||
+              new Date(data.settings.updatedAt || 0) >= new Date(localRecord.updatedAt || 0);
+
+            if (isServerNewer) {
+              applyBrandSettings(data.settings);
+              await offlineDb.settings.put(data.settings);
             }
-            if (data.settings.brandName) {
-              setBrandName(data.settings.brandName);
-            }
-            await offlineDb.settings.put(data.settings);
           }
         }
       } catch {}
     }
+
     loadBrandLogo();
 
-    // Listen for settings change
-    const handleSettingsUpdated = () => loadBrandLogo();
+    // Listen for instant settings updates & Cloud Firestore real-time syncs
+    const handleSettingsUpdated = (e: Event) => {
+      const custom = (e as CustomEvent).detail;
+      if (custom) {
+        applyBrandSettings(custom);
+      } else {
+        loadBrandLogo();
+      }
+    };
+
     window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
-    return () => window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    window.addEventListener("noxderma-cloud-synced", loadBrandLogo);
+    return () => {
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+      window.removeEventListener("noxderma-cloud-synced", loadBrandLogo);
+    };
   }, []);
 
   // Close on Escape key and lock background scroll on mobile

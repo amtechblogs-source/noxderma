@@ -408,6 +408,59 @@ export async function undoActivity(
 }
 
 /**
+ * Permanently deletes specified audit log entries from local Dexie database
+ * and propagates deletions to Cloud Firestore via Dexie hooks and direct deleteDoc batch.
+ */
+export async function deleteAuditLogEntries(ids: string[]): Promise<number> {
+  if (!ids || ids.length === 0) return 0;
+  try {
+    // 1. Delete from Dexie (fires table.hook("deleting") which invokes scheduleCloudDelete)
+    await offlineDb.auditLogs.bulkDelete(ids);
+
+    // 2. Also directly delete from Cloud Firestore in parallel batches to guarantee instant cloud cleanup
+    try {
+      const { deleteDoc, doc } = await import("firebase/firestore");
+      const { db: firestoreDb } = await import("@/lib/firebase/config");
+      await Promise.allSettled(
+        ids.map((id) => deleteDoc(doc(firestoreDb, "auditLogs", String(id))))
+      );
+    } catch (remoteErr) {
+      console.warn("Direct Firestore bulk delete warning (fallback to sync hooks):", remoteErr);
+    }
+
+    // Ensure we don't accidentally re-seed deleted logs
+    if (typeof window !== "undefined") {
+      localStorage.setItem("noxderma_audit_seeded", "true");
+    }
+
+    return ids.length;
+  } catch (err) {
+    console.error("Failed to delete audit logs:", err);
+    throw err;
+  }
+}
+
+/**
+ * Permanently deletes ALL audit log entries.
+ */
+export async function clearAllAuditLogs(): Promise<number> {
+  try {
+    const allLogs = await offlineDb.auditLogs.toArray();
+    const ids = allLogs.map((l) => l.id);
+    if (ids.length > 0) {
+      await deleteAuditLogEntries(ids);
+    }
+    if (typeof window !== "undefined") {
+      localStorage.setItem("noxderma_audit_seeded", "true");
+    }
+    return ids.length;
+  } catch (err) {
+    console.error("Failed to clear all audit logs:", err);
+    throw err;
+  }
+}
+
+/**
  * Fetch all audit logs sorted from newest to oldest.
  */
 export async function getAuditLogs(): Promise<LocalAuditLog[]> {
@@ -429,8 +482,17 @@ export async function getAuditLogs(): Promise<LocalAuditLog[]> {
  */
 export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
   try {
+    if (typeof window !== "undefined" && localStorage.getItem("noxderma_audit_seeded") === "true") {
+      return;
+    }
+
     const count = await offlineDb.auditLogs.count();
-    if (count > 0) return;
+    if (count > 0) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("noxderma_audit_seeded", "true");
+      }
+      return;
+    }
 
     const [invoices, customers, products, visits] = await Promise.all([
       offlineDb.invoices.toArray(),
@@ -523,6 +585,9 @@ export async function seedInitialAuditLogsIfEmpty(): Promise<void> {
 
     if (logsToSeed.length > 0) {
       await offlineDb.auditLogs.bulkPut(logsToSeed);
+    }
+    if (typeof window !== "undefined") {
+      localStorage.setItem("noxderma_audit_seeded", "true");
     }
   } catch (err) {
     console.warn("Could not seed initial audit logs:", err);

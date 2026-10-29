@@ -314,7 +314,9 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
             const data = await res.json();
             if (data?.settings) {
               setBusinessSettings(data.settings);
-              await offlineDb.settings.put(data.settings);
+              if (!data.isDefaultFallback) {
+                await offlineDb.settings.put(data.settings);
+              }
             }
           }
         } catch {}
