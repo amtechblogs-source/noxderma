@@ -166,3 +166,82 @@ export function getDateFilterDescription(filter: DateFilterState): string {
   return "All Time";
 }
 
+/**
+ * Computes breakdown counts for deletion/filter criteria (selected, today, weekly, monthly, custom, all).
+ */
+export function computeDateScopeCounts<T>(
+  items: T[],
+  getDateFn: (item: T) => string | number | Date | null | undefined,
+  selectedCount = 0,
+  customStart?: string,
+  customEnd?: string
+): {
+  selected: number;
+  today: number;
+  weekly: number;
+  monthly: number;
+  custom: number;
+  all: number;
+} {
+  let today = 0;
+  let weekly = 0;
+  let monthly = 0;
+  let custom = 0;
+
+  const todayFilter: DateFilterState = { preset: "today" };
+  const weeklyFilter: DateFilterState = { preset: "weekly" };
+  const monthlyFilter: DateFilterState = { preset: "monthly" };
+  const customFilter: DateFilterState = {
+    preset: "custom_range",
+    startDate: customStart,
+    endDate: customEnd,
+  };
+
+  for (const item of items) {
+    const d = getDateFn(item);
+    if (isRecordInDateRange(d, todayFilter)) today++;
+    if (isRecordInDateRange(d, weeklyFilter)) weekly++;
+    if (isRecordInDateRange(d, monthlyFilter)) monthly++;
+    if (customStart || customEnd) {
+      if (isRecordInDateRange(d, customFilter)) custom++;
+    }
+  }
+
+  return {
+    selected: selectedCount,
+    today,
+    weekly,
+    monthly,
+    custom,
+    all: items.length,
+  };
+}
+
+/**
+ * Returns the subset of items that match a given deletion or action scope.
+ */
+export function getItemsInScope<T>(
+  items: T[],
+  scope: "selected" | "today" | "weekly" | "monthly" | "custom" | "all",
+  getDateFn: (item: T) => string | number | Date | null | undefined,
+  getIdFn: (item: T) => string | number,
+  selectedIds: (string | number)[],
+  customStart?: string,
+  customEnd?: string
+): T[] {
+  if (scope === "selected") {
+    const selectedSet = new Set(selectedIds.map(String));
+    return items.filter((item) => selectedSet.has(String(getIdFn(item))));
+  }
+  if (scope === "all") {
+    return items;
+  }
+  const filter: DateFilterState = {
+    preset: scope === "custom" ? "custom_range" : (scope as DateRangePreset),
+    startDate: customStart,
+    endDate: customEnd,
+  };
+  return items.filter((item) => isRecordInDateRange(getDateFn(item), filter));
+}
+
+

@@ -15,9 +15,13 @@ import {
   CheckCircle2,
   ArrowRight,
   UserCheck,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { recordActivity } from "@/lib/audit/auditTracker";
+import { useAuth } from "@/context/AuthContext";
 import type { Lead, LeadPipelineStage, Customer } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import {
@@ -25,7 +29,14 @@ import {
   createDefaultDateFilter,
   type DateFilterState,
   getDateFilterDescription,
+  computeDateScopeCounts,
+  getItemsInScope,
 } from "@/lib/dateFilter";
+import {
+  BulkDeleteModal,
+  SingleDeleteModal,
+  type DeleteScopeType,
+} from "@/components/common/BulkDeleteModal";
 
 const STAGES: { stage: LeadPipelineStage; label: string; color: string }[] = [
   { stage: "new", label: "New Inquiries", color: "border-sky-500" },
@@ -37,9 +48,17 @@ const STAGES: { stage: LeadPipelineStage; label: string; color: string }[] = [
 ];
 
 export default function LeadsCrmPage() {
+  const { currentUser } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
+
+  // Multi-Selection & Bulk Delete State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Form State
   const [leadName, setLeadName] = useState("");
@@ -83,8 +102,8 @@ export default function LeadsCrmPage() {
       address: address.trim(),
       leadSource: "direct_inquiry",
       interestedCategoryName: categoryName,
-      assignedEmployeeId: "usr_admin",
-      assignedEmployeeName: "Sales Team",
+      assignedEmployeeId: currentUser?.id || "usr_admin",
+      assignedEmployeeName: currentUser?.displayName || "Sales Team",
       status: "new",
       estimatedPotentialPkr: Number(potentialPkr) || 0,
       notes: notes.trim(),
@@ -93,6 +112,19 @@ export default function LeadsCrmPage() {
     };
 
     await offlineDb.leads.put(newLead);
+    await recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "crm_lead",
+      entityId: newLead.id,
+      entityTitle: newLead.leadName,
+      details: `Created new client lead "${newLead.leadName}" (${newLead.city}).`,
+      snapshotAfter: newLead,
+      canUndo: true,
+    });
     await loadLeads();
     setIsAdding(false);
     // Reset Form
@@ -146,10 +178,146 @@ export default function LeadsCrmPage() {
     );
   }, [leads, dateFilter]);
 
+  const scopeCounts = useMemo(() => {
+    return computeDateScopeCounts(
+      leads,
+      (l) => l.createdAt || l.lastContactedAt,
+      selectedIds.length
+    );
+  }, [leads, selectedIds.length]);
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filteredLeads.length && filteredLeads.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredLeads.map((l) => l.id));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleExecuteBulkDelete = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    try {
+      setIsDeleting(true);
+      const toDelete = getItemsInScope(
+        leads,
+        scope,
+        (l) => l.createdAt || l.lastContactedAt,
+        (l) => l.id,
+        selectedIds,
+        customStart,
+        customEnd
+      );
+
+      if (toDelete.length === 0) {
+        setNotice({ type: "error", text: "No matching leads found to delete." });
+        setIsDeleting(false);
+        setDeleteModalOpen(false);
+        return;
+      }
+
+      const idsToDelete = toDelete.map((l) => l.id);
+      await offlineDb.leads.bulkDelete(idsToDelete);
+
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "crm_lead",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} client lead(s)`,
+        details: `Purged ${toDelete.length} lead(s) under criteria scope: ${scope}.`,
+        snapshotBefore: toDelete,
+        canUndo: false,
+      });
+
+      setSelectedIds([]);
+      await loadLeads();
+      setDeleteModalOpen(false);
+      setNotice({
+        type: "success",
+        text: `Successfully deleted ${toDelete.length} lead(s).`,
+      });
+    } catch (err: any) {
+      console.error("Bulk delete leads failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete leads." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleExecuteSingleDelete = async () => {
+    if (!deletingLead) return;
+    try {
+      setIsDeleting(true);
+      await offlineDb.leads.delete(deletingLead.id);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "crm_lead",
+        entityId: deletingLead.id,
+        entityTitle: deletingLead.leadName,
+        details: `Deleted client lead "${deletingLead.leadName}" (${deletingLead.city || ""}).`,
+        snapshotBefore: deletingLead,
+        canUndo: true,
+      });
+      setSelectedIds((prev) => prev.filter((id) => id !== deletingLead.id));
+      await loadLeads();
+      setDeletingLead(null);
+      setNotice({
+        type: "success",
+        text: `Deleted lead "${deletingLead.leadName}".`,
+      });
+    } catch (err: any) {
+      console.error("Single delete lead failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete lead." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const totalPipelineValue = filteredLeads.reduce((sum, l) => sum + (l.estimatedPotentialPkr || 0), 0);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      {notice && (
+        <div
+          className={`p-4 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold animate-in fade-in ${
+            notice.type === "success"
+              ? "bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+              : "bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {notice.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            )}
+            <span>{notice.text}</span>
+          </div>
+          <button
+            onClick={() => setNotice(null)}
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <Link
@@ -168,10 +336,32 @@ export default function LeadsCrmPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <div className="px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-200 text-xs font-bold border border-teal-200 dark:border-teal-800">
             Pipeline: <strong>{formatPKR(totalPipelineValue)}</strong>
           </div>
+
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedIds.length})</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setDeleteModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center gap-1.5 transition-all"
+            title="Delete with scope criteria"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete / Purge</span>
+          </button>
+
           <button
             onClick={() => setIsAdding(true)}
             className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
@@ -327,6 +517,26 @@ export default function LeadsCrmPage() {
         count={filteredLeads.length}
       />
 
+      {/* Selection Toolbar */}
+      {filteredLeads.length > 0 && (
+        <div className="flex items-center justify-between px-2 text-xs text-slate-500">
+          <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={selectedIds.length === filteredLeads.length && filteredLeads.length > 0}
+              onChange={handleToggleSelectAll}
+              className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+            <span>Select All ({filteredLeads.length})</span>
+          </label>
+          {selectedIds.length > 0 && (
+            <span className="font-semibold text-rose-600">
+              {selectedIds.length} selected
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Kanban / Stage Columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {STAGES.map(({ stage, label, color }) => {
@@ -348,65 +558,90 @@ export default function LeadsCrmPage() {
 
               <div className="space-y-2.5">
                 {stageLeads.length > 0 ? (
-                  stageLeads.map((lead) => (
-                    <div
-                      key={lead.id}
-                      className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-xs space-y-2"
-                    >
-                      <div className="flex justify-between items-start">
-                        <strong className="font-bold text-slate-900 dark:text-slate-100">
-                          {lead.leadName}
-                        </strong>
-                        <span className="font-bold text-teal-600">
-                          {formatPKR(lead.estimatedPotentialPkr)}
-                        </span>
-                      </div>
+                  stageLeads.map((lead) => {
+                    const isSelected = selectedIds.includes(lead.id);
+                    return (
+                      <div
+                        key={lead.id}
+                        className={`p-3 rounded-lg border transition-all ${
+                          isSelected
+                            ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20"
+                            : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40"
+                        } text-xs space-y-2`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(lead.id)}
+                              className="w-3.5 h-3.5 mt-0.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 shrink-0"
+                            />
+                            <strong className="font-bold text-slate-900 dark:text-slate-100">
+                              {lead.leadName}
+                            </strong>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="font-bold text-teal-600">
+                              {formatPKR(lead.estimatedPotentialPkr)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingLead(lead)}
+                              className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                              title="Delete Lead"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
 
-                      <p className="text-[11px] text-slate-500">
-                        Contact: {lead.contactPerson} • {lead.city}
-                      </p>
-
-                      {lead.interestedCategoryName && (
-                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
-                          {lead.interestedCategoryName}
-                        </span>
-                      )}
-
-                      {lead.notes && (
-                        <p className="text-[11px] text-slate-600 dark:text-slate-400 italic">
-                          "{lead.notes}"
+                        <p className="text-[11px] text-slate-500">
+                          Contact: {lead.contactPerson} • {lead.city}
                         </p>
-                      )}
 
-                      {/* Stage Selector / Advancement */}
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[10px] text-slate-500 gap-2">
-                        <select
-                          value={lead.status}
-                          onChange={(e) =>
-                            handleStageChange(lead.id, e.target.value as LeadPipelineStage)
-                          }
-                          className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold text-slate-700 dark:text-slate-300"
-                        >
-                          <option value="new">New</option>
-                          <option value="contacted">Called</option>
-                          <option value="qualified">Qualified</option>
-                          <option value="follow_up">Follow-Up</option>
-                          <option value="offer_sent">Offer Sent</option>
-                          <option value="converted">Became Customer</option>
-                        </select>
+                        {lead.interestedCategoryName && (
+                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
+                            {lead.interestedCategoryName}
+                          </span>
+                        )}
 
-                        <a
-                          href={`https://wa.me/${(lead.whatsappNumber || lead.phone || "").replace(/[^0-9]/g, "")}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-emerald-600 font-bold hover:underline flex items-center gap-1 shrink-0"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          WhatsApp
-                        </a>
+                        {lead.notes && (
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400 italic">
+                            &ldquo;{lead.notes}&rdquo;
+                          </p>
+                        )}
+
+                        {/* Stage Selector / Advancement */}
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[10px] text-slate-500 gap-2">
+                          <select
+                            value={lead.status}
+                            onChange={(e) =>
+                              handleStageChange(lead.id, e.target.value as LeadPipelineStage)
+                            }
+                            className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold text-slate-700 dark:text-slate-300"
+                          >
+                            <option value="new">New</option>
+                            <option value="contacted">Called</option>
+                            <option value="qualified">Qualified</option>
+                            <option value="follow_up">Follow-Up</option>
+                            <option value="offer_sent">Offer Sent</option>
+                            <option value="converted">Became Customer</option>
+                          </select>
+
+                          <a
+                            href={`https://wa.me/${(lead.whatsappNumber || lead.phone || "").replace(/[^0-9]/g, "")}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-600 font-bold hover:underline flex items-center gap-1 shrink-0"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            WhatsApp
+                          </a>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <p className="py-4 text-center text-[11px] text-slate-400">No inquiries in this list.</p>
                 )}
@@ -415,6 +650,28 @@ export default function LeadsCrmPage() {
           );
         })}
       </div>
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        entityName="Client Leads"
+        selectedCount={selectedIds.length}
+        totalCount={leads.length}
+        countsByScope={scopeCounts}
+        onConfirmDelete={handleExecuteBulkDelete}
+        isDeleting={isDeleting}
+      />
+
+      {/* Single Delete Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingLead}
+        onClose={() => setDeletingLead(null)}
+        itemName={deletingLead?.leadName || ""}
+        title="Delete Client Lead"
+        onConfirm={handleExecuteSingleDelete}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

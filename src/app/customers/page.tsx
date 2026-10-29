@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Building2,
@@ -14,12 +14,27 @@ import {
   CreditCard,
   User,
   ExternalLink,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  X,
 } from "lucide-react";
-import { formatPKR, formatKarachiDate } from "@/lib/formatting";
+import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { useAuth } from "@/context/AuthContext";
 import type { Customer, CustomerCategory } from "@/types";
+import {
+  BulkDeleteModal,
+  SingleDeleteModal,
+  type DeleteScopeType,
+} from "@/components/common/BulkDeleteModal";
+import {
+  isRecordInDateRange,
+  computeDateScopeCounts,
+  getItemsInScope,
+  type DateFilterState,
+} from "@/lib/dateFilter";
 
 export default function CustomersDirectoryPage() {
   const { currentUser, hasPermission, hasAnyPermission } = useAuth();
@@ -35,6 +50,13 @@ export default function CustomersDirectoryPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [isAdding, setIsAdding] = useState(false);
+
+  // Multi-Selection & Deletion State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Form State
   const [name, setName] = useState("");
@@ -122,8 +144,150 @@ export default function CustomersDirectoryPage() {
     return true;
   });
 
+  const scopeCounts = useMemo(() => {
+    const pool = customers.filter(
+      (c) => categoryFilter === "all" || c.category === categoryFilter
+    );
+    return computeDateScopeCounts(
+      pool,
+      (c) => c.createdAt,
+      selectedIds.length
+    );
+  }, [customers, categoryFilter, selectedIds.length]);
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filtered.length && filtered.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map((c) => c.id));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleExecuteBulkDelete = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    try {
+      setIsDeleting(true);
+      const pool = customers.filter(
+        (c) => categoryFilter === "all" || c.category === categoryFilter
+      );
+      const toDelete = getItemsInScope(
+        pool,
+        scope,
+        (c) => c.createdAt,
+        (c) => c.id,
+        selectedIds,
+        customStart,
+        customEnd
+      );
+
+      if (toDelete.length === 0) {
+        setNotice({ type: "error", text: "No matching records found to delete." });
+        setIsDeleting(false);
+        setDeleteModalOpen(false);
+        return;
+      }
+
+      const idsToDelete = toDelete.map((c) => c.id);
+      await offlineDb.customers.bulkDelete(idsToDelete);
+
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "customer",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} customer(s)`,
+        details: `Purged ${toDelete.length} medical store(s) under criteria scope: ${scope}.`,
+        snapshotBefore: toDelete,
+        canUndo: false,
+      });
+
+      setSelectedIds([]);
+      await refreshCustomers();
+      setDeleteModalOpen(false);
+      setNotice({
+        type: "success",
+        text: `Successfully deleted ${toDelete.length} medical store(s).`,
+      });
+    } catch (err: any) {
+      console.error("Bulk delete customers failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete customers." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleExecuteSingleDelete = async () => {
+    if (!deletingCustomer) return;
+    try {
+      setIsDeleting(true);
+      await offlineDb.customers.delete(deletingCustomer.id);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "customer",
+        entityId: deletingCustomer.id,
+        entityTitle: deletingCustomer.name,
+        details: `Deleted medical store "${deletingCustomer.name}" (${deletingCustomer.city || ""}).`,
+        snapshotBefore: deletingCustomer,
+        canUndo: true,
+      });
+      setSelectedIds((prev) => prev.filter((id) => id !== deletingCustomer.id));
+      await refreshCustomers();
+      setDeletingCustomer(null);
+      setNotice({
+        type: "success",
+        text: `Deleted "${deletingCustomer.name}".`,
+      });
+    } catch (err: any) {
+      console.error("Single delete customer failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete customer." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      {notice && (
+        <div
+          className={`p-4 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold animate-in fade-in ${
+            notice.type === "success"
+              ? "bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+              : "bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {notice.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            )}
+            <span>{notice.text}</span>
+          </div>
+          <button
+            onClick={() => setNotice(null)}
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
           <Link
@@ -142,13 +306,36 @@ export default function CustomersDirectoryPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAdding(!isAdding)}
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
-        >
-          <Plus className="w-4 h-4" />
-          {isAdding ? "Cancel" : "Add New Medical Store"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteModalOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs sm:text-sm font-bold shadow-soft shadow-rose-600/20 btn-interactive"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Selected ({selectedIds.length})</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setDeleteModalOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs sm:text-sm font-bold btn-interactive"
+            title="Delete with scope criteria (Today, Weekly, Monthly, Custom Range, All)"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete / Purge</span>
+          </button>
+
+          <button
+            onClick={() => setIsAdding(!isAdding)}
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
+          >
+            <Plus className="w-4 h-4" />
+            {isAdding ? "Cancel" : "Add New Medical Store"}
+          </button>
+        </div>
       </div>
 
       {/* Add Customer Form */}
@@ -311,6 +498,25 @@ export default function CustomersDirectoryPage() {
 
       {/* Customers List: Mobile Card View (< md) */}
       <div className="block md:hidden space-y-3.5">
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between px-2 py-1 text-xs text-slate-500">
+            <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={selectedIds.length === filtered.length && filtered.length > 0}
+                onChange={handleToggleSelectAll}
+                className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+              />
+              <span>Select All ({filtered.length})</span>
+            </label>
+            {selectedIds.length > 0 && (
+              <span className="font-semibold text-rose-600">
+                {selectedIds.length} selected
+              </span>
+            )}
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
             No medical stores match your search.
@@ -319,27 +525,50 @@ export default function CustomersDirectoryPage() {
           filtered.map((c) => (
             <div
               key={c.id}
-              className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive space-y-3.5"
+              className={`p-4 rounded-2xl border transition-all ${
+                selectedIds.includes(c.id)
+                  ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20"
+                  : "border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900"
+              } shadow-soft card-interactive space-y-3.5`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="space-y-0.5">
-                  <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-base leading-snug">
-                    {c.name}
-                  </h3>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>{c.city || "Karachi"}</span>
-                    {c.contactPerson && (
-                      <>
-                        <span>•</span>
-                        <span className="font-medium">{c.contactPerson}</span>
-                      </>
-                    )}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(c.id)}
+                    onChange={() => handleToggleSelect(c.id)}
+                    className="w-4 h-4 mt-1 rounded border-slate-300 text-teal-600 focus:ring-teal-500 shrink-0"
+                  />
+                  <div className="space-y-0.5">
+                    <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-base leading-snug">
+                      {c.name}
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{c.city || "Karachi"}</span>
+                      {c.contactPerson && (
+                        <>
+                          <span>•</span>
+                          <span className="font-medium">{c.contactPerson}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
-                  {c.category === "pharmacy" ? "Medical Store" : c.category === "distributor" ? "Distributor" : c.category.replace("_", " ")}
-                </span>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    {c.category === "pharmacy" ? "Medical Store" : c.category === "distributor" ? "Distributor" : c.category.replace("_", " ")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingCustomer(c)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                    title="Delete Shop"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Outstanding Udhaar and Limit (Restricted to Finance / Billing Users) */}
@@ -406,6 +635,15 @@ export default function CustomersDirectoryPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-xs font-bold tracking-wider">
+                <th className="w-10 py-3 px-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length === filtered.length && filtered.length > 0}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    title="Select All"
+                  />
+                </th>
                 <th className="py-3 px-3">Medical Store / Pharmacy</th>
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3">Owner / Contact</th>
@@ -421,7 +659,22 @@ export default function CustomersDirectoryPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr
+                  key={c.id}
+                  className={`transition-colors ${
+                    selectedIds.includes(c.id)
+                      ? "bg-teal-50/40 dark:bg-teal-950/30"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  }`}
+                >
+                  <td className="w-10 py-3.5 px-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(c.id)}
+                      onChange={() => handleToggleSelect(c.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                  </td>
                   <td className="py-3.5 px-3 font-semibold text-slate-900 dark:text-slate-100">
                     <span className="block font-bold">{c.name}</span>
                     <span className="block text-xs text-slate-400 font-normal">{c.city || "Karachi"}</span>
@@ -472,6 +725,14 @@ export default function CustomersDirectoryPage() {
                           Make Bill
                         </Link>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setDeletingCustomer(c)}
+                        className="min-h-[36px] px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors inline-flex items-center"
+                        title="Delete Medical Store"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -480,6 +741,28 @@ export default function CustomersDirectoryPage() {
           </table>
         </div>
       </div>
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        entityName="Medical Stores / Customers"
+        selectedCount={selectedIds.length}
+        totalCount={customers.filter((c) => categoryFilter === "all" || c.category === categoryFilter).length}
+        countsByScope={scopeCounts}
+        onConfirmDelete={handleExecuteBulkDelete}
+        isDeleting={isDeleting}
+      />
+
+      {/* Single Delete Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingCustomer}
+        onClose={() => setDeletingCustomer(null)}
+        itemName={deletingCustomer?.name || ""}
+        title="Delete Medical Store"
+        onConfirm={handleExecuteSingleDelete}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

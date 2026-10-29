@@ -16,9 +16,13 @@ import {
   ArrowRight,
   TrendingUp,
   Percent,
+  Trash2,
+  X,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { recordActivity } from "@/lib/audit/auditTracker";
+import { useAuth } from "@/context/AuthContext";
 import type { Customer } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import {
@@ -26,7 +30,14 @@ import {
   createDefaultDateFilter,
   type DateFilterState,
   getDateFilterDescription,
+  computeDateScopeCounts,
+  getItemsInScope,
 } from "@/lib/dateFilter";
+import {
+  BulkDeleteModal,
+  SingleDeleteModal,
+  type DeleteScopeType,
+} from "@/components/common/BulkDeleteModal";
 
 interface DistributorDetail extends Customer {
   territory: string;
@@ -35,12 +46,20 @@ interface DistributorDetail extends Customer {
 }
 
 export default function DistributorsPage() {
+  const { currentUser } = useAuth();
   const [distributors, setDistributors] = useState<DistributorDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedTerritory, setSelectedTerritory] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [isAdding, setIsAdding] = useState(false);
+
+  // Multi-Selection & Bulk Delete State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingDistributor, setDeletingDistributor] = useState<DistributorDetail | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Form State
   const [name, setName] = useState("");
@@ -103,6 +122,19 @@ export default function DistributorsPage() {
     };
 
     await offlineDb.customers.put(newDist);
+    await recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "customer",
+      entityId: newDist.id,
+      entityTitle: newDist.name,
+      details: `Added new wholesale distributor "${newDist.name}" (${newDist.city || ""}).`,
+      snapshotAfter: newDist,
+      canUndo: true,
+    });
     setIsAdding(false);
     setName("");
     setContactPerson("");
@@ -124,6 +156,117 @@ export default function DistributorsPage() {
     });
   }, [distributors, search, selectedTerritory, dateFilter]);
 
+  const scopeCounts = useMemo(() => {
+    return computeDateScopeCounts(
+      distributors,
+      (d) => d.createdAt || (d as any).updatedAt,
+      selectedIds.length
+    );
+  }, [distributors, selectedIds.length]);
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filtered.length && filtered.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map((d) => d.id));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleExecuteBulkDelete = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    try {
+      setIsDeleting(true);
+      const toDelete = getItemsInScope(
+        distributors,
+        scope,
+        (d) => d.createdAt || (d as any).updatedAt,
+        (d) => d.id,
+        selectedIds,
+        customStart,
+        customEnd
+      );
+
+      if (toDelete.length === 0) {
+        setNotice({ type: "error", text: "No matching distributors found to delete." });
+        setIsDeleting(false);
+        setDeleteModalOpen(false);
+        return;
+      }
+
+      const idsToDelete = toDelete.map((d) => d.id);
+      await offlineDb.customers.bulkDelete(idsToDelete);
+
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "customer",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} distributor(s)`,
+        details: `Purged ${toDelete.length} wholesale distributor(s) under scope: ${scope}.`,
+        snapshotBefore: toDelete,
+        canUndo: false,
+      });
+
+      setSelectedIds([]);
+      await loadData();
+      setDeleteModalOpen(false);
+      setNotice({
+        type: "success",
+        text: `Successfully deleted ${toDelete.length} distributor(s).`,
+      });
+    } catch (err: any) {
+      console.error("Bulk delete distributors failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete distributors." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleExecuteSingleDelete = async () => {
+    if (!deletingDistributor) return;
+    try {
+      setIsDeleting(true);
+      await offlineDb.customers.delete(deletingDistributor.id);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "customer",
+        entityId: deletingDistributor.id,
+        entityTitle: deletingDistributor.name,
+        details: `Deleted distributor "${deletingDistributor.name}" (${deletingDistributor.city || ""}).`,
+        snapshotBefore: deletingDistributor,
+        canUndo: true,
+      });
+      setSelectedIds((prev) => prev.filter((id) => id !== deletingDistributor.id));
+      await loadData();
+      setDeletingDistributor(null);
+      setNotice({
+        type: "success",
+        text: `Deleted "${deletingDistributor.name}".`,
+      });
+    } catch (err: any) {
+      console.error("Single delete distributor failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete distributor." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const totalCredit = distributors.reduce((sum, d) => sum + (d.creditLimit || 0), 0);
   const totalReceivable = distributors.reduce(
     (sum, d) => sum + (d.currentOutstandingBalance || 0),
@@ -132,6 +275,31 @@ export default function DistributorsPage() {
 
   return (
     <div className="space-y-6">
+      {notice && (
+        <div
+          className={`p-4 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold animate-in fade-in ${
+            notice.type === "success"
+              ? "bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+              : "bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {notice.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            )}
+            <span>{notice.text}</span>
+          </div>
+          <button
+            onClick={() => setNotice(null)}
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -146,12 +314,35 @@ export default function DistributorsPage() {
           </h1>
         </div>
 
-        <button
-          onClick={() => setIsAdding(true)}
-          className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" /> Add New Distributor
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteModalOpen(true)}
+              className="px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Selected ({selectedIds.length})</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setDeleteModalOpen(true)}
+            className="px-3.5 py-2 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center gap-1.5 transition-all"
+            title="Delete with criteria"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete / Purge</span>
+          </button>
+
+          <button
+            onClick={() => setIsAdding(true)}
+            className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
+          >
+            <Plus className="w-4 h-4" /> Add New Distributor
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -229,28 +420,71 @@ export default function DistributorsPage() {
         </div>
       </div>
 
+      {/* Selection Toolbar */}
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between px-2 text-xs text-slate-500">
+          <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={selectedIds.length === filtered.length && filtered.length > 0}
+              onChange={handleToggleSelectAll}
+              className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+            <span>Select All ({filtered.length})</span>
+          </label>
+          {selectedIds.length > 0 && (
+            <span className="font-semibold text-rose-600">
+              {selectedIds.length} selected
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Distributor Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((d) => {
           const utilPct = Math.round(((d.currentOutstandingBalance || 0) / (d.creditLimit || 1)) * 100);
+          const isSelected = selectedIds.includes(d.id);
           return (
             <div
               key={d.id}
-              className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between hover:border-teal-500/50 transition-all text-xs space-y-4"
+              className={`p-5 rounded-xl border transition-all ${
+                isSelected
+                  ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20"
+                  : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+              } shadow-sm flex flex-col justify-between hover:border-teal-500/50 text-xs space-y-4`}
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
-                      {d.city} Region
-                    </span>
-                    <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm mt-1">
-                      {d.name}
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-medium">{d.territory}</p>
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelect(d.id)}
+                      className="w-4 h-4 mt-1 rounded border-slate-300 text-teal-600 focus:ring-teal-500 shrink-0"
+                    />
+                    <div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
+                        {d.city} Region
+                      </span>
+                      <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm mt-1">
+                        {d.name}
+                      </h3>
+                      <p className="text-[11px] text-slate-400 font-medium">{d.territory}</p>
+                    </div>
                   </div>
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-teal-600 shrink-0">
-                    <Truck className="w-5 h-5" />
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDeletingDistributor(d)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                      title="Delete Distributor"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-teal-600 shrink-0">
+                      <Truck className="w-4 h-4" />
+                    </div>
                   </div>
                 </div>
 
@@ -472,6 +706,28 @@ export default function DistributorsPage() {
           </div>
         </div>
       )}
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        entityName="Wholesale Distributors"
+        selectedCount={selectedIds.length}
+        totalCount={distributors.length}
+        countsByScope={scopeCounts}
+        onConfirmDelete={handleExecuteBulkDelete}
+        isDeleting={isDeleting}
+      />
+
+      {/* Single Delete Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingDistributor}
+        onClose={() => setDeletingDistributor(null)}
+        itemName={deletingDistributor?.name || ""}
+        title="Delete Wholesale Distributor"
+        onConfirm={handleExecuteSingleDelete}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }
