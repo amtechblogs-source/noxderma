@@ -381,7 +381,7 @@ export default function CustomersDirectoryPage() {
                   <span>WhatsApp</span>
                 </a>
                 <Link
-                  href={`/customers/detail?id=${encodeURIComponent(c.id)}`}
+                  href={`/customers/detail?id=${encodeURIComponent(c.id)}&name=${encodeURIComponent(c.name)}`}
                   className="min-h-[40px] flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
                 >
                   {canViewFinance ? "Khata" : "Profile"}
@@ -459,7 +459,7 @@ export default function CustomersDirectoryPage() {
                   <td className="py-3.5 px-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Link
-                        href={`/customers/detail?id=${encodeURIComponent(c.id)}`}
+                        href={`/customers/detail?id=${encodeURIComponent(c.id)}&name=${encodeURIComponent(c.name)}`}
                         className="min-h-[36px] px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 text-xs btn-interactive inline-flex items-center"
                       >
                         {canViewFinance ? "View Khata" : "View Profile"}

@@ -544,16 +544,8 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   return (
     <header className="sticky top-0 z-30 w-full max-w-[100vw] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
       <div className="flex items-center justify-between px-2.5 sm:px-4 md:px-6 h-16 gap-1.5 sm:gap-3">
-        {/* Left: Mobile Sidebar Toggle & Category Switcher */}
+        {/* Left: Category Switcher */}
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
-          <button
-            onClick={onToggleSidebar}
-            aria-label="Toggle navigation menu"
-            className="lg:hidden p-2 rounded-xl min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 btn-interactive shrink-0"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
           {/* Dynamic Category Switcher Dropdown */}
           <div ref={categoryMenuRef} className="relative min-w-0">
             <button

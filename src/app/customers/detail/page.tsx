@@ -69,11 +69,24 @@ function CustomerDetailContent() {
     "invoices:view",
   ]);
   const searchParams = useSearchParams();
-  const customerId =
-    searchParams.get("id") ||
-    searchParams.get("customerId") ||
-    searchParams.get("cid") ||
-    "";
+
+  // Helper to extract param from useSearchParams with fallback to window.location.search
+  const getParam = (key: string): string => {
+    const fromNext = searchParams.get(key);
+    if (fromNext) return fromNext;
+    if (typeof window !== "undefined") {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        return sp.get(key) || "";
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  };
+
+  const rawCustomerId = getParam("id") || getParam("customerId") || getParam("cid") || "";
+  const rawCustomerName = getParam("name") || getParam("customerName") || "";
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -92,55 +105,138 @@ function CustomerDetailContent() {
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
 
   const loadData = async () => {
-    const cleanId = (customerId || "").trim();
-    if (!cleanId) {
+    const cleanId = decodeURIComponent(
+      getParam("id") || getParam("customerId") || getParam("cid") || rawCustomerId || ""
+    ).trim();
+    const cleanName = decodeURIComponent(
+      getParam("name") || getParam("customerName") || rawCustomerName || ""
+    ).trim();
+
+    if (!cleanId && !cleanName) {
       setLoading(false);
       return;
     }
 
     try {
-      // 1. First attempt: exact primary key in local Dexie IndexedDB
-      let cust = await offlineDb.customers.get(cleanId);
+      let cust: Customer | undefined = undefined;
 
-      // 2. Second attempt: search local IndexedDB by lowercase id or name or phone
+      // 1. First attempt: exact primary key in local Dexie IndexedDB
+      if (cleanId) {
+        cust = await offlineDb.customers.get(cleanId);
+      }
+
+      // 2. Second attempt: search local IndexedDB by ID variations or Name
       if (!cust) {
         const allCusts = await offlineDb.customers.toArray();
-        cust =
-          allCusts.find(
-            (c) =>
-              c.id.toLowerCase() === cleanId.toLowerCase() ||
-              c.name.trim().toLowerCase() === cleanId.toLowerCase() ||
-              (c.phone && c.phone.replace(/[^0-9]/g, "") === cleanId.replace(/[^0-9]/g, ""))
-          ) || undefined;
+        cust = allCusts.find((c) => {
+          if (cleanId && c.id.toLowerCase() === cleanId.toLowerCase()) return true;
+          if (
+            cleanId &&
+            c.id.replace(/^cust_/, "").toLowerCase() === cleanId.replace(/^cust_/, "").toLowerCase()
+          )
+            return true;
+          if (cleanName && c.name.trim().toLowerCase() === cleanName.toLowerCase()) return true;
+          if (cleanId && c.name.trim().toLowerCase() === cleanId.toLowerCase()) return true;
+          if (
+            cleanId &&
+            c.phone &&
+            c.phone.replace(/[^0-9]/g, "") === cleanId.replace(/[^0-9]/g, "")
+          )
+            return true;
+          return false;
+        });
       }
 
       // 3. Third attempt: fetch directly from Cloud Firestore if not found locally
       if (!cust) {
         try {
           const { db: firestoreDb } = await import("@/lib/firebase/config");
-          const { doc: fsDoc, getDoc: fsGetDoc } = await import("firebase/firestore");
-          const snap = await fsGetDoc(fsDoc(firestoreDb, "customers", cleanId));
-          if (snap.exists()) {
-            cust = { ...snap.data(), id: snap.id } as Customer;
-            await offlineDb.customers.put(cust);
+          const { doc: fsDoc, getDoc: fsGetDoc, getDocs, collection } = await import(
+            "firebase/firestore"
+          );
+
+          if (cleanId) {
+            const snap = await fsGetDoc(fsDoc(firestoreDb, "customers", cleanId));
+            if (snap.exists()) {
+              cust = { ...snap.data(), id: snap.id } as Customer;
+              await offlineDb.customers.put(cust);
+            }
+          }
+
+          if (!cust) {
+            const allSnap = await getDocs(collection(firestoreDb, "customers"));
+            for (const d of allSnap.docs) {
+              const data = d.data();
+              const matchId =
+                cleanId &&
+                (d.id.toLowerCase() === cleanId.toLowerCase() ||
+                  d.id.replace(/^cust_/, "").toLowerCase() ===
+                    cleanId.replace(/^cust_/, "").toLowerCase());
+              const matchName =
+                (cleanName && (data.name || "").trim().toLowerCase() === cleanName.toLowerCase()) ||
+                (cleanId && (data.name || "").trim().toLowerCase() === cleanId.toLowerCase());
+              if (matchId || matchName) {
+                cust = { ...data, id: d.id } as Customer;
+                await offlineDb.customers.put(cust);
+                break;
+              }
+            }
           }
         } catch (fsErr) {
           console.warn("Could not fetch customer directly from Cloud Firestore:", fsErr);
         }
       }
 
+      // 4. Fourth fallback: graceful customer shell from passed name/id so user is never blocked
+      if (!cust && (cleanName || cleanId)) {
+        cust = {
+          id: cleanId || `cust_${Date.now()}`,
+          name: cleanName || cleanId,
+          businessName: cleanName || cleanId,
+          category: "pharmacy",
+          contactPerson: cleanName || "Customer",
+          phone: "",
+          whatsappNumber: "",
+          address: "",
+          city: "",
+          creditLimit: 0,
+          creditTermsDays: 30,
+          currentOutstandingBalance: 0,
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await offlineDb.customers.put(cust);
+      }
+
       const activeCustId = cust?.id || cleanId;
+      const activeCustName = cust?.name || cleanName;
 
       const [invList, payList, allVisits] = await Promise.all([
-        offlineDb.invoices.where("customerId").equals(activeCustId).toArray(),
-        offlineDb.payments.where("customerId").equals(activeCustId).toArray(),
+        offlineDb.invoices.toArray(),
+        offlineDb.payments.toArray(),
         offlineDb.customerVisits.toArray(),
       ]);
 
-      const visitList = (allVisits || []).filter(
+      const matchingInvoices = (invList || []).filter(
+        (i) =>
+          i.customerId === activeCustId ||
+          (activeCustName &&
+            (i.customerName || "").trim().toLowerCase() === activeCustName.toLowerCase())
+      );
+
+      const matchingPayments = (payList || []).filter(
+        (p) =>
+          p.customerId === activeCustId ||
+          (activeCustName &&
+            (p.customerName || "").trim().toLowerCase() === activeCustName.toLowerCase())
+      );
+
+      const matchingVisits = (allVisits || []).filter(
         (v) =>
           v.customerId === activeCustId ||
-          (cust && v.customerName.trim().toLowerCase() === cust.name.trim().toLowerCase())
+          (activeCustName &&
+            (v.customerName || "").trim().toLowerCase() === activeCustName.toLowerCase())
       );
 
       if (cust) {
@@ -150,17 +246,17 @@ function CustomerDetailContent() {
       }
 
       setInvoices(
-        (invList || []).sort(
+        matchingInvoices.sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
       );
       setPayments(
-        (payList || []).sort(
+        matchingPayments.sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
       );
       setVisits(
-        (visitList || []).sort(
+        matchingVisits.sort(
           (a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()
         )
       );
@@ -175,7 +271,7 @@ function CustomerDetailContent() {
     const handleSync = () => loadData();
     window.addEventListener("noxderma-cloud-synced", handleSync);
     return () => window.removeEventListener("noxderma-cloud-synced", handleSync);
-  }, [customerId]);
+  }, [rawCustomerId, rawCustomerName]);
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,7 +380,7 @@ function CustomerDetailContent() {
             Customer Profile Not Found
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
-            The requested customer record {customerId ? `("${customerId}")` : ""} could not be found
+            The requested customer record {rawCustomerId || rawCustomerName ? `("${rawCustomerId || rawCustomerName}")` : ""} could not be found
             in local storage or Cloud Firestore.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
