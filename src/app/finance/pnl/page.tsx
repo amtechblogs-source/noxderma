@@ -369,9 +369,9 @@ export default function ProfitAndLossPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-20 print:max-w-none print:w-full print:m-0 print:p-0">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-0 pb-28 sm:pb-16 print:max-w-none print:w-full print:m-0 print:p-0">
       {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800 no-print print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-2 border-b border-slate-200 dark:border-slate-800 no-print print:hidden">
         <div>
           <Link
             href="/"
@@ -380,21 +380,21 @@ export default function ProfitAndLossPage() {
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to Dashboard
           </Link>
-          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-teal-600" />
-            Profit & Loss Report (Kamai / Munafa)
+          <h1 className="text-lg sm:text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600 shrink-0" />
+            <span>Profit &amp; Loss Report (Kamai / Munafa)</span>
           </h1>
-          <p className="text-xs md:text-sm text-slate-500">
+          <p className="text-xs text-slate-500 mt-0.5">
             Audit-grade Net Profit: Gross sales minus customer discounts, product purchase cost, traveling expenses, salaries, and operating overheads.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* Period Selector */}
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value as any)}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm"
+            className="col-span-2 sm:col-auto px-3 py-2 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm"
           >
             <option value="all">All Time (YTD)</option>
             <option value="this_month">This Month</option>
@@ -404,27 +404,27 @@ export default function ProfitAndLossPage() {
           <button
             type="button"
             onClick={() => setIsExpenseModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-all btn-interactive"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-all btn-interactive"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 shrink-0" />
             <span>Add Expense</span>
           </button>
 
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm transition-colors"
           >
-            <Printer className="w-3.5 h-3.5" />
-            Print Report
+            <Printer className="w-3.5 h-3.5 shrink-0" />
+            <span>Print Report</span>
           </button>
         </div>
       </div>
 
       {/* Accounting Compliance Banner */}
-      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1 no-print print:hidden">
+      <div className="p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1 no-print print:hidden">
         <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-          <Info className="w-4 h-4 text-teal-600" />
+          <Info className="w-4 h-4 text-teal-600 shrink-0" />
           <span>Accurate Real-Time Accounting Formula:</span>
         </div>
         <p className="text-slate-600 dark:text-slate-400">
@@ -439,168 +439,301 @@ export default function ProfitAndLossPage() {
       </div>
 
       {/* Structured P&L Statement Card */}
-      <div className="p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-6 text-xs md:text-sm print:border-none print:shadow-none print:p-0 print:space-y-4 print:text-xs">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-800 print:border-slate-900">
-          <div>
-            <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 print:text-black">
+      <div className="p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 sm:space-y-6 text-xs md:text-sm print:border-none print:shadow-none print:p-0 print:space-y-4 print:text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-4 border-b border-slate-200 dark:border-slate-800 print:border-slate-900">
+          <div className="min-w-0">
+            <h2 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 print:text-black tracking-tight">
               Noxderma Pharmaceuticals Ltd.
             </h2>
-            <p className="text-xs text-slate-500 print:text-slate-600">
+            <p className="text-[11px] sm:text-xs text-slate-500 print:text-slate-600 mt-0.5">
               Profit &amp; Loss Statement • {period === "this_month" ? "This Month" : period === "last_month" ? "Last Month" : "All Time"} • Generated: {formatKarachiDate(new Date(), true)}
             </p>
           </div>
-          <span className="font-mono text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 print:bg-slate-100 print:text-black print:border print:border-slate-300">
+          <span className="font-mono text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 w-fit shrink-0 border border-teal-200/60 dark:border-teal-800/60 print:bg-slate-100 print:text-black print:border-slate-300">
             Currency: Pakistani Rupee (PKR ₨)
           </span>
         </div>
 
         {/* 1. Revenue & Sales */}
         <div className="space-y-2">
-          <div className="flex justify-between font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider text-xs">
+          <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider text-[11px] sm:text-xs pb-1 border-b border-slate-100 dark:border-slate-800/60">
             <span>1. Revenue &amp; Sales (Bikri)</span>
-            <span>Amount</span>
+            <span className="text-slate-400 font-semibold text-[10px] sm:text-[11px]">Amount</span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Total Bills Amount (Gross Sales)</span>
-            <span className="font-medium font-mono">{formatPKR(grossSales)}</span>
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Total Bills Amount (Gross Sales)
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Total retail invoice value before discounts
+              </span>
+            </div>
+            <span className="font-semibold font-mono text-slate-900 dark:text-slate-100 shrink-0 text-right whitespace-nowrap">
+              {formatPKR(grossSales)}
+            </span>
           </div>
 
-          <div className="flex justify-between text-rose-600 pl-3">
-            <span>Minus: Customer Discounts Given ({filteredData.periodInvoices.length} bills)</span>
-            <span className="font-mono">-{formatPKR(discountsGiven)}</span>
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-rose-600 dark:text-rose-400 font-medium block">
+                Minus: Customer Discounts Given
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Allowed across {filteredData.periodInvoices.length} sales invoices
+              </span>
+            </div>
+            <span className="font-semibold font-mono text-rose-600 dark:text-rose-400 shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(discountsGiven)}
+            </span>
           </div>
 
           {salesReturns > 0 && (
-            <div className="flex justify-between text-rose-600 pl-3">
-              <span>Minus: Customer Medicine Returns (Wapis Stock)</span>
-              <span className="font-mono">-{formatPKR(salesReturns)}</span>
+            <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+              <div className="min-w-0 pr-1">
+                <span className="text-rose-600 dark:text-rose-400 font-medium block">
+                  Minus: Customer Medicine Returns (Wapis Stock)
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  Reversed stock credited back to pharmacies
+                </span>
+              </div>
+              <span className="font-semibold font-mono text-rose-600 dark:text-rose-400 shrink-0 text-right whitespace-nowrap">
+                -{formatPKR(salesReturns)}
+              </span>
             </div>
           )}
 
-          <div className="flex justify-between font-extrabold text-slate-900 dark:text-slate-100 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <span>Net Sales Revenue (Asli Bikri)</span>
-            <span className="text-teal-600 font-mono text-sm">{formatPKR(netSales)}</span>
+          <div className="flex items-center justify-between gap-3 pt-2.5 pb-1 font-bold pl-1 sm:pl-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="min-w-0">
+              <span className="text-slate-900 dark:text-slate-100 block">
+                Net Sales Revenue (Asli Bikri)
+              </span>
+              <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold block">
+                Actual billed revenue
+              </span>
+            </div>
+            <span className="text-teal-600 dark:text-teal-400 font-mono text-sm sm:text-base font-extrabold shrink-0 text-right whitespace-nowrap">
+              {formatPKR(netSales)}
+            </span>
           </div>
         </div>
 
         {/* 2. Cost of Goods Sold */}
         <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
-          <div className="flex justify-between font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider text-xs">
+          <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider text-[11px] sm:text-xs pb-1 border-b border-slate-100 dark:border-slate-800/60">
             <span>2. Purchase Cost of Medicines Sold (COGS)</span>
-            <span>Amount</span>
+            <span className="text-slate-400 font-semibold text-[10px] sm:text-[11px]">Amount</span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>
-              Original Purchase Cost of Sold Medicines ({filteredData.periodInvoices.length} invoices)
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Original Purchase Cost of Sold Medicines
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Exact manufacturer batch cost for {filteredData.periodInvoices.length} invoices
+              </span>
+            </div>
+            <span className="font-semibold text-rose-600 dark:text-rose-400 font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(costOfGoodsSold)}
             </span>
-            <span className="font-semibold text-rose-600 font-mono">-{formatPKR(costOfGoodsSold)}</span>
           </div>
 
-          <div className="flex justify-between font-extrabold text-slate-900 dark:text-slate-100 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <span>Gross Profit (Khaam Munafa)</span>
-            <span className="text-teal-600 font-bold font-mono">
-              {formatPKR(grossProfit)}{" "}
-              <span className="text-xs text-slate-500 font-normal">({grossProfitMargin}%)</span>
+          <div className="flex items-center justify-between gap-3 pt-2.5 pb-1 font-bold pl-1 sm:pl-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="min-w-0">
+              <span className="text-slate-900 dark:text-slate-100 block">
+                Gross Profit (Khaam Munafa)
+              </span>
+              <span className="text-[10px] text-slate-500 block">
+                Gross Margin: <strong className="text-teal-600 dark:text-teal-400">{grossProfitMargin}%</strong>
+              </span>
+            </div>
+            <span className="text-teal-600 dark:text-teal-400 font-bold font-mono text-sm sm:text-base shrink-0 text-right whitespace-nowrap">
+              {formatPKR(grossProfit)}
             </span>
           </div>
         </div>
 
         {/* 3. Operating Expenses */}
         <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
-          <div className="flex justify-between items-center font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider text-xs">
+          <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider text-[11px] sm:text-xs pb-1 border-b border-slate-100 dark:border-slate-800/60">
             <span>3. Operating Business Expenses (Kul Kharcha)</span>
             <button
               type="button"
               onClick={() => setIsExpenseModalOpen(true)}
-              className="text-[11px] font-bold text-teal-600 hover:underline normal-case no-print flex items-center gap-1"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 hover:bg-teal-100 text-[11px] font-bold tracking-normal shrink-0 border border-teal-200/80 dark:border-teal-800/80 no-print"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Expense
+              <Plus className="w-3.5 h-3.5 shrink-0" />
+              <span>Add Expense</span>
             </button>
           </div>
 
-          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 pl-3">
-            <span className="flex items-center gap-2">
-              <span>Traveling &amp; Fuel Expenses (Petrol / Reps TA/DA)</span>
-              <Link
-                href="/finance/salaries"
-                className="text-[10px] text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
-              >
-                (Payroll &rarr;)
-              </Link>
+          {/* Traveling & Fuel */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Traveling &amp; Fuel Expenses (Petrol / TA-DA)
+              </span>
+              <div className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span>Field visits fuel claims</span>
+                <span>•</span>
+                <Link
+                  href="/finance/salaries"
+                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
+                >
+                  Payroll Fuel &rarr;
+                </Link>
+              </div>
+            </div>
+            <span className="text-rose-600 font-medium font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(travelingExpenses)}
             </span>
-            <span className="text-rose-600 font-medium font-mono">-{formatPKR(travelingExpenses)}</span>
           </div>
 
-          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 pl-3">
-            <span className="flex items-center gap-2">
-              <span>Staff Salaries &amp; Field Commissions (Tankhwah)</span>
-              <Link
-                href="/finance/salaries"
-                className="text-[10px] text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
-              >
-                (Payroll Slips &rarr;)
-              </Link>
+          {/* Staff Salaries */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Staff Salaries &amp; Field Commissions (Tankhwah)
+              </span>
+              <div className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span>Monthly salaries &amp; allowances</span>
+                <span>•</span>
+                <Link
+                  href="/finance/salaries"
+                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
+                >
+                  Manage Slips &rarr;
+                </Link>
+              </div>
+            </div>
+            <span className="text-rose-600 font-medium font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(staffSalaries)}
             </span>
-            <span className="text-rose-600 font-medium font-mono">-{formatPKR(staffSalaries)}</span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Broken &amp; Damaged Medicines (Nuqsan)</span>
-            <span className="text-rose-600 font-medium font-mono">-{formatPKR(damagedStockLoss)}</span>
+          {/* Broken Medicines */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Broken &amp; Damaged Medicines (Nuqsan)
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Transit and warehouse damages write-off
+              </span>
+            </div>
+            <span className="text-rose-600 font-medium font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(damagedStockLoss)}
+            </span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Free Doctor Samples Issued</span>
-            <span className="text-amber-600 font-medium font-mono">-{formatPKR(sampleExpense)}</span>
+          {/* Free Samples */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Free Doctor Samples Issued
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Promotional stock given to doctors
+              </span>
+            </div>
+            <span className="text-amber-600 font-medium font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(sampleExpense)}
+            </span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Courier &amp; Delivery Logistics (TCS / Trax)</span>
-            <span className="text-slate-600 dark:text-slate-300 font-mono">-{formatPKR(courierAndLogistics)}</span>
+          {/* Courier Logistics */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Courier &amp; Delivery Logistics (TCS / Trax)
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Shipment charges and transport freight
+              </span>
+            </div>
+            <span className="text-slate-600 dark:text-slate-300 font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(courierAndLogistics)}
+            </span>
           </div>
 
-          <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-3">
-            <span>Office Rent, Utilities &amp; Other Expenses</span>
-            <span className="text-slate-600 dark:text-slate-300 font-mono">
+          {/* Office Rent & Utilities */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Office Rent, Utilities &amp; Other Expenses
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Rent, electricity, internet &amp; miscellaneous
+              </span>
+            </div>
+            <span className="text-slate-600 dark:text-slate-300 font-mono shrink-0 text-right whitespace-nowrap">
               -{formatPKR(officeUtilities + marketingExpenses + otherExpenses)}
             </span>
           </div>
 
-          <div className="flex justify-between font-semibold text-slate-700 dark:text-slate-300 pt-1.5 border-t border-slate-100 dark:border-slate-800">
-            <span>Total Operating Expenses</span>
-            <span className="text-rose-600 font-bold font-mono">-{formatPKR(totalOperatingExpenses)}</span>
+          {/* Total Expenses Subtotal */}
+          <div className="flex items-center justify-between gap-3 pt-2.5 pb-1 font-bold pl-1 sm:pl-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="min-w-0">
+              <span className="text-slate-900 dark:text-slate-100 block">
+                Total Operating Expenses
+              </span>
+              <span className="text-[10px] text-slate-500 block">
+                All business overheads combined
+              </span>
+            </div>
+            <span className="text-rose-600 font-bold font-mono text-sm sm:text-base shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(totalOperatingExpenses)}
+            </span>
           </div>
         </div>
 
-        {/* 4. Final Net Profit */}
+        {/* 4. Final Net Profit Card */}
         <div
-          className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${
+          className={`p-4 sm:p-5 rounded-2xl border ${
             netOperatingProfit >= 0
-              ? "bg-teal-50 dark:bg-teal-950/40 border-teal-200 dark:border-teal-800 text-teal-900 dark:text-teal-200"
-              : "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200"
+              ? "bg-gradient-to-br from-emerald-50/90 to-teal-50/90 dark:from-emerald-950/40 dark:to-teal-950/40 border-teal-200 dark:border-teal-800"
+              : "bg-gradient-to-br from-rose-50/90 to-amber-50/90 dark:from-rose-950/40 dark:to-amber-950/40 border-rose-200 dark:border-rose-800"
           }`}
         >
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider block">
-              Final Net Profit (Asli Kamai / Saaf Munafa)
-            </span>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Net balance in hand after deducting purchase costs, customer discounts, fuel/traveling, and salaries.
-            </p>
-          </div>
-          <div className="text-left sm:text-right">
-            <span className="text-xl md:text-2xl font-extrabold font-mono block">
-              {formatPKR(netOperatingProfit)}
-            </span>
-            <span
-              className={`block text-xs font-bold mt-0.5 ${
-                netOperatingProfit >= 0 ? "text-teal-700 dark:text-teal-300" : "text-rose-700 dark:text-rose-300"
-              }`}
-            >
-              Net Profit Margin: {netProfitMargin}%
-            </span>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="min-w-0">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider block text-slate-600 dark:text-slate-400">
+                Final Net Profit (Asli Kamai / Saaf Munafa)
+              </span>
+              <h3
+                className={`text-xl sm:text-2xl md:text-3xl font-black font-mono mt-1 ${
+                  netOperatingProfit >= 0
+                    ? "text-teal-700 dark:text-teal-300"
+                    : "text-rose-700 dark:text-rose-300"
+                }`}
+              >
+                {formatPKR(netOperatingProfit)}
+              </h3>
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-1 max-w-md">
+                Net balance in hand after deducting purchase costs, customer discounts, fuel/traveling, and salaries.
+              </p>
+            </div>
+
+            <div className="w-full sm:w-auto p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shrink-0 text-left sm:text-right shadow-sm">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Net Profit Margin
+              </span>
+              <span
+                className={`text-lg sm:text-xl font-black font-mono block mt-0.5 ${
+                  netOperatingProfit >= 0
+                    ? "text-teal-600 dark:text-teal-400"
+                    : "text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {netProfitMargin}%
+              </span>
+              <span className="text-[10px] text-slate-500 block">
+                {netOperatingProfit >= 0 ? "Healthy business return" : "Operating at net loss"}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -624,11 +757,11 @@ export default function ProfitAndLossPage() {
         </div>
       </div>
 
-      {/* Recorded Operating Expenses Table */}
-      <div className="p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 no-print">
+      {/* Recorded Operating Expenses Table & Mobile Cards */}
+      <div className="p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 no-print">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-teal-600" />
+            <Wallet className="w-5 h-5 text-teal-600 shrink-0" />
             <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">
               Recorded Operating Expenses ({filteredData.periodExpenses.length})
             </h3>
@@ -644,7 +777,7 @@ export default function ProfitAndLossPage() {
         </div>
 
         {filteredData.periodExpenses.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-xs border border-dashed rounded-xl space-y-1">
+          <div className="p-6 sm:p-8 text-center text-slate-400 text-xs border border-dashed rounded-xl space-y-1">
             <p className="font-semibold text-slate-600 dark:text-slate-400">
               No operating expenses recorded yet for this period.
             </p>
@@ -653,53 +786,99 @@ export default function ProfitAndLossPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="p-2.5">Date</th>
-                  <th className="p-2.5">Category</th>
-                  <th className="p-2.5">Title / Description</th>
-                  <th className="p-2.5">Paid To / Method</th>
-                  <th className="p-2.5 text-right">Amount</th>
-                  <th className="p-2.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredData.periodExpenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="p-2.5 font-mono whitespace-nowrap text-slate-600 dark:text-slate-400">
-                      {formatKarachiDate(exp.date)}
-                    </td>
-                    <td className="p-2.5 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+          <>
+            {/* Desktop Table View (Hidden on mobile) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-2.5">Date</th>
+                    <th className="p-2.5">Category</th>
+                    <th className="p-2.5">Title / Description</th>
+                    <th className="p-2.5">Paid To / Method</th>
+                    <th className="p-2.5 text-right">Amount</th>
+                    <th className="p-2.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredData.periodExpenses.map((exp) => (
+                    <tr key={exp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="p-2.5 font-mono whitespace-nowrap text-slate-600 dark:text-slate-400">
+                        {formatKarachiDate(exp.date)}
+                      </td>
+                      <td className="p-2.5 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {exp.category.replace(/_/g, " ")}
+                        </span>
+                      </td>
+                      <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">
+                        {exp.title}
+                      </td>
+                      <td className="p-2.5 text-slate-500">
+                        {exp.paidTo || "—"} ({exp.paymentMethod})
+                      </td>
+                      <td className="p-2.5 text-right font-mono font-bold text-rose-600">
+                        {formatPKR(exp.amount)}
+                      </td>
+                      <td className="p-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExpense(exp.id)}
+                          className="p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition-colors"
+                          title="Delete expense"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card Feed View (No Horizontal Scroll) */}
+            <div className="md:hidden space-y-2.5">
+              {filteredData.periodExpenses.map((exp) => (
+                <div
+                  key={exp.id}
+                  className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
                         {exp.category.replace(/_/g, " ")}
                       </span>
-                    </td>
-                    <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {formatKarachiDate(exp.date)}
+                      </span>
+                    </div>
+                    <div className="font-bold text-xs text-slate-900 dark:text-slate-100">
                       {exp.title}
-                    </td>
-                    <td className="p-2.5 text-slate-500">
-                      {exp.paidTo || "—"} ({exp.paymentMethod})
-                    </td>
-                    <td className="p-2.5 text-right font-mono font-bold text-rose-600">
+                    </div>
+                    {(exp.paidTo || exp.paymentMethod) && (
+                      <div className="text-[10px] text-slate-500">
+                        Paid to: {exp.paidTo || "—"} • {exp.paymentMethod}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 text-right space-y-2">
+                    <div className="font-mono font-extrabold text-sm text-rose-600 whitespace-nowrap">
                       {formatPKR(exp.amount)}
-                    </td>
-                    <td className="p-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteExpense(exp.id)}
-                        className="p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition-colors"
-                        title="Delete expense"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteExpense(exp.id)}
+                      className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900 transition-colors inline-flex"
+                      title="Delete expense"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

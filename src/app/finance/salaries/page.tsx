@@ -532,7 +532,7 @@ export default function StaffSalariesPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-20">
+    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-3 sm:px-4 md:px-0 pb-28 sm:pb-16">
       {/* Official Print-Only Sheet Header (When printing entire list) */}
       <div className="hidden print:block border-b-2 border-black pb-3 mb-4">
         <div className="flex justify-between items-start">
