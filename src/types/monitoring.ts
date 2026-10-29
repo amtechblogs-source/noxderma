@@ -86,8 +86,18 @@ export interface GeoVerifiedPhoto {
 
 export interface StaffMonitoringProfile {
   id: string;
+  userId?: string;
+  userEmail?: string;
+  accountRole?: string;
+  deviceId?: string;
+  deviceCategory?: "mobile" | "tablet" | "desktop";
+  browserName?: string;
+  isDesktopAcPower?: boolean;
+  hasBatteryApi?: boolean;
+  hasRealGpsFix?: boolean;
+  lastUpdatedIso?: string;
   name: string;
-  roleTitle: "Order Booker" | "Medical Rep" | "Recovery Officer" | "Field Supervisor";
+  roleTitle: "Order Booker" | "Medical Rep" | "Recovery Officer" | "Field Supervisor" | "Owner / Admin" | "Accountant" | "Store Staff";
   phone: string;
   vehicleType: "bike" | "car";
   territory: string;

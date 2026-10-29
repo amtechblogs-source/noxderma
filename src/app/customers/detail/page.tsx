@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
 import type {
   Customer,
   Invoice,
@@ -55,6 +56,18 @@ export default function CustomerDetailPage() {
 }
 
 function CustomerDetailContent() {
+  const { hasPermission, hasAnyPermission } = useAuth();
+  const canCreateBill = hasPermission("invoices:create");
+  const canViewInvoices = hasPermission("invoices:view");
+  const canReceivePayment = hasPermission("finance:payments");
+  const canViewLedger = hasPermission("finance:ledgers");
+  const canViewVisits = hasPermission("crm:visits");
+  const canViewCredit = hasAnyPermission([
+    "finance:aging",
+    "finance:ledgers",
+    "finance:payments",
+    "invoices:view",
+  ]);
   const customerId = useSearchParams().get("id") ?? "";
 
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -315,77 +328,83 @@ function CustomerDetailContent() {
           >
             <Share2 className="w-3.5 h-3.5" /> WhatsApp Chat
           </a>
-          <Link
-            href={`/sales/invoices/new?customerId=${customer.id}`}
-            className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
-          >
-            <Plus className="w-4 h-4" /> Create Invoice
-          </Link>
+          {canCreateBill && (
+            <Link
+              href={`/sales/invoices/new?customerId=${customer.id}`}
+              className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Create Invoice
+            </Link>
+          )}
         </div>
       </div>
 
-      {/* Credit Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3 print:gap-2">
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
-            Total Udhaar (Baqaya)
-          </span>
-          <span
-            className={`text-2xl font-black font-mono ${
-              isOverLimit ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-slate-100"
-            } print:text-black`}
-          >
-            {formatPKR(customer.currentOutstandingBalance)}
-          </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
-            Allowed Days: {customer.creditTermsDays} Days
-          </span>
-        </div>
+      {/* Credit Overview Cards (Restricted to Finance / Billing Users) */}
+      {canViewCredit && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3 print:gap-2">
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
+              Total Udhaar (Baqaya)
+            </span>
+            <span
+              className={`text-2xl font-black font-mono ${
+                isOverLimit ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-slate-100"
+              } print:text-black`}
+            >
+              {formatPKR(customer.currentOutstandingBalance)}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              Allowed Days: {customer.creditTermsDays} Days
+            </span>
+          </div>
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
-            Maximum Udhaar Limit
-          </span>
-          <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
-            {formatPKR(customer.creditLimit)}
-          </span>
-          <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden print:hidden">
-            <div
-              className={`h-full ${
-                isOverLimit
-                  ? "bg-rose-500"
-                  : creditUtilization > 80
-                  ? "bg-amber-500"
-                  : "bg-teal-500"
-              }`}
-              style={{ width: `${Math.min(100, creditUtilization)}%` }}
-            />
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
+              Maximum Udhaar Limit
+            </span>
+            <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
+              {formatPKR(customer.creditLimit)}
+            </span>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden print:hidden">
+              <div
+                className={`h-full ${
+                  isOverLimit
+                    ? "bg-rose-500"
+                    : creditUtilization > 80
+                    ? "bg-amber-500"
+                    : "bg-teal-500"
+                }`}
+                style={{ width: `${Math.min(100, creditUtilization)}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
+              Remaining Udhaar Space
+            </span>
+            <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 print:text-black">
+              {formatPKR(Math.max(0, customer.creditLimit - customer.currentOutstandingBalance))}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              {creditUtilization}% of limit used
+            </span>
           </div>
         </div>
+      )}
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
-            Remaining Udhaar Space
-          </span>
-          <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 print:text-black">
-            {formatPKR(Math.max(0, customer.creditLimit - customer.currentOutstandingBalance))}
-          </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
-            {creditUtilization}% of limit used
-          </span>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
+      {/* Tab Navigation (Filtered by User Permissions) */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-2 overflow-x-auto text-xs font-bold no-print print:hidden">
         {[
-          { id: "overview", label: "Shop Info", icon: Building2 },
-          { id: "invoices", label: `Bills (${invoices.length})`, icon: Receipt },
-          { id: "payment", label: "Receive Payment", icon: DollarSign },
-          { id: "ledger", label: "Khata (History)", icon: Scale },
-          { id: "visits", label: `Visits (${visits.length})`, icon: UserCheck },
-          { id: "reminder", label: "WhatsApp Reminder", icon: Send },
-        ].map((tab) => {
+          { id: "overview", label: "Shop Info", icon: Building2, allowed: true },
+          { id: "invoices", label: `Bills (${invoices.length})`, icon: Receipt, allowed: canViewInvoices },
+          { id: "payment", label: "Receive Payment", icon: DollarSign, allowed: canReceivePayment },
+          { id: "ledger", label: "Khata (History)", icon: Scale, allowed: canViewLedger },
+          { id: "visits", label: `Visits (${visits.length})`, icon: UserCheck, allowed: canViewVisits },
+          { id: "reminder", label: "WhatsApp Reminder", icon: Send, allowed: canViewCredit },
+        ]
+          .filter((tab) => tab.allowed)
+          .map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -444,35 +463,37 @@ function CustomerDetailContent() {
             </div>
           </div>
 
-          <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 text-xs">
-            <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-teal-600" /> Payment & Udhaar Settings
-            </h3>
-            <div className="space-y-2.5">
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Maximum Udhaar Allowed:</span>
-                <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
-                  {formatPKR(customer.creditLimit)}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Allowed Payment Days:</span>
-                <span className="font-bold text-teal-600">{customer.creditTermsDays} Days</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-slate-500">Shop Status:</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
-                  {customer.status === "active" ? "ACTIVE / OPEN" : "INACTIVE"}
-                </span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-500">Field Booker / Rep:</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {customer.assignedSalesRepId ? "Zubair Ahmed (Field Staff)" : "Direct Office Account"}
-                </span>
+          {canViewCredit && (
+            <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 text-xs">
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-teal-600" /> Payment & Udhaar Settings
+              </h3>
+              <div className="space-y-2.5">
+                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Maximum Udhaar Allowed:</span>
+                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                    {formatPKR(customer.creditLimit)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Allowed Payment Days:</span>
+                  <span className="font-bold text-teal-600">{customer.creditTermsDays} Days</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Shop Status:</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+                    {customer.status === "active" ? "ACTIVE / OPEN" : "INACTIVE"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500">Field Booker / Rep:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {customer.assignedSalesRepId ? "Zubair Ahmed (Field Staff)" : "Direct Office Account"}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -483,12 +504,14 @@ function CustomerDetailContent() {
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
               Customer Bills History
             </h3>
-            <Link
-              href={`/sales/invoices/new?customerId=${customer.id}`}
-              className="text-xs font-bold text-teal-600 hover:underline"
-            >
-              Make New Bill
-            </Link>
+            {canCreateBill && (
+              <Link
+                href={`/sales/invoices/new?customerId=${customer.id}`}
+                className="text-xs font-bold text-teal-600 hover:underline"
+              >
+                Make New Bill
+              </Link>
+            )}
           </div>
 
           {invoices.length === 0 ? (

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { collection, getDocs } from "firebase/firestore";
 import { db as firestoreDb } from "@/lib/firebase/config";
 import { offlineDb } from "@/lib/offline/db";
+import { buildSessionMonitorId, getOrCreateDeviceInstanceId } from "@/lib/monitoring/deviceIdentity";
 import {
   UserProfile,
   UserRole,
@@ -293,13 +294,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    const exitingUser = currentUser;
+    if (exitingUser && typeof window !== "undefined") {
+      const deviceId = getOrCreateDeviceInstanceId();
+      const sessionId = buildSessionMonitorId(exitingUser.id, deviceId);
+      offlineDb.staffMonitors
+        .update(sessionId, {
+          liveState: "offline",
+          statusHeadline: "Logged Out",
+          lastUpdatedIso: new Date().toISOString(),
+          lastPingTime: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        })
+        .catch(() => {});
+    }
     setCurrentUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
       sessionStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
     }
     router.push("/login");
-  }, [router]);
+  }, [currentUser, router]);
 
   const hasPermission = useCallback((permission: Permission): boolean => {
     if (!currentUser) return false;

@@ -33,7 +33,7 @@ import type {
 } from "@/types";
 
 export default function InventoryOverviewPage() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
@@ -219,20 +219,24 @@ export default function InventoryOverviewPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={() => setIsRecordingDamage(true)}
-            className="px-3 py-2.5 min-h-[42px] rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <PackageX className="w-4 h-4 shrink-0" />
-            <span className="truncate">Broken / Damaged</span>
-          </button>
-          <button
-            onClick={() => setIsRecordingSample(true)}
-            className="px-3 py-2.5 min-h-[42px] rounded-xl border border-sky-500/30 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <Stethoscope className="w-4 h-4 shrink-0" />
-            <span className="truncate">Doctor Sample</span>
-          </button>
+          {hasPermission("inventory:damage") && (
+            <button
+              onClick={() => setIsRecordingDamage(true)}
+              className="px-3 py-2.5 min-h-[42px] rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <PackageX className="w-4 h-4 shrink-0" />
+              <span className="truncate">Broken / Damaged</span>
+            </button>
+          )}
+          {hasPermission("inventory:samples") && (
+            <button
+              onClick={() => setIsRecordingSample(true)}
+              className="px-3 py-2.5 min-h-[42px] rounded-xl border border-sky-500/30 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Stethoscope className="w-4 h-4 shrink-0" />
+              <span className="truncate">Doctor Sample</span>
+            </button>
+          )}
           <Link
             href="/inventory/batches"
             className="col-span-2 sm:col-span-1 px-4 py-2.5 min-h-[42px] rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all"

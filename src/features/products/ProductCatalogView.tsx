@@ -73,7 +73,9 @@ export function generateAutoSku(
 }
 
 export function ProductCatalogView() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
+  const canViewCost = hasPermission("pricing:view");
+  const canEditProducts = hasPermission("products:edit");
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
   const [pricingMap, setPricingMap] = useState<Record<string, ProductPricing>>({});
@@ -199,7 +201,7 @@ export function ProductCatalogView() {
       refreshCatalog();
     };
     window.addEventListener("focus", handleFocus);
-    const interval = setInterval(refreshCatalog, 3000);
+    const interval = setInterval(refreshCatalog, 10000);
     return () => {
       window.removeEventListener("focus", handleFocus);
       clearInterval(interval);
@@ -218,6 +220,7 @@ export function ProductCatalogView() {
 
   // Clone an existing product into the Add Product form
   const handleCloneProduct = async (prod: Product) => {
+    if (!canEditProducts) return;
     // Load pricing rates for the cloned product
     let pricing: ProductPricing | undefined;
     try {
@@ -831,33 +834,37 @@ export function ProductCatalogView() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <Link
-            href="/products/price-estimator"
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-teal-200 dark:border-teal-800/80 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-sm font-bold btn-interactive shadow-sm"
-          >
-            <Calculator className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-            Price Estimator (Rate Calculator)
-          </Link>
+          {canViewCost && (
+            <Link
+              href="/products/price-estimator"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-teal-200 dark:border-teal-800/80 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-sm font-bold btn-interactive shadow-sm"
+            >
+              <Calculator className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+              Price Estimator (Rate Calculator)
+            </Link>
+          )}
 
-          <button
-            onClick={() => {
-              const nextAdding = !isAdding;
-              if (nextAdding) {
-                setClonedFromProduct(null);
-                if (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-")) {
-                  const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
-                  setSku(freshSku);
+          {canEditProducts && (
+            <button
+              onClick={() => {
+                const nextAdding = !isAdding;
+                if (nextAdding) {
+                  setClonedFromProduct(null);
+                  if (!sku.trim() || sku.startsWith("ND-") || sku.startsWith("NXD-")) {
+                    const freshSku = generateAutoSku(name, categoryId || categories[0]?.id || "", products, categories);
+                    setSku(freshSku);
+                  }
+                } else {
+                  setClonedFromProduct(null);
                 }
-              } else {
-                setClonedFromProduct(null);
-              }
-              setIsAdding(nextAdding);
-            }}
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
-          >
-            <Plus className="w-4 h-4" />
-            {isAdding ? "Cancel" : "Add New Medicine"}
-          </button>
+                setIsAdding(nextAdding);
+              }}
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-sm font-bold shadow-soft shadow-teal-600/20 btn-interactive"
+            >
+              <Plus className="w-4 h-4" />
+              {isAdding ? "Cancel" : "Add New Medicine"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -888,7 +895,7 @@ export function ProductCatalogView() {
       )}
 
       {/* Add Product Modal Form */}
-      {isAdding && (
+      {isAdding && canEditProducts && (
         <form
           onSubmit={handleCreateProduct}
           className="p-5 md:p-6 rounded-2xl border border-teal-500/30 bg-white dark:bg-slate-900 shadow-card space-y-5 text-xs sm:text-sm animate-in fade-in"
@@ -1080,20 +1087,22 @@ export function ProductCatalogView() {
               Medicine Pricing (Rates in PKR)
             </span>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={purchaseCost === 0 ? "" : purchaseCost}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/^0+(?=\d)/, "");
-                    setPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
-                  }}
-                  onFocus={(e) => e.target.select()}
-                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
+              {canViewCost && (
+                <div>
+                  <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={purchaseCost === 0 ? "" : purchaseCost}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                      setPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs sm:text-sm font-bold mb-1.5 text-teal-600 dark:text-teal-400">
@@ -1343,48 +1352,50 @@ export function ProductCatalogView() {
         </div>
       </div>
 
-      {/* Selection Control Bar & Bulk Action Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-soft">
-        <label className="inline-flex items-center gap-2.5 cursor-pointer select-none text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">
-          <input
-            type="checkbox"
-            checked={isAllSelected}
-            onChange={handleToggleSelectAll}
-            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-          />
-          <span>{isAllSelected ? "Deselect All Visible Medicines" : "Select All Visible Medicines"}</span>
-          <span className="text-xs text-slate-400 font-medium">
-            ({filtered.length} visible)
-          </span>
-        </label>
-
-        {selectedProductIds.length > 0 && (
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end animate-in fade-in">
-            <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-3 py-1.5 rounded-xl border border-teal-200 dark:border-teal-800">
-              {selectedProductIds.length} item{selectedProductIds.length > 1 ? "s" : ""} selected
+      {/* Selection Control Bar & Bulk Action Toolbar (Restricted to products:edit) */}
+      {canEditProducts && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-soft">
+          <label className="inline-flex items-center gap-2.5 cursor-pointer select-none text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={handleToggleSelectAll}
+              className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+            />
+            <span>{isAllSelected ? "Deselect All Visible Medicines" : "Select All Visible Medicines"}</span>
+            <span className="text-xs text-slate-400 font-medium">
+              ({filtered.length} visible)
             </span>
+          </label>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedProductIds([])}
-                className="min-h-[36px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold btn-interactive"
-              >
-                Clear
-              </button>
+          {selectedProductIds.length > 0 && (
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end animate-in fade-in">
+              <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-3 py-1.5 rounded-xl border border-teal-200 dark:border-teal-800">
+                {selectedProductIds.length} item{selectedProductIds.length > 1 ? "s" : ""} selected
+              </span>
 
-              <button
-                type="button"
-                onClick={() => setIsBulkDeleting(true)}
-                className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-rose-600/30 btn-interactive"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Selected ({selectedProductIds.length})</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductIds([])}
+                  className="min-h-[36px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold btn-interactive"
+                >
+                  Clear
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleting(true)}
+                  className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-rose-600/30 btn-interactive"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Selected ({selectedProductIds.length})</span>
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Catalog Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
@@ -1409,11 +1420,6 @@ export function ProductCatalogView() {
             const mrp = pricing?.mrpPerPack ?? (prod as any).mrpPerPack ?? 0;
             const purchaseCost = pricing?.purchaseCostPerPack ?? (prod as any).purchaseCostPerPack ?? 0;
             const currentStock = stockMap[prod.id] ?? 0;
-            const canViewCost =
-              !currentUser ||
-              currentUser.role === "admin" ||
-              currentUser.role === "manager" ||
-              currentUser.role === "accountant";
 
             return (
               <div
@@ -1424,35 +1430,37 @@ export function ProductCatalogView() {
                     : "border-slate-200/80 dark:border-slate-800"
                 }`}
               >
-                {/* Top Card Bar: Selection Checkbox & Individual Delete Button */}
-                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800/80">
-                  <label
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-2 cursor-pointer select-none group"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleToggleSelectProduct(prod.id)}
-                      className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                    />
-                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200">
-                      {isSelected ? "Selected" : "Select"}
-                    </span>
-                  </label>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setDeletingProduct(prod)}
-                      title={`Delete "${prod.name}" from catalog`}
-                      aria-label="Delete medicine"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
+                {/* Top Card Bar: Selection Checkbox & Individual Delete Button (Restricted to products:edit) */}
+                {canEditProducts && (
+                  <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800/80">
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-2 cursor-pointer select-none group"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelectProduct(prod.id)}
+                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200">
+                        {isSelected ? "Selected" : "Select"}
+                      </span>
+                    </label>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setDeletingProduct(prod)}
+                        title={`Delete "${prod.name}" from catalog`}
+                        aria-label="Delete medicine"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-3.5">
                   <div className="flex gap-3.5 items-start">
@@ -1550,24 +1558,28 @@ export function ProductCatalogView() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleCloneProduct(prod)}
-                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
-                      title={`Clone "${prod.name}" to create a new variant`}
-                    >
-                      <Copy className="w-3.5 h-3.5 shrink-0" /> Clone
-                    </button>
+                  <div className={canEditProducts ? "grid grid-cols-3 gap-2" : "grid grid-cols-1"}>
+                    {canEditProducts && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleCloneProduct(prod)}
+                          className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
+                          title={`Clone "${prod.name}" to create a new variant`}
+                        >
+                          <Copy className="w-3.5 h-3.5 shrink-0" /> Clone
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(prod)}
-                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
-                      title="Edit Product Details & Stock"
-                    >
-                      <Edit2 className="w-3.5 h-3.5 shrink-0" /> Edit
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(prod)}
+                          className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm whitespace-nowrap btn-interactive"
+                          title="Edit Product Details & Stock"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 shrink-0" /> Edit
+                        </button>
+                      </>
+                    )}
 
                     <Link
                       href={`/products/detail?id=${encodeURIComponent(prod.id)}`}
@@ -1756,20 +1768,22 @@ export function ProductCatalogView() {
                   Medicine Rates (Prices in PKR)
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      value={editPurchaseCost === 0 ? "" : editPurchaseCost}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
-                        setEditPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
+                  {canViewCost && (
+                    <div>
+                      <label className="block text-xs sm:text-sm font-bold mb-1.5">Buying Cost (Kharid Rate)</label>
+                      <input
+                        type="number"
+                        placeholder="0"
+                        value={editPurchaseCost === 0 ? "" : editPurchaseCost}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                          setEditPurchaseCost(raw === "" ? 0 : Number(raw) || 0);
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs sm:text-sm font-bold mb-1.5 text-teal-600 dark:text-teal-400">

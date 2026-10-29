@@ -200,6 +200,12 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
 
   // Staff & HR
   {
+    name: "Staff Live Location & Multi-Device Battery",
+    path: "/employees/monitoring",
+    module: "HR / Staff",
+    keywords: "staff live location gps mobile battery charging phone model multi device computer tracking field map",
+  },
+  {
     name: "Sales Targets & Staff Performance",
     path: "/employees/targets",
     module: "HR / Staff",
@@ -357,12 +363,13 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
         // 1. Navigation items matching (strictly filtered by user permissions)
         const canAccessSearchPath = (p: string): boolean => {
           if (p === "/") return true;
+          if (p.startsWith("/sales/invoices/edit")) return hasPermission("invoices:edit");
           if (p.startsWith("/sales/invoices/new") || p.startsWith("/sales/bookings")) return hasPermission("invoices:create");
           if (p.startsWith("/sales/returns")) return hasPermission("invoices:reverse");
-          if (p.startsWith("/sales")) return hasAnyPermission(["invoices:view", "invoices:create"]);
+          if (p.startsWith("/sales")) return hasPermission("invoices:view");
           if (p.startsWith("/products/price-estimator")) return hasPermission("pricing:view");
           if (p.startsWith("/products/new")) return hasPermission("products:edit");
-          if (p.startsWith("/products") || p.startsWith("/manufacturers")) return hasPermission("products:view");
+          if (p.startsWith("/products") || p.startsWith("/manufacturers")) return hasAnyPermission(["products:view", "products:edit"]);
           if (p.startsWith("/categories")) return hasPermission("categories:manage");
           if (p.startsWith("/purchases")) return hasPermission("inventory:receive");
           if (p.startsWith("/inventory")) return hasPermission("inventory:view");
@@ -379,7 +386,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           if (p.startsWith("/sync")) return hasPermission("sync:reconcile");
           if (p.startsWith("/users")) return hasPermission("users:manage");
           if (p.startsWith("/settings") || p.startsWith("/notifications") || p.startsWith("/integrations")) return hasPermission("settings:manage");
-          return true;
+          return false;
         };
 
         const matchedNav = APP_NAVIGATION_SEARCH_ITEMS.filter((item) => {
@@ -503,7 +510,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   };
 
   const roleLabel =
-    currentUser?.role === "admin"
+    currentUser?.role === "owner" || currentUser?.role === "admin"
       ? "Owner / Admin"
       : currentUser?.role === "manager"
       ? "Manager"
@@ -511,8 +518,10 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
       ? "Accountant"
       : currentUser?.role === "warehouse_staff"
       ? "Store & Stock Staff"
-      : currentUser?.role === "booking_user"
+      : currentUser?.role === "sales_rep" || currentUser?.role === "booking_user"
       ? "Order Booking Staff"
+      : currentUser?.role === "recovery_officer"
+      ? "Recovery Officer"
       : "Medical Rep";
 
   const hasAnyResults =

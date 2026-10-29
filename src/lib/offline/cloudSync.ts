@@ -52,6 +52,10 @@ const IGNORED_DEMO_IDS = new Set([
   "staff_usman",
 ]);
 
+function isIgnoredStaffMonitorDoc(docId: string): boolean {
+  return IGNORED_DEMO_IDS.has(docId) || docId.startsWith("user_");
+}
+
 let isApplyingRemoteCount = 0;
 let isInitialized = false;
 const activeUnsubscribes: Unsubscribe[] = [];
@@ -111,7 +115,7 @@ export function sanitizeForFirestore(record: any): Record<string, any> {
  */
 export function scheduleCloudUpsert(tableName: string, docId: string, data: any) {
   if (typeof window === "undefined" || !docId) return;
-  if (tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(docId)) return;
+  if (tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) return;
 
   const compositeKey = `${tableName}:${docId}`;
 
@@ -128,6 +132,7 @@ export function scheduleCloudUpsert(tableName: string, docId: string, data: any)
   }
 
   const snapshotCopy = sanitizeForFirestore(data);
+  const debounceMs = tableName === "staffMonitors" ? 1200 : 350;
   const timer = setTimeout(async () => {
     pendingUpsertTimers.delete(compositeKey);
     try {
@@ -135,7 +140,7 @@ export function scheduleCloudUpsert(tableName: string, docId: string, data: any)
     } catch (err) {
       console.warn(`[CloudSync] Failed to upsert ${compositeKey} to Firestore:`, err);
     }
-  }, 60);
+  }, debounceMs);
 
   pendingUpsertTimers.set(compositeKey, timer);
 }
@@ -210,9 +215,8 @@ function dispatchCloudSyncUpdate() {
   if (typeof window === "undefined") return;
   if (notifyDebounceTimer) clearTimeout(notifyDebounceTimer);
   notifyDebounceTimer = setTimeout(() => {
-    window.dispatchEvent(new Event("focus"));
     window.dispatchEvent(new CustomEvent("noxderma-cloud-synced"));
-  }, 120);
+  }, 250);
 }
 
 /**
@@ -237,7 +241,7 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
               (item: any) =>
                 item &&
                 item[cfg.primaryKey] &&
-                !(cfg.tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(item[cfg.primaryKey]))
+                !(cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(String(item[cfg.primaryKey])))
             );
             if (validItems.length > 0) {
               await withRemoteSyncFlag(async () => {
@@ -268,12 +272,24 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
         const remoteMap = new Map<string, any>();
         remoteSnap.forEach((docSnap) => {
           const data = docSnap.data();
-          if (cfg.tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(docSnap.id)) {
+          if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docSnap.id)) {
             deleteDoc(doc(firestoreDb, cfg.tableName, docSnap.id)).catch(() => {});
             return;
           }
           remoteMap.set(docSnap.id, { ...data, [cfg.primaryKey]: docSnap.id });
         });
+
+        // Clean any legacy ignored local staffMonitors records
+        if (cfg.tableName === "staffMonitors") {
+          const legacyLocalIds = localRecords
+            .map((item: any) => String(item?.[cfg.primaryKey] ?? ""))
+            .filter((id: string) => id && isIgnoredStaffMonitorDoc(id));
+          if (legacyLocalIds.length > 0) {
+            await withRemoteSyncFlag(async () => {
+              await table.bulkDelete(legacyLocalIds);
+            });
+          }
+        }
 
         // Apply remote documents into local IndexedDB
         if (remoteMap.size > 0) {
@@ -286,7 +302,7 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
         for (const localItem of localRecords) {
           const docId = String(localItem?.[cfg.primaryKey] ?? "");
           if (!docId) continue;
-          if (cfg.tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(docId)) continue;
+          if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
 
           if (!remoteMap.has(docId)) {
             await setDoc(
@@ -323,7 +339,7 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
 
           for (const change of changes) {
             const docId = change.doc.id;
-            if (cfg.tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(docId)) continue;
+            if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
 
             if (change.type === "added" || change.type === "modified") {
               const data = change.doc.data();
@@ -382,7 +398,7 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
 
       const remoteMap = new Map<string, any>();
       remoteSnap.forEach((d) => {
-        if (cfg.tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(d.id)) return;
+        if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(d.id)) return;
         remoteMap.set(d.id, { ...d.data(), [cfg.primaryKey]: d.id });
       });
 
@@ -390,7 +406,7 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
       for (const localItem of localRecords) {
         const docId = String(localItem?.[cfg.primaryKey] ?? "");
         if (!docId) continue;
-        if (cfg.tableName === "staffMonitors" && IGNORED_DEMO_IDS.has(docId)) continue;
+        if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
         await setDoc(
           doc(firestoreDb, cfg.tableName, docId),
           sanitizeForFirestore(localItem),

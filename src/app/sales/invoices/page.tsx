@@ -32,7 +32,11 @@ import { useAuth } from "@/context/AuthContext";
 import { recordActivity } from "@/lib/audit/auditTracker";
 
 export default function SalesInvoicesListPage() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission, hasAnyPermission } = useAuth();
+  const canCreateInvoice = hasPermission("invoices:create");
+  const canEditInvoice = hasPermission("invoices:edit");
+  const canDeleteInvoice = hasAnyPermission(["invoices:edit", "invoices:reverse"]);
+  const canViewCustomers = hasPermission("crm:customers");
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
@@ -292,12 +296,14 @@ export default function SalesInvoicesListPage() {
           </h1>
         </div>
 
-        <Link
-          href="/sales/invoices/new"
-          className="px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all btn-interactive self-stretch sm:self-auto"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" /> Make New Bill
-        </Link>
+        {canCreateInvoice && (
+          <Link
+            href="/sales/invoices/new"
+            className="px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all btn-interactive self-stretch sm:self-auto"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" /> Make New Bill
+          </Link>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -395,7 +401,7 @@ export default function SalesInvoicesListPage() {
       )}
 
       {/* Bulk Selection Actions Floating Toolbar */}
-      {selectedInvoiceIds.length > 0 && (
+      {canDeleteInvoice && selectedInvoiceIds.length > 0 && (
         <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-900 text-white shadow-xl border border-teal-700 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-teal-800 text-teal-200 flex items-center justify-center font-bold text-sm">
@@ -438,12 +444,14 @@ export default function SalesInvoicesListPage() {
           <div className="p-12 text-center text-slate-400 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <Receipt className="w-12 h-12 mx-auto mb-2 opacity-50 text-teal-600" />
             <p className="text-sm font-semibold">No bills found matching your filter.</p>
-            <Link
-              href="/sales/invoices/new"
-              className="mt-3 text-sm font-bold text-teal-600 hover:underline inline-block"
-            >
-              Make First Bill →
-            </Link>
+            {canCreateInvoice && (
+              <Link
+                href="/sales/invoices/new"
+                className="mt-3 text-sm font-bold text-teal-600 hover:underline inline-block"
+              >
+                Make First Bill →
+              </Link>
+            )}
           </div>
         ) : (
           <>
@@ -462,17 +470,19 @@ export default function SalesInvoicesListPage() {
                   >
                     <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
                       <div className="flex items-center gap-2.5">
-                        <label
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-2 cursor-pointer select-none"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(inv.id)}
-                            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                          />
-                        </label>
+                        {canDeleteInvoice && (
+                          <label
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-2 cursor-pointer select-none"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(inv.id)}
+                              className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                            />
+                          </label>
+                        )}
                         <div>
                           <span className="font-mono font-bold text-teal-600 dark:text-teal-400 text-sm block">
                             {inv.provisionalReference || inv.id}
@@ -500,24 +510,32 @@ export default function SalesInvoicesListPage() {
                             : "UNPAID"}
                         </span>
 
-                        <button
-                          type="button"
-                          onClick={() => setDeletingInvoice(inv)}
-                          title="Delete Bill"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canDeleteInvoice && (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingInvoice(inv)}
+                            title="Delete Bill"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     <div>
-                      <Link
-                        href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
-                        className="font-bold text-base text-slate-900 dark:text-slate-100 hover:text-teal-600 block truncate"
-                      >
-                        {inv.customerName}
-                      </Link>
+                      {canViewCustomers ? (
+                        <Link
+                          href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
+                          className="font-bold text-base text-slate-900 dark:text-slate-100 hover:text-teal-600 block truncate"
+                        >
+                          {inv.customerName}
+                        </Link>
+                      ) : (
+                        <span className="font-bold text-base text-slate-900 dark:text-slate-100 block truncate">
+                          {inv.customerName}
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400">{inv.customerPhone}</span>
                     </div>
 
@@ -537,13 +555,15 @@ export default function SalesInvoicesListPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1 gap-1.5 flex-wrap">
-                      <Link
-                        href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
-                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold text-xs min-h-[40px] hover:bg-amber-100 dark:hover:bg-amber-900/50 btn-interactive"
-                      >
-                        <Pencil className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Edit Bill</span>
-                      </Link>
+                      {canEditInvoice && (
+                        <Link
+                          href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
+                          className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold text-xs min-h-[40px] hover:bg-amber-100 dark:hover:bg-amber-900/50 btn-interactive"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Edit Bill</span>
+                        </Link>
+                      )}
 
                       <button
                         onClick={() => handlePrint(inv)}
@@ -562,14 +582,16 @@ export default function SalesInvoicesListPage() {
                         <span>WhatsApp</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setDeletingInvoice(inv)}
-                        title="Delete Bill"
-                        className="inline-flex items-center justify-center p-2 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 min-h-[40px] min-w-[40px] btn-interactive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canDeleteInvoice && (
+                        <button
+                          type="button"
+                          onClick={() => setDeletingInvoice(inv)}
+                          title="Delete Bill"
+                          className="inline-flex items-center justify-center p-2 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 min-h-[40px] min-w-[40px] btn-interactive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -581,16 +603,18 @@ export default function SalesInvoicesListPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                   <tr>
-                    <th className="p-3 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={filtered.length > 0 && selectedInvoiceIds.length === filtered.length}
-                        onChange={handleToggleSelectAll}
-                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                        title="Select All Invoices"
-                        aria-label="Select All Invoices"
-                      />
-                    </th>
+                    {canDeleteInvoice && (
+                      <th className="p-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={filtered.length > 0 && selectedInvoiceIds.length === filtered.length}
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                          title="Select All Invoices"
+                          aria-label="Select All Invoices"
+                        />
+                      </th>
+                    )}
                     <th className="p-3">Bill No</th>
                     <th className="p-3">Customer / Store</th>
                     <th className="p-3">Date / Due Date</th>
@@ -613,15 +637,17 @@ export default function SalesInvoicesListPage() {
                             : "hover:bg-slate-50/60 dark:hover:bg-slate-800/40"
                         }`}
                       >
-                        <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(inv.id)}
-                            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                            aria-label={`Select bill ${inv.provisionalReference || inv.id}`}
-                          />
-                        </td>
+                        {canDeleteInvoice && (
+                          <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(inv.id)}
+                              className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                              aria-label={`Select bill ${inv.provisionalReference || inv.id}`}
+                            />
+                          </td>
+                        )}
                         <td className="p-3">
                           <span className="font-mono font-bold text-teal-600 dark:text-teal-400 block text-sm">
                             {inv.provisionalReference || inv.id}
@@ -631,12 +657,18 @@ export default function SalesInvoicesListPage() {
                           </span>
                         </td>
                         <td className="p-3">
-                          <Link
-                            href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
-                            className="font-bold text-slate-900 dark:text-slate-100 hover:underline block truncate max-w-[200px]"
-                          >
-                            {inv.customerName}
-                          </Link>
+                          {canViewCustomers ? (
+                            <Link
+                              href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
+                              className="font-bold text-slate-900 dark:text-slate-100 hover:underline block truncate max-w-[200px]"
+                            >
+                              {inv.customerName}
+                            </Link>
+                          ) : (
+                            <span className="font-bold text-slate-900 dark:text-slate-100 block truncate max-w-[200px]">
+                              {inv.customerName}
+                            </span>
+                          )}
                           <span className="text-xs text-slate-400">{inv.customerPhone}</span>
                         </td>
                         <td className="p-3 text-slate-600 dark:text-slate-400">
@@ -679,13 +711,15 @@ export default function SalesInvoicesListPage() {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            <Link
-                              href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
-                              title="Edit Bill (بل تبدیل کریں)"
-                              className="p-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 text-amber-600 dark:text-amber-400 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Link>
+                            {canEditInvoice && (
+                              <Link
+                                href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
+                                title="Edit Bill (بل تبدیل کریں)"
+                                className="p-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 text-amber-600 dark:text-amber-400 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Link>
+                            )}
                             <button
                               onClick={() => handlePrint(inv)}
                               title="Print Bill"
@@ -701,14 +735,16 @@ export default function SalesInvoicesListPage() {
                             >
                               <Share2 className="w-4 h-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingInvoice(inv)}
-                              title="Delete Bill"
-                              className="p-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 hover:text-rose-700 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canDeleteInvoice && (
+                              <button
+                                type="button"
+                                onClick={() => setDeletingInvoice(inv)}
+                                title="Delete Bill"
+                                className="p-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 hover:text-rose-700 btn-interactive min-h-[36px] min-w-[36px] flex items-center justify-center"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

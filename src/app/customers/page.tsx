@@ -17,9 +17,19 @@ import {
 } from "lucide-react";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
 import type { Customer, CustomerCategory } from "@/types";
 
 export default function CustomersDirectoryPage() {
+  const { hasPermission, hasAnyPermission } = useAuth();
+  const canCreateBill = hasPermission("invoices:create");
+  const canViewFinance = hasAnyPermission([
+    "finance:aging",
+    "finance:ledgers",
+    "finance:payments",
+    "finance:pnl",
+    "invoices:view",
+  ]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -318,21 +328,23 @@ export default function CustomersDirectoryPage() {
                 </span>
               </div>
 
-              {/* Outstanding Udhaar and Limit */}
-              <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs">
-                <div>
-                  <span className="text-slate-400 block font-medium">Baqaya (Udhaar):</span>
-                  <span className="font-extrabold text-sm sm:text-base text-rose-600 dark:text-rose-400">
-                    {formatPKR(c.currentOutstandingBalance)}
-                  </span>
+              {/* Outstanding Udhaar and Limit (Restricted to Finance / Billing Users) */}
+              {canViewFinance && (
+                <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs">
+                  <div>
+                    <span className="text-slate-400 block font-medium">Baqaya (Udhaar):</span>
+                    <span className="font-extrabold text-sm sm:text-base text-rose-600 dark:text-rose-400">
+                      {formatPKR(c.currentOutstandingBalance)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-400 block font-medium">Credit Limit:</span>
+                    <span className="font-bold text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                      {formatPKR(c.creditLimit)}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-slate-400 block font-medium">Credit Limit:</span>
-                  <span className="font-bold text-xs sm:text-sm text-slate-700 dark:text-slate-300">
-                    {formatPKR(c.creditLimit)}
-                  </span>
-                </div>
-              </div>
+              )}
 
               {/* Contact and Direct Action Buttons */}
               <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
@@ -358,14 +370,16 @@ export default function CustomersDirectoryPage() {
                   href={`/customers/detail?id=${encodeURIComponent(c.id)}`}
                   className="min-h-[40px] flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 btn-interactive"
                 >
-                  Khata
+                  {canViewFinance ? "Khata" : "Profile"}
                 </Link>
-                <Link
-                  href={`/sales/invoices/new?customerId=${c.id}`}
-                  className="min-h-[40px] flex-1 px-3 py-2 rounded-xl bg-teal-600 text-white font-bold text-xs flex items-center justify-center shadow-soft shadow-teal-600/20 btn-interactive"
-                >
-                  + Bill
-                </Link>
+                {canCreateBill && (
+                  <Link
+                    href={`/sales/invoices/new?customerId=${c.id}`}
+                    className="min-h-[40px] flex-1 px-3 py-2 rounded-xl bg-teal-600 text-white font-bold text-xs flex items-center justify-center shadow-soft shadow-teal-600/20 btn-interactive"
+                  >
+                    + Bill
+                  </Link>
+                )}
               </div>
             </div>
           ))
@@ -382,8 +396,12 @@ export default function CustomersDirectoryPage() {
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3">Owner / Contact</th>
                 <th className="py-3 px-3">Phone & WhatsApp</th>
-                <th className="py-3 px-3 text-right">Udhaar Limit</th>
-                <th className="py-3 px-3 text-right">Baqaya (Udhaar)</th>
+                {canViewFinance && (
+                  <>
+                    <th className="py-3 px-3 text-right">Udhaar Limit</th>
+                    <th className="py-3 px-3 text-right">Baqaya (Udhaar)</th>
+                  </>
+                )}
                 <th className="py-3 px-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -414,26 +432,32 @@ export default function CustomersDirectoryPage() {
                       </a>
                     </div>
                   </td>
-                  <td className="py-3.5 px-3 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
-                    {formatPKR(c.creditLimit)}
-                  </td>
-                  <td className="py-3.5 px-3 text-right font-mono font-extrabold text-rose-600 dark:text-rose-400">
-                    {formatPKR(c.currentOutstandingBalance)}
-                  </td>
+                  {canViewFinance && (
+                    <>
+                      <td className="py-3.5 px-3 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
+                        {formatPKR(c.creditLimit)}
+                      </td>
+                      <td className="py-3.5 px-3 text-right font-mono font-extrabold text-rose-600 dark:text-rose-400">
+                        {formatPKR(c.currentOutstandingBalance)}
+                      </td>
+                    </>
+                  )}
                   <td className="py-3.5 px-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Link
                         href={`/customers/detail?id=${encodeURIComponent(c.id)}`}
                         className="min-h-[36px] px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 text-xs btn-interactive inline-flex items-center"
                       >
-                        View Khata
+                        {canViewFinance ? "View Khata" : "View Profile"}
                       </Link>
-                      <Link
-                        href={`/sales/invoices/new?customerId=${c.id}`}
-                        className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 text-xs btn-interactive inline-flex items-center"
-                      >
-                        Make Bill
-                      </Link>
+                      {canCreateBill && (
+                        <Link
+                          href={`/sales/invoices/new?customerId=${c.id}`}
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 text-xs btn-interactive inline-flex items-center"
+                        >
+                          Make Bill
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>

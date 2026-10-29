@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,10 +9,14 @@ import {
   Plus,
   Barcode,
   CreditCard,
-  MapPin,
   Menu,
   ShieldAlert,
   ArrowLeft,
+  Stethoscope,
+  Building2,
+  Pill,
+  ShoppingBag,
+  Boxes,
 } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -21,28 +25,14 @@ import { CategoryProvider } from "@/context/CategoryContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { offlineDb } from "@/lib/offline/db";
+import {
+  buildSessionMonitorId,
+  detectDeviceMetadata,
+  readDevicePowerState,
+} from "@/lib/monitoring/deviceIdentity";
 import type { StaffMonitoringProfile } from "@/types";
 
-function detectMobileDeviceName(): string {
-  if (typeof navigator === "undefined") return "Mobile Device";
-  const ua = navigator.userAgent || "";
-  if (/SM-[A-Z0-9]+/i.test(ua)) {
-    const match = ua.match(/SM-[A-Z0-9]+/i);
-    return `Samsung Galaxy (${match ? match[0] : "Android"})`;
-  }
-  if (/Redmi|Mi |POCO/i.test(ua)) return "Xiaomi Redmi Smartphone";
-  if (/Infinix/i.test(ua)) return "Infinix Android Phone";
-  if (/vivo/i.test(ua)) return "Vivo Smartphone";
-  if (/OPPO|CPH/i.test(ua)) return "OPPO Smartphone";
-  if (/Realme|RMX/i.test(ua)) return "Realme Smartphone";
-  if (/Tecno/i.test(ua)) return "Tecno Smartphone";
-  if (/iPhone/i.test(ua)) return "Apple iPhone";
-  if (/iPad/i.test(ua)) return "Apple iPad";
-  if (/Android/i.test(ua)) return "Android Smartphone";
-  if (/Windows/i.test(ua)) return "Windows PC / Laptop";
-  if (/Macintosh/i.test(ua)) return "MacBook / macOS";
-  return "Staff Mobile Device";
-}
+const TELEMETRY_AUTO_SYNC_DELAY_MS = 10_000; // 10-second throttle for GPS & battery updates
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -51,6 +41,13 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const { currentUser, loading, logout, hasPermission, hasAnyPermission } = useAuth();
+
+  // Telemetry throttling refs (10s auto-sync cadence)
+  const lastTelemetryWriteMsRef = useRef<number>(0);
+  const trailingTelemetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestCoordsRef = useRef<{ lat: number; lng: number; acc: number; speedKmh: number } | undefined>(
+    undefined
+  );
 
   // Reset top progress bar on route complete
   useEffect(() => {
@@ -80,7 +77,6 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       }
     } catch {}
 
-    // Global enhancement for numeric & text inputs: auto-select on focus and smooth backspace
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target;
       if (
@@ -98,7 +94,6 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           target instanceof HTMLInputElement &&
           (target.type === "number" || target.inputMode === "numeric" || target.inputMode === "decimal")
         ) {
-          // If input has only 1 character or single zero, clear it immediately
           if (target.value === "0" || target.value.length === 1) {
             e.preventDefault();
             const proto = window.HTMLInputElement.prototype;
@@ -137,7 +132,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser, loading, pathname, router]);
 
-  // Automatic Background Live Telemetry Sync (Mobile Model + Real-time Battery % + Live GPS) for Logged-In User
+  // Multi-Device Per-Session Live Telemetry Sync (Device Model + Independent Battery/AC Power + Live GPS)
+  // Throttled to 10-second intervals so multiple devices on the same account never conflict or spam
   useEffect(() => {
     if (!currentUser) return;
 
@@ -145,63 +141,99 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     let batteryObj: any = null;
     let isUnmounted = false;
 
-    const monitorId = `user_${currentUser.id}`;
     const roleMap: Record<string, StaffMonitoringProfile["roleTitle"]> = {
+      owner: "Owner / Admin",
+      admin: "Owner / Admin",
+      manager: "Field Supervisor",
+      accountant: "Accountant",
+      warehouse_staff: "Store Staff",
       sales_rep: "Order Booker",
+      booking_user: "Order Booker",
       medical_rep: "Medical Rep",
       recovery_officer: "Recovery Officer",
-      warehouse_staff: "Field Supervisor",
-      accountant: "Field Supervisor",
-      admin: "Field Supervisor",
     };
 
-    const syncTelemetryToDatabase = async (
-      coords?: { lat: number; lng: number; acc: number }
+    // Remove legacy single-key record (`user_<id>`) if present so it never glitches across devices
+    offlineDb.staffMonitors.delete(`user_${currentUser.id}`).catch(() => {});
+
+    const flushTelemetryNow = async (
+      coordsOverride?: { lat: number; lng: number; acc: number; speedKmh: number }
     ) => {
       if (isUnmounted) return;
-      try {
-        let pct = 100;
-        let charging = false;
-        if (typeof navigator !== "undefined" && "getBattery" in navigator) {
-          try {
-            const bat = await (navigator as any).getBattery();
-            pct = Math.round((bat.level ?? 1) * 100);
-            charging = Boolean(bat.charging);
-          } catch {}
-        }
+      lastTelemetryWriteMsRef.current = Date.now();
 
+      try {
+        const meta = await detectDeviceMetadata();
+        if (isUnmounted) return;
+
+        const power = await readDevicePowerState(meta.deviceCategory);
+        if (isUnmounted) return;
+
+        const monitorId = buildSessionMonitorId(currentUser.id, meta.deviceId);
         const existing = await offlineDb.staffMonitors.get(monitorId);
+        const coords = coordsOverride || latestCoordsRef.current;
+
+        const hasRealGps = Boolean(coords) || Boolean(existing?.hasRealGpsFix);
         const lat = coords?.lat ?? existing?.lat ?? 24.8607;
         const lng = coords?.lng ?? existing?.lng ?? 67.0011;
-        const acc = Math.round(coords?.acc ?? existing?.gpsAccuracyMeters ?? 10);
-        const signal: StaffMonitoringProfile["gpsSignal"] =
-          acc <= 15 ? "High Accuracy Active" : acc <= 40 ? "Moderate Signal" : "Weak Signal";
+        const acc = Math.round(coords?.acc ?? existing?.gpsAccuracyMeters ?? (hasRealGps ? 12 : 0));
+        const speedKmh = coords?.speedKmh ?? existing?.currentSpeedKmh ?? 0;
 
+        const signal: StaffMonitoringProfile["gpsSignal"] = !hasRealGps
+          ? "GPS Disabled"
+          : acc <= 18
+          ? "High Accuracy Active"
+          : acc <= 45
+          ? "Moderate Signal"
+          : "Weak Signal";
+
+        const locationLabel = coords
+          ? `Live GPS (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`
+          : existing?.hasRealGpsFix && existing.currentRoadOrLocation
+          ? existing.currentRoadOrLocation
+          : meta.deviceCategory === "desktop"
+          ? `Computer Session (${meta.deviceModel})`
+          : `Mobile Session (${meta.deviceModel})`;
+
+        const now = new Date();
         const profile: StaffMonitoringProfile = {
           id: monitorId,
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          accountRole: currentUser.role,
+          deviceId: meta.deviceId,
+          deviceCategory: meta.deviceCategory,
+          browserName: meta.browserName,
+          isDesktopAcPower: power.isDesktopAcPower,
+          hasBatteryApi: power.hasBatteryApi,
+          hasRealGpsFix: hasRealGps,
+          lastUpdatedIso: now.toISOString(),
           name: currentUser.displayName || currentUser.email,
           roleTitle: roleMap[currentUser.role] || "Order Booker",
           phone: currentUser.phone || currentUser.email,
-          vehicleType: existing?.vehicleType || "bike",
+          vehicleType: existing?.vehicleType || (meta.deviceCategory === "desktop" ? "car" : "bike"),
           territory: existing?.territory || "Karachi",
-          liveState: "moving",
-          statusHeadline: "Online (Auto-Synced)",
-          currentSpeedKmh: existing?.currentSpeedKmh || 0,
-          currentRoadOrLocation: coords
-            ? `Live GPS (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`
-            : existing?.currentRoadOrLocation && !existing.currentRoadOrLocation.includes("Click")
-            ? existing.currentRoadOrLocation
-            : `Live Session Active (${detectMobileDeviceName()})`,
-          shiftStartTime: existing?.shiftStartTime || "09:00 AM",
-          batteryLevel: pct,
-          isCharging: charging,
+          liveState: speedKmh > 3 ? "moving" : "idle",
+          statusHeadline: hasRealGps
+            ? speedKmh > 3
+              ? `Moving (${speedKmh} km/h)`
+              : "Online • Live GPS Active"
+            : "Online • Session Active",
+          currentSpeedKmh: speedKmh,
+          currentRoadOrLocation: locationLabel,
+          shiftStartTime:
+            existing?.shiftStartTime ||
+            now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          batteryLevel: power.batteryLevel,
+          isCharging: power.isCharging,
           gpsAccuracyMeters: acc,
           gpsSignal: signal,
-          lastPingTime: new Date().toLocaleTimeString([], {
+          lastPingTime: now.toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
+            second: "2-digit",
           }),
-          deviceModel: detectMobileDeviceName(),
+          deviceModel: meta.deviceModel,
           lat,
           lng,
           x: existing?.x ?? 50,
@@ -213,41 +245,77 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       } catch {}
     };
 
-    // Initial immediate sync on login / mount
-    syncTelemetryToDatabase();
+    const scheduleThrottledTelemetrySync = (
+      coords?: { lat: number; lng: number; acc: number; speedKmh: number },
+      forceImmediate = false
+    ) => {
+      if (isUnmounted) return;
+      if (coords) {
+        latestCoordsRef.current = coords;
+      }
 
-    // Watch live GPS coordinates automatically
+      const elapsed = Date.now() - lastTelemetryWriteMsRef.current;
+      if (forceImmediate || elapsed >= TELEMETRY_AUTO_SYNC_DELAY_MS) {
+        if (trailingTelemetryTimerRef.current) {
+          clearTimeout(trailingTelemetryTimerRef.current);
+          trailingTelemetryTimerRef.current = null;
+        }
+        flushTelemetryNow(coords);
+      } else if (!trailingTelemetryTimerRef.current) {
+        const remainingMs = Math.max(500, TELEMETRY_AUTO_SYNC_DELAY_MS - elapsed);
+        trailingTelemetryTimerRef.current = setTimeout(() => {
+          trailingTelemetryTimerRef.current = null;
+          flushTelemetryNow();
+        }, remainingMs);
+      }
+    };
+
+    // 1. Immediate registration of this device session on login / mount
+    scheduleThrottledTelemetrySync(undefined, true);
+
+    // 2. Watch live GPS coordinates (throttled to 10-second database syncs)
     if (typeof navigator !== "undefined" && "geolocation" in navigator) {
       try {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            syncTelemetryToDatabase({
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              acc: pos.coords.accuracy || 8,
-            });
+            scheduleThrottledTelemetrySync(
+              {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                acc: pos.coords.accuracy || 10,
+                speedKmh:
+                  typeof pos.coords.speed === "number" && pos.coords.speed > 0
+                    ? Math.round(pos.coords.speed * 3.6)
+                    : 0,
+              },
+              true
+            );
           },
           () => {},
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
         );
 
         watchId = navigator.geolocation.watchPosition(
           (pos) => {
-            syncTelemetryToDatabase({
+            scheduleThrottledTelemetrySync({
               lat: pos.coords.latitude,
               lng: pos.coords.longitude,
-              acc: pos.coords.accuracy || 8,
+              acc: pos.coords.accuracy || 10,
+              speedKmh:
+                typeof pos.coords.speed === "number" && pos.coords.speed > 0
+                  ? Math.round(pos.coords.speed * 3.6)
+                  : 0,
             });
           },
           () => {},
-          { enableHighAccuracy: true, maximumAge: 30000 }
+          { enableHighAccuracy: true, maximumAge: 10000 }
         );
       } catch {}
     }
 
-    // Listen to real-time battery level & charging changes
+    // 3. Real-time battery & charging listeners (throttled to 10-second cadence)
     const handleBatteryChange = () => {
-      syncTelemetryToDatabase();
+      scheduleThrottledTelemetrySync();
     };
     if (typeof navigator !== "undefined" && "getBattery" in navigator) {
       (navigator as any)
@@ -261,13 +329,27 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         .catch(() => {});
     }
 
-    // Heartbeat every 45 seconds so lastPingTime & online status stay fresh
+    // 4. Periodic 10-second heartbeat while app is visible so online status & battery stay accurate
     const heartbeat = setInterval(() => {
-      syncTelemetryToDatabase();
-    }, 45000);
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      scheduleThrottledTelemetrySync();
+    }, TELEMETRY_AUTO_SYNC_DELAY_MS);
+
+    const handleVisibilityResume = () => {
+      if (document.visibilityState === "visible") {
+        scheduleThrottledTelemetrySync();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityResume);
 
     return () => {
       isUnmounted = true;
+      if (trailingTelemetryTimerRef.current) {
+        clearTimeout(trailingTelemetryTimerRef.current);
+        trailingTelemetryTimerRef.current = null;
+      }
       if (watchId !== null && typeof navigator !== "undefined" && "geolocation" in navigator) {
         navigator.geolocation.clearWatch(watchId);
       }
@@ -277,6 +359,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           batteryObj.removeEventListener("chargingchange", handleBatteryChange);
         } catch {}
       }
+      document.removeEventListener("visibilitychange", handleVisibilityResume);
       clearInterval(heartbeat);
     };
   }, [currentUser]);
@@ -306,18 +389,25 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const isExactActive = (path: string) => pathname === path;
   const isPrefixActive = (path: string) => pathname.startsWith(path);
 
-  // Strict Route-Level Permission Check so no user can open an unpermitted module via URL or link
+  // Strict Zero-Leak Route-Level Permission Check (Specific subroutes checked BEFORE parent prefixes)
   const isRouteAllowed = (() => {
     if (pathname === "/" || pathname === "/login") return true;
+
+    // Sales & Invoicing sub-permissions
+    if (pathname.startsWith("/sales/invoices/edit")) {
+      return hasPermission("invoices:edit");
+    }
     if (pathname.startsWith("/sales/invoices/new") || pathname.startsWith("/sales/bookings")) {
       return hasPermission("invoices:create");
     }
     if (pathname.startsWith("/sales/returns")) {
       return hasPermission("invoices:reverse");
     }
-    if (pathname.startsWith("/sales")) {
-      return hasAnyPermission(["invoices:view", "invoices:create", "invoices:edit"]);
+    if (pathname.startsWith("/sales/invoices") || pathname.startsWith("/sales/online-orders") || pathname.startsWith("/sales")) {
+      return hasPermission("invoices:view");
     }
+
+    // Products, Pricing & Categories
     if (pathname.startsWith("/products/price-estimator")) {
       return hasPermission("pricing:view");
     }
@@ -330,12 +420,16 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/categories")) {
       return hasPermission("categories:manage");
     }
+
+    // Purchases & Warehouse Stock
     if (pathname.startsWith("/purchases")) {
       return hasPermission("inventory:receive");
     }
     if (pathname.startsWith("/inventory")) {
-      return hasAnyPermission(["inventory:view", "inventory:receive", "inventory:damage", "inventory:samples", "inventory:adjust"]);
+      return hasPermission("inventory:view");
     }
+
+    // CRM, Clients & Staff
     if (pathname.startsWith("/customers") || pathname.startsWith("/distributors")) {
       return hasPermission("crm:customers");
     }
@@ -351,8 +445,10 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/employees/targets")) {
       return hasPermission("staff:targets");
     }
+
+    // Finance, Khata & Reports
     if (pathname.startsWith("/finance/credit")) {
-      return hasAnyPermission(["finance:aging", "finance:payments", "finance:ledgers"]);
+      return hasPermission("finance:aging");
     }
     if (pathname.startsWith("/finance/ledgers")) {
       return hasPermission("finance:ledgers");
@@ -363,6 +459,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/finance")) {
       return hasAnyPermission(["finance:aging", "finance:ledgers", "finance:payments", "finance:pnl"]);
     }
+
+    // Marketing, Audit, Sync, Users & Settings
     if (pathname.startsWith("/marketing")) {
       return hasPermission("marketing:manage");
     }
@@ -382,8 +480,117 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     ) {
       return hasPermission("settings:manage");
     }
-    return true;
+    return false;
   })();
+
+  // Role-Aware Center Elevated Circle Action (Default: Doctor Visit; smart zero-leak fallbacks for non-CRM roles)
+  const centerCircleAction = (() => {
+    if (hasPermission("crm:visits")) {
+      return {
+        href: "/crm/visits",
+        label: "Visit",
+        ariaLabel: "Doctor & Pharmacy Visits",
+        Icon: Stethoscope,
+        isActive: isPrefixActive("/crm/visits"),
+      };
+    }
+    if (hasPermission("invoices:create")) {
+      return {
+        href: "/sales/invoices/new",
+        label: "New Bill",
+        ariaLabel: "Make New Bill",
+        Icon: Plus,
+        isActive: isExactActive("/sales/invoices/new"),
+      };
+    }
+    if (hasPermission("inventory:receive")) {
+      return {
+        href: "/purchases",
+        label: "GRN",
+        ariaLabel: "Buy Stock (Purchases / GRN)",
+        Icon: ShoppingBag,
+        isActive: isPrefixActive("/purchases"),
+      };
+    }
+    if (hasPermission("finance:aging")) {
+      return {
+        href: "/finance/credit",
+        label: "Udhaar",
+        ariaLabel: "Market Udhaar & Recovery",
+        Icon: CreditCard,
+        isActive: isPrefixActive("/finance/credit"),
+      };
+    }
+    if (hasPermission("inventory:view")) {
+      return {
+        href: "/inventory",
+        label: "Stock",
+        ariaLabel: "Current Medicine Stock",
+        Icon: Boxes,
+        isActive: isPrefixActive("/inventory"),
+      };
+    }
+    if (hasPermission("products:view")) {
+      return {
+        href: "/products",
+        label: "Items",
+        ariaLabel: "Medicine Catalog",
+        Icon: Pill,
+        isActive: isPrefixActive("/products"),
+      };
+    }
+    return null;
+  })();
+
+  // Slot 2 (Replacing old Visits tab with Clients / Pharmacies, or Medicines Catalog if Clients not permitted)
+  const secondaryLeftTab = (() => {
+    if (hasPermission("crm:customers") && centerCircleAction?.href !== "/customers") {
+      return {
+        href: "/customers",
+        label: "Clients",
+        Icon: Building2,
+        isActive: isPrefixActive("/customers"),
+      };
+    }
+    if (hasPermission("products:view") && centerCircleAction?.href !== "/products") {
+      return {
+        href: "/products",
+        label: "Items",
+        Icon: Pill,
+        isActive: isPrefixActive("/products"),
+      };
+    }
+    return null;
+  })();
+
+  // Slot 6 (Khata / Finance tab strictly mapped to the exact finance sub-module permitted)
+  const financeTab = (() => {
+    if (hasPermission("finance:aging") && centerCircleAction?.href !== "/finance/credit") {
+      return {
+        href: "/finance/credit",
+        label: "Khata",
+        isActive: isPrefixActive("/finance"),
+      };
+    }
+    if (hasPermission("finance:ledgers")) {
+      return {
+        href: "/finance/ledgers/customers",
+        label: "Khata",
+        isActive: isPrefixActive("/finance/ledgers"),
+      };
+    }
+    if (hasPermission("finance:pnl")) {
+      return {
+        href: "/finance/pnl",
+        label: "P&L",
+        isActive: isPrefixActive("/finance/pnl"),
+      };
+    }
+    return null;
+  })();
+
+  const CenterIcon = centerCircleAction?.Icon;
+  const SecondaryLeftIcon = secondaryLeftTab?.Icon;
 
   return (
     <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
@@ -396,7 +603,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Offline and Sync Banner */}
+      {/* Offline and Sync Coordinator */}
       <OfflineBanner />
 
       <div className="flex flex-1 min-h-[calc(100vh-theme(spacing.10))] print:min-h-0 print:bg-white">
@@ -409,16 +616,18 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         />
 
         {/* Main Content Area */}
-        <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-          isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
-        } print:pl-0 print:bg-white print:min-h-0`}>
+        <div
+          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+            isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
+          } print:pl-0 print:bg-white print:min-h-0`}
+        >
           <Header
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             currentUser={currentUser}
             onLogout={logout}
           />
 
-          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-24 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0 print:bg-white print:min-h-0">
+          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-28 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0 print:bg-white print:min-h-0">
             {isRouteAllowed ? (
               children
             ) : (
@@ -450,116 +659,170 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Modern Ergonomic Mobile Bottom Navigation Bar (Filtered by User Permissions) */}
+      {/* Modern Ergonomic Mobile Bottom Navigation Bar (Strictly Filtered by User Permissions) */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className={`no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-1 sm:px-2 py-1 transition-all duration-300 ease-in-out ${
+        className={`no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-1 sm:px-2 pt-1 pb-1.5 transition-all duration-300 ease-in-out ${
           sidebarOpen ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
         }`}
       >
-        <div className="max-w-md mx-auto flex items-center justify-around">
-          {/* 1. Dashboard */}
+        <div className="max-w-md mx-auto flex items-end justify-around">
+          {/* 1. Home / Dashboard */}
           <Link
             href="/"
             prefetch={true}
-            className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+            className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
               isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
             }`}
           >
-            <div className={`p-1 rounded-lg transition-transform ${isExactActive("/") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+            <div
+              className={`p-1 rounded-lg transition-transform ${
+                isExactActive("/") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+              }`}
+            >
               <LayoutDashboard className="w-5 h-5" />
             </div>
             <span className="text-[10px] tracking-tight mt-0.5 leading-none">Home</span>
           </Link>
 
-          {/* 2. Field Visits (Only if crm:visits permitted) */}
-          {hasPermission("crm:visits") && (
+          {/* 2. Clients (Pharmacies & Stores) or Items (Medicines Catalog) — Replaces old Visits slot */}
+          {secondaryLeftTab && SecondaryLeftIcon && (
             <Link
-              href="/crm/visits"
+              href={secondaryLeftTab.href}
               prefetch={true}
-              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                isPrefixActive("/crm/visits")
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                secondaryLeftTab.isActive
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/crm/visits") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
-                <MapPin className="w-5 h-5" />
+              <div
+                className={`p-1 rounded-lg transition-transform ${
+                  secondaryLeftTab.isActive ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                }`}
+              >
+                <SecondaryLeftIcon className="w-5 h-5" />
               </div>
-              <span className="text-[10px] tracking-tight mt-0.5 leading-none">Visits</span>
+              <span className="text-[10px] tracking-tight mt-0.5 leading-none">
+                {secondaryLeftTab.label}
+              </span>
             </Link>
           )}
 
-          {/* 3. Invoices List (Bills) (Only if invoices:view permitted) */}
-          {hasPermission("invoices:view") && (
+          {/* 3. Customer Bills (Only if invoices:view permitted, or Make Bill if invoices:create permitted & not already center) */}
+          {hasPermission("invoices:view") ? (
             <Link
               href="/sales/invoices"
               prefetch={true}
-              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
                 isExactActive("/sales/invoices")
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <div className={`p-1 rounded-lg transition-transform ${isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+              <div
+                className={`p-1 rounded-lg transition-transform ${
+                  isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                }`}
+              >
                 <Receipt className="w-5 h-5" />
               </div>
               <span className="text-[10px] tracking-tight mt-0.5 leading-none">Bills</span>
             </Link>
+          ) : (
+            hasPermission("invoices:create") &&
+            centerCircleAction?.href !== "/sales/invoices/new" && (
+              <Link
+                href="/sales/invoices/new"
+                prefetch={true}
+                className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                  isExactActive("/sales/invoices/new")
+                    ? "text-teal-600 dark:text-teal-400 font-bold"
+                    : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                <div
+                  className={`p-1 rounded-lg transition-transform ${
+                    isExactActive("/sales/invoices/new")
+                      ? "bg-teal-50 dark:bg-teal-950/60 scale-105"
+                      : ""
+                  }`}
+                >
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] tracking-tight mt-0.5 leading-none">New Bill</span>
+              </Link>
+            )
           )}
 
-          {/* 4. Center Elevated Quick Make Bill Action (Only if invoices:create permitted) */}
-          {hasPermission("invoices:create") && (
+          {/* 4. Center Elevated Full-Circle Action Button (Default: Doctor Visit with Stethoscope & clear gap above "Visit") */}
+          {centerCircleAction && CenterIcon && (
             <Link
-              href="/sales/invoices/new"
+              href={centerCircleAction.href}
               prefetch={true}
-              aria-label="Make New Bill"
-              className="flex flex-col items-center justify-center flex-1 -mt-6 group btn-interactive"
+              aria-label={centerCircleAction.ariaLabel}
+              className="flex flex-col items-center justify-end flex-1 py-0.5 group btn-interactive"
             >
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 mb-1.5">
-                <Plus className="w-6 h-6 stroke-[2.5]" />
+              <div
+                className={`-mt-8 mb-2.5 w-12 h-12 rounded-full text-white shadow-lg flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 ${
+                  centerCircleAction.isActive
+                    ? "bg-gradient-to-tr from-teal-700 to-emerald-500 shadow-teal-600/40"
+                    : "bg-gradient-to-tr from-teal-600 to-teal-500 shadow-teal-600/30"
+                }`}
+              >
+                <CenterIcon className="w-5 h-5 stroke-[2.3]" />
               </div>
-              <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 leading-none uppercase tracking-wider">
-                Bill
+              <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 leading-none tracking-tight">
+                {centerCircleAction.label}
               </span>
             </Link>
           )}
 
-          {/* 5. Stock Batches (Only if inventory:view permitted) */}
-          {hasPermission("inventory:view") && (
+          {/* 5. Stock Batches (Only if inventory:view permitted & not already center) */}
+          {hasPermission("inventory:view") && centerCircleAction?.href !== "/inventory" && (
             <Link
               href="/inventory/batches"
               prefetch={true}
-              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
                 isPrefixActive("/inventory")
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+              <div
+                className={`p-1 rounded-lg transition-transform ${
+                  isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                }`}
+              >
                 <Barcode className="w-5 h-5" />
               </div>
               <span className="text-[10px] tracking-tight mt-0.5 leading-none">Stock</span>
             </Link>
           )}
 
-          {/* 6. Khata / Credit (Only if finance:aging or finance:ledgers permitted) */}
-          {hasAnyPermission(["finance:aging", "finance:ledgers", "finance:payments"]) && (
+          {/* 6. Khata / Finance (Only if permitted) */}
+          {financeTab && (
             <Link
-              href="/finance/credit"
+              href={financeTab.href}
               prefetch={true}
-              className={`flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                isPrefixActive("/finance")
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
+                financeTab.isActive
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              <div className={`p-1 rounded-lg transition-transform ${isPrefixActive("/finance") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""}`}>
+              <div
+                className={`p-1 rounded-lg transition-transform ${
+                  financeTab.isActive ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                }`}
+              >
                 <CreditCard className="w-5 h-5" />
               </div>
-              <span className="text-[10px] tracking-tight mt-0.5 leading-none">Khata</span>
+              <span className="text-[10px] tracking-tight mt-0.5 leading-none">
+                {financeTab.label}
+              </span>
             </Link>
           )}
 
@@ -568,7 +831,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             type="button"
             onClick={() => setSidebarOpen((prev) => !prev)}
             aria-label="Open Navigation Menu"
-            className="flex flex-col items-center justify-center flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+            className="flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
           >
             <div className="p-1 rounded-lg transition-transform hover:bg-slate-100 dark:hover:bg-slate-800">
               <Menu className="w-5 h-5" />
@@ -583,7 +846,6 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    // Service Worker handling
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       const isLocalhost =
         window.location.hostname === "localhost" ||
@@ -591,18 +853,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         window.location.hostname.endsWith(".local");
 
       if (isLocalhost) {
-        // In local development, unregister any active service worker to prevent stale webpack chunk lockups
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           for (const reg of registrations) {
             reg.unregister();
           }
         });
       } else {
-        // Register in production for full offline-first PWA caching
         navigator.serviceWorker
-          .register("/sw.js")
+          .register("/sw.js", { updateViaCache: "none" })
           .then((reg) => {
-            console.log("Noxderma Service Worker registered successfully:", reg.scope);
+            reg.update().catch(() => {});
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            }
+            reg.addEventListener("updatefound", () => {
+              const installing = reg.installing;
+              if (!installing) return;
+              installing.addEventListener("statechange", () => {
+                if (installing.state === "installed" && navigator.serviceWorker.controller) {
+                  installing.postMessage({ type: "SKIP_WAITING" });
+                }
+              });
+            });
           })
           .catch((err) => {
             console.warn("Service Worker registration failed:", err);

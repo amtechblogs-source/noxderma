@@ -58,7 +58,12 @@ export default function ProductDetailPage() {
 }
 
 function ProductDetailContent() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission, hasAnyPermission } = useAuth();
+  const canViewCost = hasPermission("pricing:view");
+  const canEditProducts = hasPermission("products:edit");
+  const canManageBatches = hasAnyPermission(["inventory:receive", "inventory:adjust"]);
+  const canViewStock = hasPermission("inventory:view");
+  const canShareMarketing = hasPermission("marketing:manage");
   const productId = useSearchParams().get("id") ?? "";
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -317,30 +322,38 @@ function ProductDetailContent() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <Link
-            href={`/products?cloneId=${encodeURIComponent(product.id)}`}
-            className="px-3.5 py-2 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1.5 transition-colors"
-          >
-            <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Clone Product
-          </Link>
-          <button
-            onClick={openEditProductModal}
-            className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
-          >
-            <Edit2 className="w-3.5 h-3.5 text-teal-600" /> Edit Medicine
-          </button>
-          <Link
-            href={`/marketing/whatsapp?sku=${product.sku}&name=${encodeURIComponent(product.name)}`}
-            className="px-3.5 py-2 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
-          >
-            <Share2 className="w-3.5 h-3.5" /> Share on WhatsApp
-          </Link>
-          <button
-            onClick={() => setIsAddingBatch(true)}
-            className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
-          >
-            <Plus className="w-4 h-4" /> Add New Batch
-          </button>
+          {canEditProducts && (
+            <>
+              <Link
+                href={`/products?cloneId=${encodeURIComponent(product.id)}`}
+                className="px-3.5 py-2 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Clone Product
+              </Link>
+              <button
+                onClick={openEditProductModal}
+                className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-teal-600" /> Edit Medicine
+              </button>
+            </>
+          )}
+          {canShareMarketing && (
+            <Link
+              href={`/marketing/whatsapp?sku=${product.sku}&name=${encodeURIComponent(product.name)}`}
+              className="px-3.5 py-2 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+            >
+              <Share2 className="w-3.5 h-3.5" /> Share on WhatsApp
+            </Link>
+          )}
+          {canManageBatches && (
+            <button
+              onClick={() => setIsAddingBatch(true)}
+              className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Add New Batch
+            </button>
+          )}
         </div>
       </div>
 
@@ -479,32 +492,38 @@ function ProductDetailContent() {
             </div>
           </div>
 
-          {/* Commercial Pricing Schedule (With Cost Visibility Toggle) */}
+          {/* Commercial Pricing Schedule (Cost & Margin Strictly Restricted to pricing:view) */}
           {pricing && (
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-teal-600" />
                   <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                    Medicine Rates & Profit Margin (Kamai)
+                    {canViewCost
+                      ? "Medicine Rates & Profit Margin (Kamai)"
+                      : "Medicine Selling Rates (T.P. & M.R.P.)"}
                   </h3>
                 </div>
-                <button
-                  onClick={() => setShowCostPrices(!showCostPrices)}
-                  className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1 font-semibold"
-                >
-                  {showCostPrices ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  {showCostPrices ? "Hide Buying Cost" : "Show Buying Cost"}
-                </button>
+                {canViewCost && (
+                  <button
+                    onClick={() => setShowCostPrices(!showCostPrices)}
+                    className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1 font-semibold"
+                  >
+                    {showCostPrices ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showCostPrices ? "Hide Buying Cost" : "Show Buying Cost"}
+                  </button>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
-                  <span className="text-slate-500 block">Buying Rate (Kharid):</span>
-                  <span className="font-bold text-sm text-slate-800 dark:text-slate-200 font-mono">
-                    {showCostPrices ? formatPKR(pricing.purchaseCostPerPack) : "••••••"}
-                  </span>
-                </div>
+              <div className={`grid grid-cols-2 ${canViewCost ? "sm:grid-cols-4" : "sm:grid-cols-2"} gap-3 text-xs`}>
+                {canViewCost && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
+                    <span className="text-slate-500 block">Buying Rate (Kharid):</span>
+                    <span className="font-bold text-sm text-slate-800 dark:text-slate-200 font-mono">
+                      {showCostPrices ? formatPKR(pricing.purchaseCostPerPack) : "••••••"}
+                    </span>
+                  </div>
+                )}
 
                 <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
                   <span className="text-slate-500 block">Sale Rate (To Stores):</span>
@@ -520,18 +539,22 @@ function ProductDetailContent() {
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
-                  <span className="text-slate-500 block">Profit Margin (% Munafa):</span>
-                  <span className="font-bold text-sm text-emerald-600 font-mono">
-                    {showCostPrices
-                      ? `${Math.round(
-                          ((pricing.tradePricePerPack - pricing.purchaseCostPerPack) /
-                            pricing.purchaseCostPerPack) *
-                            100
-                        )}%`
-                      : "••••••"}
-                  </span>
-                </div>
+                {canViewCost && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40">
+                    <span className="text-slate-500 block">Profit Margin (% Munafa):</span>
+                    <span className="font-bold text-sm text-emerald-600 font-mono">
+                      {showCostPrices
+                        ? pricing.purchaseCostPerPack > 0
+                          ? `${Math.round(
+                              ((pricing.tradePricePerPack - pricing.purchaseCostPerPack) /
+                                pricing.purchaseCostPerPack) *
+                                100
+                            )}%`
+                          : "—"
+                        : "••••••"}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -553,12 +576,14 @@ function ProductDetailContent() {
             {batches.length === 0 ? (
               <div className="p-6 text-center text-slate-400 bg-slate-50 dark:bg-slate-800/30 rounded-lg">
                 <p className="text-xs">No batches recorded for this medicine yet.</p>
-                <button
-                  onClick={() => setIsAddingBatch(true)}
-                  className="mt-2 text-xs font-bold text-teal-600 hover:underline"
-                >
-                  Add First Batch
-                </button>
+                {canManageBatches && (
+                  <button
+                    onClick={() => setIsAddingBatch(true)}
+                    className="mt-2 text-xs font-bold text-teal-600 hover:underline"
+                  >
+                    Add First Batch
+                  </button>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">

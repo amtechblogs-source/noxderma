@@ -56,11 +56,9 @@ export default function AuditLogsPage() {
   // Snapshot / Diff Inspector modal state
   const [inspectLog, setInspectLog] = useState<LocalAuditLog | null>(null);
 
-  // Check if current user is owner or authorized administrator
-  const isOwner =
-    currentUser?.role === "owner" ||
-    currentUser?.role === "admin" ||
-    hasPermission("audit:view");
+  // Strictly enforce audit:view & audit:undo permissions without hardcoded role bypasses
+  const isOwner = hasPermission("audit:view");
+  const canPerformUndo = hasPermission("audit:undo");
 
   const loadLogs = async () => {
     setLoading(true);
@@ -85,7 +83,7 @@ export default function AuditLogsPage() {
 
   // Execute undo action
   const handleExecuteUndo = async () => {
-    if (!undoTargetLog || !currentUser) return;
+    if (!undoTargetLog || !currentUser || !canPerformUndo) return;
     setIsUndoing(true);
     try {
       const res = await undoActivity(undoTargetLog.id, {
@@ -484,7 +482,7 @@ export default function AuditLogsPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
                 {filteredLogs.map((log) => {
                   const isUndone = log.isUndone;
-                  const canUndo = log.canUndo && !isUndone;
+                  const canUndo = canPerformUndo && log.canUndo && !isUndone;
 
                   // Action badge styling
                   let actionColor = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
