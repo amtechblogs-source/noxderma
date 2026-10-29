@@ -1639,3 +1639,4 @@ export default function StaffSalariesPage() {
     </div>
   );
 }
+

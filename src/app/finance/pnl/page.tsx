@@ -54,7 +54,7 @@ export default function ProfitAndLossPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [expenses, setExpenses] = useState<OperatingExpense[]>([]);
-  const [staffSalaries, setStaffSalaries] = useState<StaffSalary[]>([]);
+  const [salaryRecords, setSalaryRecords] = useState<StaffSalary[]>([]);
   const [period, setPeriod] = useState<"this_month" | "last_month" | "all">("all");
   const [loading, setLoading] = useState(true);
 
@@ -88,7 +88,7 @@ export default function ProfitAndLossPage() {
       setProducts(prods || []);
       setBatches(bchs || []);
       setExpenses(exps || []);
-      setStaffSalaries(sals || []);
+      setSalaryRecords(sals || []);
     } catch (err) {
       console.error("Failed to load P&L finance records:", err);
     } finally {
@@ -152,13 +152,13 @@ export default function ProfitAndLossPage() {
     const periodInvoices = invoices.filter((i) => isMatch(i.invoiceDate || i.createdAt));
     const periodExpenses = expenses.filter((e) => isMatch(e.date || e.createdAt));
     const periodMovements = movements.filter((m) => isMatch(m.timestamp));
-    const periodSalaries = staffSalaries.filter((s) => {
+    const periodSalaries = salaryRecords.filter((s) => {
       if (s.status !== "paid") return false;
       return isMatch(s.disbursedAt || `${s.month}-15` || s.createdAt);
     });
 
     return { periodInvoices, periodExpenses, periodMovements, periodSalaries };
-  }, [invoices, expenses, movements, staffSalaries, period]);
+  }, [invoices, expenses, movements, salaryRecords, period]);
 
   // 1. REVENUE CALCULATIONS
   const grossSales = useMemo(() => {
