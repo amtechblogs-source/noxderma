@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   CreditCard,
@@ -19,11 +19,19 @@ import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Invoice, Customer } from "@/types";
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 export default function CreditManagementPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [mfrPayables, setMfrPayables] = useState<number>(0);
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   useEffect(() => {
     async function loadCreditData() {
@@ -38,8 +46,14 @@ export default function CreditManagementPage() {
     loadCreditData();
   }, []);
 
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((inv) =>
+      isRecordInDateRange(inv.invoiceDate || inv.createdAt, dateFilter)
+    );
+  }, [invoices, dateFilter]);
+
   // Compute 3-Way Credit Balances
-  const unpaidInvoices = invoices.filter((inv) => (inv.outstandingBalance || 0) > 0);
+  const unpaidInvoices = filteredInvoices.filter((inv) => (inv.outstandingBalance || 0) > 0);
 
   const pharmacyReceivables = unpaidInvoices
     .filter((inv) => inv.customerCategory === "pharmacy" || inv.customerCategory === "direct_clinic")
@@ -116,6 +130,12 @@ export default function CreditManagementPage() {
           </p>
         </div>
       </div>
+
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={unpaidInvoices.length}
+      />
 
       {/* Three Distinct Types of Credit */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">

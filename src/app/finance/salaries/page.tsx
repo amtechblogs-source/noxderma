@@ -39,6 +39,13 @@ import { collection, getDocs } from "firebase/firestore";
 import type { StaffSalary, UserProfile, SalaryPaymentStatus } from "@/types";
 import { getUserRoleLabel, normalizeUserDisplayName } from "@/types/auth";
 import { recordActivity } from "@/lib/audit/auditTracker";
+import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
+import {
+  DateFilterState,
+  createDefaultDateFilter,
+  isRecordInDateRange,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 function numberToWordsPKR(num: number): string {
   if (!num || num === 0) return "Zero Rupees Only";
@@ -88,6 +95,7 @@ export default function StaffSalariesPage() {
   // Month selector
   const currentMonthKey = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthKey);
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("monthly"));
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "paid">("all");
 
@@ -214,10 +222,16 @@ export default function StaffSalariesPage() {
     };
   }, []);
 
+  // Aggregate records matching active date filter
+  const monthSalaries = useMemo(() => {
+    return salaries.filter((s) =>
+      isRecordInDateRange(s.month || s.disbursedAt || s.createdAt, dateFilter)
+    );
+  }, [salaries, dateFilter]);
+
   // Filtered Salaries
   const filteredSalaries = useMemo(() => {
-    return salaries.filter((sal) => {
-      const matchesMonth = selectedMonth === "all" || sal.month === selectedMonth;
+    return monthSalaries.filter((sal) => {
       const matchesStatus = statusFilter === "all" || sal.status === statusFilter;
       const q = search.trim().toLowerCase();
       const matchesSearch =
@@ -227,16 +241,9 @@ export default function StaffSalariesPage() {
         (sal.phone && sal.phone.toLowerCase().includes(q)) ||
         (sal.notes && sal.notes.toLowerCase().includes(q));
 
-      return matchesMonth && matchesStatus && matchesSearch;
+      return matchesStatus && matchesSearch;
     });
-  }, [salaries, selectedMonth, statusFilter, search]);
-
-  // Aggregate KPI metrics for the selected month
-  const monthSalaries = useMemo(() => {
-    return selectedMonth === "all"
-      ? salaries
-      : salaries.filter((s) => s.month === selectedMonth);
-  }, [salaries, selectedMonth]);
+  }, [monthSalaries, statusFilter, search]);
 
   const kpis = useMemo(() => {
     const totalPayroll = monthSalaries.reduce((sum, s) => sum + (s.netSalary || 0), 0);
@@ -643,7 +650,7 @@ export default function StaffSalariesPage() {
             </p>
           </div>
           <div className="text-right text-[10px] text-slate-700">
-            <p><strong>Month:</strong> {selectedMonth === "all" ? "All Time" : selectedMonth}</p>
+            <p><strong>Period:</strong> {getDateFilterDescription(dateFilter)}</p>
             <p><strong>Printed:</strong> {formatKarachiDate(new Date(), true)}</p>
             <p><strong>Prepared By:</strong> {currentUser?.displayName || "Owner"}</p>
           </div>
@@ -805,66 +812,24 @@ export default function StaffSalariesPage() {
         </div>
       </div>
 
-      {/* Month & Filter Controls Bar */}
+      {/* Date & Filter Controls Bar */}
       <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
-        {/* Month Selector Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-teal-600" /> Month:
-          </span>
-
-          <button
-            type="button"
-            onClick={() => setSelectedMonth(currentMonthKey)}
-            className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-              selectedMonth === currentMonthKey
-                ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-            }`}
-          >
-            This Month ({currentMonthKey})
-          </button>
-
-          {/* Past Months */}
-          {[-1, -2].map((offset) => {
-            const d = new Date();
-            d.setMonth(d.getMonth() + offset);
-            const mKey = d.toISOString().slice(0, 7);
-            const label = d.toLocaleString("en-PK", { month: "short", year: "numeric" });
-            return (
-              <button
-                key={mKey}
-                type="button"
-                onClick={() => setSelectedMonth(mKey)}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-                  selectedMonth === mKey
-                    ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => setSelectedMonth("all")}
-            className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-              selectedMonth === "all"
-                ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-            }`}
-          >
-            All Months
-          </button>
+        {/* Universal Date Range Filter Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800/80">
+          <DateRangeFilterBar
+            filter={dateFilter}
+            onChange={setDateFilter}
+            count={filteredSalaries.length}
+            label="Payroll Criteria"
+            className="flex-1"
+          />
 
           {/* Bulk Disburse CTA */}
           {kpis.pendingCount > 0 && (
             <button
               type="button"
               onClick={() => setBulkDisburseModalOpen(true)}
-              className="ml-auto px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all shrink-0"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all shrink-0 self-start md:self-auto"
             >
               <Zap className="w-3.5 h-3.5" />
               <span>One-Click Disburse ({kpis.pendingCount} Pending)</span>

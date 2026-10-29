@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowLeftRight,
@@ -13,11 +13,19 @@ import {
 import { formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { StockMovement } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 export default function StockMovementsPage() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   useEffect(() => {
     async function load() {
@@ -27,18 +35,21 @@ export default function StockMovementsPage() {
     load();
   }, []);
 
-  const filtered = movements.filter((m) => {
-    if (typeFilter !== "all" && m.type !== typeFilter) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      return (
-        m.productName.toLowerCase().includes(q) ||
-        (m.batchNumber && m.batchNumber.toLowerCase().includes(q)) ||
-        m.referenceId.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return movements.filter((m) => {
+      if (!isRecordInDateRange(m.timestamp, dateFilter)) return false;
+      if (typeFilter !== "all" && m.type !== typeFilter) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        return (
+          m.productName.toLowerCase().includes(q) ||
+          (m.batchNumber && m.batchNumber.toLowerCase().includes(q)) ||
+          m.referenceId.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [movements, typeFilter, search, dateFilter]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -60,6 +71,13 @@ export default function StockMovementsPage() {
           </p>
         </div>
       </div>
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Filter and Search */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3 text-xs">

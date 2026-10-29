@@ -17,12 +17,20 @@ import {
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Customer, Invoice, Payment } from "@/types";
+import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
+import {
+  DateFilterState,
+  createDefaultDateFilter,
+  isRecordInDateRange,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 export default function CustomerLedgersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -120,7 +128,8 @@ export default function CustomerLedgersPage() {
       e.customerName.toLowerCase().includes(search.toLowerCase()) ||
       e.referenceNumber.toLowerCase().includes(search.toLowerCase()) ||
       e.description.toLowerCase().includes(search.toLowerCase());
-    return matchesCustomer && matchesSearch;
+    const matchesDate = isRecordInDateRange(e.date || e.timestamp, dateFilter);
+    return matchesCustomer && matchesSearch && matchesDate;
   });
 
   // Calculate Running Balance (Baqaya) per customer so balances never cross-contaminate
@@ -153,8 +162,12 @@ export default function CustomerLedgersPage() {
       ? customers.reduce((sum, c) => sum + (c.currentOutstandingBalance || 0), 0)
       : selectedCustomerObj?.currentOutstandingBalance || 0;
 
-  const totalBillsAmount = relevantInvoices.reduce((sum, i) => sum + (i.netTotal || 0), 0);
-  const totalCashReceived = relevantPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalBillsAmount = filteredEntries
+    .filter((e) => e.debit > 0)
+    .reduce((sum, e) => sum + e.debit, 0);
+  const totalCashReceived = filteredEntries
+    .filter((e) => e.credit > 0)
+    .reduce((sum, e) => sum + e.credit, 0);
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -176,6 +189,9 @@ export default function CustomerLedgersPage() {
           </p>
           <p className="text-[10px] text-slate-600">
             <strong>Customer:</strong> {selectedCustomerObj ? `${selectedCustomerObj.name} (${selectedCustomerObj.city})` : "All Customers & Medical Stores"}
+          </p>
+          <p className="text-[10px] text-slate-600">
+            <strong>Period:</strong> {getDateFilterDescription(dateFilter)}
           </p>
         </div>
       </div>
@@ -250,34 +266,43 @@ export default function CustomerLedgersPage() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between text-xs no-print print:hidden">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search bill number, customer or note..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-          />
-        </div>
+      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3 text-xs no-print print:hidden">
+        <DateRangeFilterBar
+          filter={dateFilter}
+          onChange={setDateFilter}
+          count={computedLedger.length}
+          label="Khata Period"
+        />
 
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
-            <Filter className="w-3.5 h-3.5" /> Select Customer:
-          </span>
-          <select
-            value={selectedCustomerId}
-            onChange={(e) => setSelectedCustomerId(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs"
-          >
-            <option value="all">All Customers & Stores</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.city})
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="relative w-full md:w-80">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search bill number, customer or note..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+              <Filter className="w-3.5 h-3.5" /> Select Customer:
+            </span>
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs"
+            >
+              <option value="all">All Customers &amp; Stores</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.city})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

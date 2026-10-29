@@ -34,6 +34,13 @@ import {
   type Customer,
   type Product,
 } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 type PlaceType = "pharmacy" | "clinic" | "distributor" | "hospital";
 type InterestType = "high" | "medium" | "low" | "none";
@@ -76,6 +83,7 @@ export default function CustomerVisitsPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Create form toggle
@@ -173,9 +181,12 @@ export default function CustomerVisitsPage() {
   );
 
   const filteredVisits = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return visits;
     return visits.filter((v) => {
+      if (!isRecordInDateRange(v.visitDate || v.createdAt, dateFilter)) {
+        return false;
+      }
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
       const meds = (v.productsDiscussed || []).join(" ").toLowerCase();
       return (
         v.customerName.toLowerCase().includes(q) ||
@@ -186,7 +197,7 @@ export default function CustomerVisitsPage() {
         meds.includes(q)
       );
     });
-  }, [visits, searchQuery]);
+  }, [visits, searchQuery, dateFilter]);
 
   // =========================================================================
   // CREATE VISIT (+ DETAILED AUDIT LOG WITH UNDO)
@@ -799,6 +810,13 @@ export default function CustomerVisitsPage() {
           </div>
         </form>
       )}
+
+      {/* Universal Date Filter Bar */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filteredVisits.length}
+      />
 
       {/* Search & Count Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">

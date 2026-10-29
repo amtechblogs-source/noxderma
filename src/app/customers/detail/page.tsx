@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -36,6 +36,13 @@ import type {
 } from "@/types";
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
 import { recordActivity } from "@/lib/audit/auditTracker";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 /**
  * Static-export friendly: the customer id is read from `?id=` at runtime
@@ -96,6 +103,7 @@ function CustomerDetailContent() {
     "overview" | "invoices" | "payment" | "ledger" | "visits" | "reminder"
   >("overview");
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   // New Payment Form State
   const [payAmount, setPayAmount] = useState<number>(0);
@@ -470,6 +478,25 @@ function CustomerDetailContent() {
     };
   });
 
+  // Filtered lists based on dateFilter
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((inv) =>
+      isRecordInDateRange(inv.invoiceDate || inv.createdAt, dateFilter)
+    );
+  }, [invoices, dateFilter]);
+
+  const filteredLedger = useMemo(() => {
+    return computedLedger.filter((entry) =>
+      isRecordInDateRange(entry.date || entry.timestamp, dateFilter)
+    );
+  }, [computedLedger, dateFilter]);
+
+  const filteredVisits = useMemo(() => {
+    return visits.filter((v) =>
+      isRecordInDateRange(v.visitDate || v.createdAt, dateFilter)
+    );
+  }, [visits, dateFilter]);
+
   return (
     <div className="space-y-6">
       {/* Official Print-Only Header */}
@@ -485,6 +512,9 @@ function CustomerDetailContent() {
           <span className="inline-block px-3 py-1 rounded bg-slate-100 border border-slate-400 text-[11px] font-black uppercase tracking-wider text-black mb-1">
             Customer Statement
           </span>
+          <p className="text-[10px] text-slate-600">
+            <strong>Period:</strong> {getDateFilterDescription(dateFilter)}
+          </p>
           <p className="text-[10px] text-slate-600">
             <strong>Printed:</strong> {formatKarachiDate(new Date(), true)}
           </p>
@@ -711,10 +741,17 @@ function CustomerDetailContent() {
             )}
           </div>
 
-          {invoices.length === 0 ? (
+          <DateRangeFilterBar
+            filter={dateFilter}
+            onChange={setDateFilter}
+            count={filteredInvoices.length}
+            compact
+          />
+
+          {filteredInvoices.length === 0 ? (
             <div className="p-8 text-center text-slate-400">
               <Receipt className="w-10 h-10 mx-auto mb-2 opacity-50" />
-              <p className="text-xs">No bills made for this customer yet.</p>
+              <p className="text-xs">No bills found for the selected period.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -732,7 +769,7 @@ function CustomerDetailContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {invoices.map((inv) => (
+                  {filteredInvoices.map((inv) => (
                     <tr
                       key={inv.id}
                       className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
@@ -892,6 +929,15 @@ function CustomerDetailContent() {
             </button>
           </div>
 
+          <div className="no-print print:hidden">
+            <DateRangeFilterBar
+              filter={dateFilter}
+              onChange={setDateFilter}
+              count={filteredLedger.length}
+              compact
+            />
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
@@ -905,7 +951,7 @@ function CustomerDetailContent() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
-                {computedLedger.map((row) => (
+                {filteredLedger.map((row) => (
                   <tr
                     key={row.id}
                     className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors print:border-b print:border-slate-200"
@@ -978,13 +1024,20 @@ function CustomerDetailContent() {
             </Link>
           </div>
 
-          {visits.length === 0 ? (
+          <DateRangeFilterBar
+            filter={dateFilter}
+            onChange={setDateFilter}
+            count={filteredVisits.length}
+            compact
+          />
+
+          {filteredVisits.length === 0 ? (
             <p className="text-xs text-slate-400 py-4 text-center">
-              No staff visits logged for this customer yet.
+              No staff visits found for the selected period.
             </p>
           ) : (
             <div className="space-y-3">
-              {visits.map((v) => (
+              {filteredVisits.map((v) => (
                 <div
                   key={v.id}
                   className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 text-xs space-y-1.5"

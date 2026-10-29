@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Users2,
@@ -19,6 +19,13 @@ import {
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Lead, LeadPipelineStage, Customer } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 const STAGES: { stage: LeadPipelineStage; label: string; color: string }[] = [
   { stage: "new", label: "New Inquiries", color: "border-sky-500" },
@@ -32,6 +39,7 @@ const STAGES: { stage: LeadPipelineStage; label: string; color: string }[] = [
 export default function LeadsCrmPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   // Form State
   const [leadName, setLeadName] = useState("");
@@ -132,7 +140,13 @@ export default function LeadsCrmPage() {
     await loadLeads();
   };
 
-  const totalPipelineValue = leads.reduce((sum, l) => sum + (l.estimatedPotentialPkr || 0), 0);
+  const filteredLeads = useMemo(() => {
+    return leads.filter((l) =>
+      isRecordInDateRange(l.createdAt || l.lastContactedAt, dateFilter)
+    );
+  }, [leads, dateFilter]);
+
+  const totalPipelineValue = filteredLeads.reduce((sum, l) => sum + (l.estimatedPotentialPkr || 0), 0);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -306,10 +320,17 @@ export default function LeadsCrmPage() {
         </div>
       )}
 
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filteredLeads.length}
+      />
+
       {/* Kanban / Stage Columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {STAGES.map(({ stage, label, color }) => {
-          const stageLeads = leads.filter((l) => l.status === stage);
+          const stageLeads = filteredLeads.filter((l) => l.status === stage);
 
           return (
             <div

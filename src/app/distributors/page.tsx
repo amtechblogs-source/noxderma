@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Truck,
@@ -20,6 +20,13 @@ import {
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Customer } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 interface DistributorDetail extends Customer {
   territory: string;
@@ -32,6 +39,7 @@ export default function DistributorsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedTerritory, setSelectedTerritory] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [isAdding, setIsAdding] = useState(false);
 
   // Form State
@@ -103,15 +111,18 @@ export default function DistributorsPage() {
     await loadData();
   };
 
-  const filtered = distributors.filter((d) => {
-    const matchesSearch =
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.contactPerson.toLowerCase().includes(search.toLowerCase()) ||
-      d.city.toLowerCase().includes(search.toLowerCase());
-    const matchesTerritory =
-      selectedTerritory === "all" || d.city.toLowerCase() === selectedTerritory.toLowerCase();
-    return matchesSearch && matchesTerritory;
-  });
+  const filtered = useMemo(() => {
+    return distributors.filter((d) => {
+      const matchesSearch =
+        d.name.toLowerCase().includes(search.toLowerCase()) ||
+        d.contactPerson.toLowerCase().includes(search.toLowerCase()) ||
+        d.city.toLowerCase().includes(search.toLowerCase());
+      const matchesTerritory =
+        selectedTerritory === "all" || d.city.toLowerCase() === selectedTerritory.toLowerCase();
+      const matchesDate = isRecordInDateRange(d.createdAt || (d as any).updatedAt, dateFilter);
+      return matchesSearch && matchesTerritory && matchesDate;
+    });
+  }, [distributors, search, selectedTerritory, dateFilter]);
 
   const totalCredit = distributors.reduce((sum, d) => sum + (d.creditLimit || 0), 0);
   const totalReceivable = distributors.reduce(
@@ -177,6 +188,13 @@ export default function DistributorsPage() {
           </span>
         </div>
       </div>
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Search & Filter Bar */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between text-xs">

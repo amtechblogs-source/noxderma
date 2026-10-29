@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   RotateCcw,
@@ -20,6 +20,13 @@ import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useAuth } from "@/context/AuthContext";
 import type { Customer, Product, InventoryBatch, StockMovement } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 interface SalesReturn {
   id: string;
@@ -47,6 +54,7 @@ export default function SalesReturnsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Form State
@@ -180,16 +188,21 @@ export default function SalesReturnsPage() {
     );
   };
 
-  const filtered = returns.filter((r) => {
-    return (
-      r.returnNoteNumber.toLowerCase().includes(search.toLowerCase()) ||
-      r.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      r.productName.toLowerCase().includes(search.toLowerCase()) ||
-      r.batchNumber.toLowerCase().includes(search.toLowerCase())
-    );
-  });
+  const filtered = useMemo(() => {
+    return returns.filter((r) => {
+      if (!isRecordInDateRange(r.returnDate, dateFilter)) return false;
+      const q = search.toLowerCase();
+      if (!q) return true;
+      return (
+        r.returnNoteNumber.toLowerCase().includes(q) ||
+        r.customerName.toLowerCase().includes(q) ||
+        r.productName.toLowerCase().includes(q) ||
+        r.batchNumber.toLowerCase().includes(q)
+      );
+    });
+  }, [returns, search, dateFilter]);
 
-  const totalCreditIssued = returns.reduce((sum, r) => sum + r.totalCreditAmount, 0);
+  const totalCreditIssued = filtered.reduce((sum, r) => sum + r.totalCreditAmount, 0);
 
   return (
     <div className="space-y-6">
@@ -247,6 +260,13 @@ export default function SalesReturnsPage() {
           <span className="text-[10px] text-slate-500 block mt-0.5">Kept aside (do not sell)</span>
         </div>
       </div>
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Search Bar */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex items-center justify-between text-xs">

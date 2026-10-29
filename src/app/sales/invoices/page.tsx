@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Receipt,
@@ -30,6 +30,13 @@ import type { Invoice, Product, BusinessSettings } from "@/types";
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
 import { useAuth } from "@/context/AuthContext";
 import { recordActivity } from "@/lib/audit/auditTracker";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 export default function SalesInvoicesListPage() {
   const { currentUser, hasPermission, hasAnyPermission } = useAuth();
@@ -44,6 +51,7 @@ export default function SalesInvoicesListPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [syncFilter, setSyncFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   // Selection & Deletion State
@@ -76,19 +84,22 @@ export default function SalesInvoicesListPage() {
     loadData();
   }, []);
 
-  const filtered = invoices.filter((inv) => {
-    const matchesSearch =
-      inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      inv.provisionalReference.toLowerCase().includes(search.toLowerCase()) ||
-      (inv.customerPhone && inv.customerPhone.includes(search));
-    const matchesStatus = statusFilter === "all" || inv.paymentStatus === statusFilter;
-    const matchesSync = syncFilter === "all" || inv.syncStatus === syncFilter;
-    return matchesSearch && matchesStatus && matchesSync;
-  });
+  const filtered = useMemo(() => {
+    return invoices.filter((inv) => {
+      const matchesSearch =
+        inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
+        inv.provisionalReference.toLowerCase().includes(search.toLowerCase()) ||
+        (inv.customerPhone && inv.customerPhone.includes(search));
+      const matchesStatus = statusFilter === "all" || inv.paymentStatus === statusFilter;
+      const matchesSync = syncFilter === "all" || inv.syncStatus === syncFilter;
+      const matchesDate = isRecordInDateRange(inv.invoiceDate || inv.createdAt, dateFilter);
+      return matchesSearch && matchesStatus && matchesSync && matchesDate;
+    });
+  }, [invoices, search, statusFilter, syncFilter, dateFilter]);
 
-  const totalGross = invoices.reduce((sum, i) => sum + (i.grossTotal || i.netTotal || 0), 0);
-  const totalNet = invoices.reduce((sum, i) => sum + (i.netTotal || 0), 0);
-  const totalOutstanding = invoices.reduce((sum, i) => sum + (i.outstandingBalance || 0), 0);
+  const totalGross = filtered.reduce((sum, i) => sum + (i.grossTotal || i.netTotal || 0), 0);
+  const totalNet = filtered.reduce((sum, i) => sum + (i.netTotal || 0), 0);
+  const totalOutstanding = filtered.reduce((sum, i) => sum + (i.outstandingBalance || 0), 0);
 
   const selectedInvoicesTotal = invoices
     .filter((inv) => selectedInvoiceIds.includes(inv.id))
@@ -359,6 +370,13 @@ export default function SalesInvoicesListPage() {
           </span>
         </div>
       </div>
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Filter & Search Bar */}
       <div className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft flex flex-col md:flex-row gap-3.5 items-stretch md:items-center justify-between text-xs sm:text-sm">

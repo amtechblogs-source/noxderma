@@ -16,6 +16,13 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
+import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
+import {
+  DateFilterState,
+  createDefaultDateFilter,
+  isRecordInDateRange,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 interface ManufacturerPayableEntry {
   id: string;
@@ -32,6 +39,7 @@ interface ManufacturerPayableEntry {
 
 export default function ManufacturerLedgersPage() {
   const [selectedMfr, setSelectedMfr] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [search, setSearch] = useState("");
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
 
@@ -86,7 +94,8 @@ export default function ManufacturerLedgersPage() {
       e.referenceNumber.toLowerCase().includes(search.toLowerCase()) ||
       e.description.toLowerCase().includes(search.toLowerCase()) ||
       e.manufacturerName.toLowerCase().includes(search.toLowerCase());
-    return matchesMfr && matchesSearch;
+    const matchesDate = isRecordInDateRange(e.date, dateFilter);
+    return matchesMfr && matchesSearch && matchesDate;
   });
 
   // Calculate Running Balance per manufacturer
@@ -123,6 +132,9 @@ export default function ManufacturerLedgersPage() {
           </p>
           <p className="text-[10px] text-slate-600">
             <strong>Company Filter:</strong> {selectedMfr === "all" ? "All Medicine Companies" : selectedMfr}
+          </p>
+          <p className="text-[10px] text-slate-600">
+            <strong>Period:</strong> {getDateFilterDescription(dateFilter)}
           </p>
         </div>
       </div>
@@ -191,35 +203,44 @@ export default function ManufacturerLedgersPage() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between text-xs no-print print:hidden">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search purchase no, company or details..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-          />
-        </div>
+      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3 text-xs no-print print:hidden">
+        <DateRangeFilterBar
+          filter={dateFilter}
+          onChange={setDateFilter}
+          count={computedList.length}
+          label="Khata Period"
+        />
 
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-          <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
-            <Filter className="w-3.5 h-3.5" /> Select Company:
-          </span>
-          {["all", "Bayer", "GSK", "Nox Laboratories"].map((m) => (
-            <button
-              key={m}
-              onClick={() => setSelectedMfr(m)}
-              className={`px-3 py-1 rounded-lg font-bold shrink-0 transition-all ${
-                selectedMfr.toLowerCase() === m.toLowerCase()
-                  ? "bg-teal-600 text-white"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-              }`}
-            >
-              {m === "all" ? "All Companies" : m}
-            </button>
-          ))}
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="relative w-full md:w-80">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search purchase no, company or details..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+              <Filter className="w-3.5 h-3.5" /> Select Company:
+            </span>
+            {["all", "Bayer", "GSK", "Nox Laboratories"].map((m) => (
+              <button
+                key={m}
+                onClick={() => setSelectedMfr(m)}
+                className={`px-3 py-1 rounded-lg font-bold shrink-0 transition-all ${
+                  selectedMfr.toLowerCase() === m.toLowerCase()
+                    ? "bg-teal-600 text-white"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                }`}
+              >
+                {m === "all" ? "All Companies" : m}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

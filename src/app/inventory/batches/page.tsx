@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Barcode,
@@ -17,6 +17,13 @@ import { formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
 import type { InventoryBatch, Product } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 export default function BatchInventoryPage() {
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
@@ -24,6 +31,7 @@ export default function BatchInventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   useEffect(() => {
     async function loadBatches() {
@@ -58,6 +66,9 @@ export default function BatchInventoryPage() {
       : batches.filter((b) => categoryProductIds.has(b.productId));
 
   const filtered = categoryBatches.filter((b) => {
+    if (!isRecordInDateRange(b.expiryDate || b.manufacturingDate || b.createdAt, dateFilter)) {
+      return false;
+    }
     const expTime = new Date(b.expiryDate).getTime();
     const isNear = expTime > now && expTime <= ninetyDaysFromNow;
     const isExp = expTime <= now;
@@ -123,6 +134,13 @@ export default function BatchInventoryPage() {
           </button>
         </div>
       )}
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Filter and Search Bar */}
       <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs sm:text-sm">

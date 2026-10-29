@@ -28,6 +28,13 @@ import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { scheduleCloudUpsert, scheduleCloudDelete } from "@/lib/offline/cloudSync";
 import { useAuth } from "@/context/AuthContext";
+import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
+import {
+  DateFilterState,
+  createDefaultDateFilter,
+  isRecordInDateRange,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 import type {
   Invoice,
   Product,
@@ -56,7 +63,7 @@ export default function ProfitAndLossPage() {
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [expenses, setExpenses] = useState<OperatingExpense[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<StaffSalary[]>([]);
-  const [period, setPeriod] = useState<"this_month" | "last_month" | "all">("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [loading, setLoading] = useState(true);
 
   // New Expense Modal State
@@ -128,41 +135,26 @@ export default function ProfitAndLossPage() {
     return map;
   }, [batches]);
 
-  // Filter invoices & expenses by period
+  // Filter invoices, expenses, movements & salaries by universal date filter
   const filteredData = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    const isMatch = (dateStr?: string) => {
-      if (period === "all" || !dateStr) return true;
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return true;
-
-      if (period === "this_month") {
-        return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-      }
-      if (period === "last_month") {
-        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-        const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-        return d.getFullYear() === lastMonthYear && d.getMonth() === lastMonth;
-      }
-      return true;
-    };
-
-    const periodInvoices = invoices.filter((i) => isMatch(i.invoiceDate || i.createdAt));
-    const periodExpenses = expenses.filter((e) => isMatch(e.date || e.createdAt));
-    const periodMovements = movements.filter((m) => isMatch(m.timestamp));
+    const periodInvoices = invoices.filter((i) =>
+      isRecordInDateRange(i.invoiceDate || i.createdAt, dateFilter)
+    );
+    const periodExpenses = expenses.filter((e) =>
+      isRecordInDateRange(e.date || e.createdAt, dateFilter)
+    );
+    const periodMovements = movements.filter((m) =>
+      isRecordInDateRange(m.timestamp, dateFilter)
+    );
     const periodSalaries = salaryRecords.filter((s) => {
       if (s.status !== "paid") return false;
-      // Match by the earned salary month (e.g. "2026-10" for October),
-      // so salaries paid in November for October work deduct from October's P&L statement (accrual matching)
+      // Match by earned salary month (e.g. "2026-10" for October), so salaries paid in November for October work deduct from October P&L
       const targetDate = s.month ? `${s.month}-15` : (s.disbursedAt || s.createdAt);
-      return isMatch(targetDate);
+      return isRecordInDateRange(targetDate, dateFilter);
     });
 
     return { periodInvoices, periodExpenses, periodMovements, periodSalaries };
-  }, [invoices, expenses, movements, salaryRecords, period]);
+  }, [invoices, expenses, movements, salaryRecords, dateFilter]);
 
   // 1. REVENUE CALCULATIONS
   const grossSales = useMemo(() => {
@@ -395,18 +387,7 @@ export default function ProfitAndLossPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
-          {/* Period Selector */}
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as any)}
-            className="col-span-2 sm:col-auto px-3 py-2 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm"
-          >
-            <option value="all">All Time (YTD)</option>
-            <option value="this_month">This Month</option>
-            <option value="last_month">Last Month</option>
-          </select>
-
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setIsExpenseModalOpen(true)}
@@ -425,6 +406,16 @@ export default function ProfitAndLossPage() {
             <span>Print Report</span>
           </button>
         </div>
+      </div>
+
+      {/* Universal Date Range Filter Bar */}
+      <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft no-print print:hidden">
+        <DateRangeFilterBar
+          filter={dateFilter}
+          onChange={setDateFilter}
+          count={filteredData.periodInvoices.length}
+          label="P&L Date Criteria"
+        />
       </div>
 
       {/* Accounting Compliance Banner */}
@@ -452,7 +443,7 @@ export default function ProfitAndLossPage() {
               Noxderma Pharmaceuticals Ltd.
             </h2>
             <p className="text-[11px] sm:text-xs text-slate-500 print:text-slate-600 mt-0.5">
-              Profit &amp; Loss Statement • {period === "this_month" ? "This Month" : period === "last_month" ? "Last Month" : "All Time"} • Generated: {formatKarachiDate(new Date(), true)}
+              Profit &amp; Loss Statement • {getDateFilterDescription(dateFilter)} • Generated: {formatKarachiDate(new Date(), true)}
             </p>
           </div>
           <span className="font-mono text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 w-fit shrink-0 border border-teal-200/60 dark:border-teal-800/60 print:bg-slate-100 print:text-black print:border-slate-300">

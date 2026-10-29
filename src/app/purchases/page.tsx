@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   ShoppingBag,
@@ -29,6 +29,13 @@ import type {
   StockMovement,
   BatchCostRecord,
 } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 interface PurchaseOrder {
   id: string;
@@ -59,6 +66,7 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   // Landed Cost & GRN Modal
   const [isReceivingGRN, setIsReceivingGRN] = useState(false);
@@ -297,7 +305,8 @@ export default function PurchasesPage() {
       po.manufacturerName.toLowerCase().includes(search.toLowerCase()) ||
       (po.grnReference && po.grnReference.toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = statusFilter === "all" || po.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDate = isRecordInDateRange(po.receivedDate || po.orderDate, dateFilter);
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
   const totalPurchasesAmount = displayPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
@@ -380,6 +389,13 @@ export default function PurchasesPage() {
           </span>
         </div>
       </div>
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Filter & Search Bar */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between text-xs">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   ClipboardList,
@@ -22,6 +22,13 @@ import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
 import type { Customer, Product, InventoryBatch, StockMovement } from "@/types";
+import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import {
+  isRecordInDateRange,
+  createDefaultDateFilter,
+  type DateFilterState,
+  getDateFilterDescription,
+} from "@/lib/dateFilter";
 
 interface SalesBooking {
   id: string;
@@ -57,6 +64,7 @@ export default function SalesBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
 
   // Booking Creation Modal State
   const [isCreating, setIsCreating] = useState(false);
@@ -330,14 +338,17 @@ export default function SalesBookingsPage() {
       ? bookings
       : bookings.filter((b) => b.items.some((item) => categoryProductIds.has(item.productId)));
 
-  const filtered = displayBookings.filter((b) => {
-    const matchesSearch =
-      b.bookingRef.toLowerCase().includes(search.toLowerCase()) ||
-      b.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      b.salesRepName.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || b.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filtered = useMemo(() => {
+    return displayBookings.filter((b) => {
+      const matchesSearch =
+        b.bookingRef.toLowerCase().includes(search.toLowerCase()) ||
+        b.customerName.toLowerCase().includes(search.toLowerCase()) ||
+        b.salesRepName.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" || b.status === statusFilter;
+      const matchesDate = isRecordInDateRange(b.bookingDate || b.deliveryDate, dateFilter);
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+  }, [displayBookings, search, statusFilter, dateFilter]);
 
   const totalBookingValue = displayBookings.reduce((sum, b) => sum + b.totalAmount, 0);
 
@@ -425,6 +436,13 @@ export default function SalesBookingsPage() {
           <span className="text-[10px] text-slate-500 block mt-0.5">Real-time Godown Deducted</span>
         </div>
       </div>
+
+      {/* Universal Date Filter */}
+      <DateRangeFilterBar
+        filter={dateFilter}
+        onChange={setDateFilter}
+        count={filtered.length}
+      />
 
       {/* Filter & Search Bar */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between text-xs">
