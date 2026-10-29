@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { scheduleCloudUpsert, scheduleCloudDelete } from "@/lib/offline/cloudSync";
 import { useAuth } from "@/context/AuthContext";
 import type {
   Invoice,
@@ -344,6 +345,7 @@ export default function ProfitAndLossPage() {
       };
 
       await offlineDb.operatingExpenses.put(newExp);
+      scheduleCloudUpsert("operatingExpenses", newExp.id, newExp);
       setIsExpenseModalOpen(false);
       setExpenseTitle("");
       setExpenseAmount("");
@@ -362,6 +364,7 @@ export default function ProfitAndLossPage() {
     if (!confirm("Are you sure you want to remove this expense record?")) return;
     try {
       await offlineDb.operatingExpenses.delete(id);
+      scheduleCloudDelete("operatingExpenses", id);
       await loadFinanceData();
     } catch (err) {
       console.error("Failed to delete expense:", err);

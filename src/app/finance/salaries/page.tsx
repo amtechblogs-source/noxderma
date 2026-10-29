@@ -33,6 +33,9 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { scheduleCloudUpsert, scheduleCloudDelete } from "@/lib/offline/cloudSync";
+import { db as firestoreDb } from "@/lib/firebase/config";
+import { collection, getDocs } from "firebase/firestore";
 import type { StaffSalary, UserProfile, SalaryPaymentStatus } from "@/types";
 import { getUserRoleLabel, normalizeUserDisplayName } from "@/types/auth";
 import { recordActivity } from "@/lib/audit/auditTracker";
@@ -131,6 +134,30 @@ export default function StaffSalariesPage() {
       setLoading(true);
     }
     try {
+      // Direct Firestore bidirectional sync if online
+      if (typeof window !== "undefined" && navigator.onLine) {
+        try {
+          const colRef = collection(firestoreDb, "staffSalaries");
+          const snap = await getDocs(colRef);
+          const remoteMap = new Map<string, StaffSalary>();
+          snap.forEach((d) => remoteMap.set(d.id, { ...d.data(), id: d.id } as StaffSalary));
+
+          if (remoteMap.size > 0) {
+            await offlineDb.staffSalaries.bulkPut(Array.from(remoteMap.values()));
+          }
+
+          // Push any local salaries not yet in remote
+          const localSalaries = await offlineDb.staffSalaries.toArray();
+          for (const loc of localSalaries) {
+            if (!remoteMap.has(loc.id)) {
+              scheduleCloudUpsert("staffSalaries", loc.id, loc);
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Direct Firestore reconciliation notice:", syncErr);
+        }
+      }
+
       const [salList, userList] = await Promise.all([
         offlineDb.staffSalaries.toArray(),
         (offlineDb as any).users?.toArray() || [],
@@ -336,6 +363,7 @@ export default function StaffSalariesPage() {
 
     try {
       await offlineDb.staffSalaries.put(salaryRecord);
+      scheduleCloudUpsert("staffSalaries", salaryRecord.id, salaryRecord);
 
       await recordActivity({
         userId: currentUser?.id || "usr_admin",
@@ -376,6 +404,7 @@ export default function StaffSalariesPage() {
 
     try {
       await offlineDb.staffSalaries.put(updated);
+      scheduleCloudUpsert("staffSalaries", updated.id, updated);
 
       await recordActivity({
         userId: currentUser?.id || "usr_admin",
@@ -416,6 +445,7 @@ export default function StaffSalariesPage() {
           updatedAt: now.toISOString(),
         };
         await offlineDb.staffSalaries.put(updated);
+        scheduleCloudUpsert("staffSalaries", updated.id, updated);
       }
 
       await recordActivity({
@@ -499,6 +529,7 @@ export default function StaffSalariesPage() {
         };
 
         await offlineDb.staffSalaries.put(record);
+        scheduleCloudUpsert("staffSalaries", record.id, record);
       }
 
       setNotice({
@@ -518,6 +549,7 @@ export default function StaffSalariesPage() {
     }
     try {
       await offlineDb.staffSalaries.delete(sal.id);
+      scheduleCloudDelete("staffSalaries", sal.id);
 
       await recordActivity({
         userId: currentUser?.id || "usr_admin",
