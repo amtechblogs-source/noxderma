@@ -123,28 +123,57 @@ export default function StaffSalariesPage() {
     hasPermission("finance:pnl") ||
     hasPermission("finance:payments");
 
-  const loadData = async () => {
-    setLoading(true);
+  const salariesRef = useRef<StaffSalary[]>([]);
+  salariesRef.current = salaries;
+
+  const loadData = async (showSpinner = false) => {
+    if (showSpinner) {
+      setLoading(true);
+    }
     try {
       const [salList, userList] = await Promise.all([
         offlineDb.staffSalaries.toArray(),
         (offlineDb as any).users?.toArray() || [],
       ]);
 
-      setSalaries(salList || []);
+      const prev = salariesRef.current;
+      const isUnchanged =
+        prev.length === (salList || []).length &&
+        prev.every(
+          (p, i) =>
+            p.id === salList[i]?.id &&
+            p.status === salList[i]?.status &&
+            p.netSalary === salList[i]?.netSalary &&
+            p.updatedAt === salList[i]?.updatedAt
+        );
+
+      if (!isUnchanged) {
+        setSalaries(salList || []);
+      }
       setStaffUsers(userList || []);
     } catch (err) {
       console.error("Failed to load staff salaries:", err);
     } finally {
-      setLoading(false);
+      if (showSpinner) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
-    const handleSync = () => loadData();
+    loadData(true);
+    let syncTimer: any = null;
+    const handleSync = () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        loadData(false);
+      }, 300);
+    };
     window.addEventListener("noxderma-cloud-synced", handleSync);
-    return () => window.removeEventListener("noxderma-cloud-synced", handleSync);
+    return () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      window.removeEventListener("noxderma-cloud-synced", handleSync);
+    };
   }, []);
 
   // Filtered Salaries

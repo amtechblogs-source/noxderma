@@ -99,7 +99,6 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Doctor Visits", href: "/crm/visits", icon: MapPin, requiredPermission: "crm:visits" },
       { name: "Staff Location", href: "/employees/monitoring", icon: Compass, requiredPermission: "staff:monitoring" },
       { name: "Sales Targets", href: "/employees/targets", icon: Target, requiredPermission: "staff:targets" },
-      { name: "Staff Salaries", href: "/finance/salaries", icon: Banknote, requiredPermission: "finance:pnl" },
     ],
   },
   {
