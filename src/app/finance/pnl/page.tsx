@@ -34,7 +34,15 @@ import {
   createDefaultDateFilter,
   isRecordInDateRange,
   getDateFilterDescription,
+  computeDateScopeCounts,
+  getItemsInScope,
 } from "@/lib/dateFilter";
+import {
+  BulkDeleteModal,
+  SingleDeleteModal,
+  type DeleteScopeType,
+} from "@/components/common/BulkDeleteModal";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import type {
   Invoice,
   Product,
@@ -78,6 +86,12 @@ export default function ProfitAndLossPage() {
   >("cash");
   const [expenseNotes, setExpenseNotes] = useState("");
   const [isSavingExpense, setIsSavingExpense] = useState(false);
+
+  // Operating Expenses Bulk / Single Delete State
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
+  const [deleteExpensesModalOpen, setDeleteExpensesModalOpen] = useState(false);
+  const [deletingExpense, setDeletingExpense] = useState<OperatingExpense | null>(null);
+  const [isDeletingExpense, setIsDeletingExpense] = useState(false);
 
   const loadFinanceData = async () => {
     try {
@@ -354,15 +368,110 @@ export default function ProfitAndLossPage() {
     }
   };
 
-  // Handle deleting an expense
-  const handleDeleteExpense = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this expense record?")) return;
+  const expenseScopeCounts = useMemo(() => {
+    return computeDateScopeCounts(
+      expenses,
+      (e) => e.date || e.createdAt,
+      selectedExpenseIds.length
+    );
+  }, [expenses, selectedExpenseIds.length]);
+
+  const handleToggleSelectExpense = (id: string) => {
+    setSelectedExpenseIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllExpenses = () => {
+    if (
+      selectedExpenseIds.length === filteredData.periodExpenses.length &&
+      filteredData.periodExpenses.length > 0
+    ) {
+      setSelectedExpenseIds([]);
+    } else {
+      setSelectedExpenseIds(filteredData.periodExpenses.map((e) => e.id));
+    }
+  };
+
+  const handleExecuteBulkDeleteExpenses = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
     try {
-      await offlineDb.operatingExpenses.delete(id);
-      scheduleCloudDelete("operatingExpenses", id);
+      setIsDeletingExpense(true);
+      const toDelete = getItemsInScope(
+        expenses,
+        scope,
+        (e) => e.date || e.createdAt,
+        (e) => e.id,
+        selectedExpenseIds,
+        customStart,
+        customEnd
+      );
+
+      if (toDelete.length === 0) {
+        setIsDeletingExpense(false);
+        setDeleteExpensesModalOpen(false);
+        return;
+      }
+
+      const idsToDelete = toDelete.map((e) => e.id);
+      await offlineDb.operatingExpenses.bulkDelete(idsToDelete);
+      for (const id of idsToDelete) {
+        scheduleCloudDelete("operatingExpenses", id);
+      }
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_owner",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "delete",
+        entityType: "operating_expense",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} expense(s)`,
+        details: `Purged ${toDelete.length} expense record(s) under criteria scope: ${scope}.`,
+        snapshotBefore: toDelete,
+        canUndo: false,
+      });
+
+      setSelectedExpenseIds([]);
       await loadFinanceData();
+      setDeleteExpensesModalOpen(false);
+    } catch (err: any) {
+      console.error("Bulk delete expenses error:", err);
+    } finally {
+      setIsDeletingExpense(false);
+    }
+  };
+
+  const handleExecuteSingleDeleteExpense = async () => {
+    if (!deletingExpense) return;
+    try {
+      setIsDeletingExpense(true);
+      await offlineDb.operatingExpenses.delete(deletingExpense.id);
+      scheduleCloudDelete("operatingExpenses", deletingExpense.id);
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_owner",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "delete",
+        entityType: "operating_expense",
+        entityId: deletingExpense.id,
+        entityTitle: deletingExpense.title,
+        details: `Deleted operating expense "${deletingExpense.title}" (PKR ${deletingExpense.amount}).`,
+        snapshotBefore: deletingExpense,
+        canUndo: true,
+      });
+
+      setSelectedExpenseIds((prev) => prev.filter((id) => id !== deletingExpense.id));
+      await loadFinanceData();
+      setDeletingExpense(null);
     } catch (err) {
       console.error("Failed to delete expense:", err);
+    } finally {
+      setIsDeletingExpense(false);
     }
   };
 
@@ -759,21 +868,45 @@ export default function ProfitAndLossPage() {
 
       {/* Recorded Operating Expenses Table & Mobile Cards */}
       <div className="p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 no-print">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2">
             <Wallet className="w-5 h-5 text-teal-600 shrink-0" />
             <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">
               Recorded Operating Expenses ({filteredData.periodExpenses.length})
             </h3>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsExpenseModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm btn-interactive"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Expense</span>
-          </button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedExpenseIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDeleteExpensesModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm btn-interactive"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected ({selectedExpenseIds.length})</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setDeleteExpensesModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold btn-interactive"
+              title="Delete with scope criteria"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete / Purge</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm btn-interactive"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Expense</span>
+            </button>
+          </div>
         </div>
 
         {filteredData.periodExpenses.length === 0 ? (
@@ -792,6 +925,18 @@ export default function ProfitAndLossPage() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                   <tr>
+                    <th className="w-10 p-2.5">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedExpenseIds.length === filteredData.periodExpenses.length &&
+                          filteredData.periodExpenses.length > 0
+                        }
+                        onChange={handleToggleSelectAllExpenses}
+                        className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                        title="Select All"
+                      />
+                    </th>
                     <th className="p-2.5">Date</th>
                     <th className="p-2.5">Category</th>
                     <th className="p-2.5">Title / Description</th>
@@ -801,82 +946,137 @@ export default function ProfitAndLossPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredData.periodExpenses.map((exp) => (
-                    <tr key={exp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                      <td className="p-2.5 font-mono whitespace-nowrap text-slate-600 dark:text-slate-400">
-                        {formatKarachiDate(exp.date)}
-                      </td>
-                      <td className="p-2.5 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          {exp.category.replace(/_/g, " ")}
-                        </span>
-                      </td>
-                      <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">
-                        {exp.title}
-                      </td>
-                      <td className="p-2.5 text-slate-500">
-                        {exp.paidTo || "—"} ({exp.paymentMethod})
-                      </td>
-                      <td className="p-2.5 text-right font-mono font-bold text-rose-600">
-                        {formatPKR(exp.amount)}
-                      </td>
-                      <td className="p-2.5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteExpense(exp.id)}
-                          className="p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition-colors"
-                          title="Delete expense"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredData.periodExpenses.map((exp) => {
+                    const isSelected = selectedExpenseIds.includes(exp.id);
+                    return (
+                      <tr
+                        key={exp.id}
+                        className={`transition-colors ${
+                          isSelected
+                            ? "bg-teal-50/40 dark:bg-teal-950/30"
+                            : "hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
+                        <td className="w-10 p-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectExpense(exp.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                          />
+                        </td>
+                        <td className="p-2.5 font-mono whitespace-nowrap text-slate-600 dark:text-slate-400">
+                          {formatKarachiDate(exp.date)}
+                        </td>
+                        <td className="p-2.5 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            {exp.category.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                        <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">
+                          {exp.title}
+                        </td>
+                        <td className="p-2.5 text-slate-500">
+                          {exp.paidTo || "—"} ({exp.paymentMethod})
+                        </td>
+                        <td className="p-2.5 text-right font-mono font-bold text-rose-600">
+                          {formatPKR(exp.amount)}
+                        </td>
+                        <td className="p-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setDeletingExpense(exp)}
+                            className="p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Delete expense"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile Card Feed View (No Horizontal Scroll) */}
             <div className="md:hidden space-y-2.5">
-              {filteredData.periodExpenses.map((exp) => (
-                <div
-                  key={exp.id}
-                  className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                        {exp.category.replace(/_/g, " ")}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {formatKarachiDate(exp.date)}
-                      </span>
-                    </div>
-                    <div className="font-bold text-xs text-slate-900 dark:text-slate-100">
-                      {exp.title}
-                    </div>
-                    {(exp.paidTo || exp.paymentMethod) && (
-                      <div className="text-[10px] text-slate-500">
-                        Paid to: {exp.paidTo || "—"} • {exp.paymentMethod}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="shrink-0 text-right space-y-2">
-                    <div className="font-mono font-extrabold text-sm text-rose-600 whitespace-nowrap">
-                      {formatPKR(exp.amount)}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteExpense(exp.id)}
-                      className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900 transition-colors inline-flex"
-                      title="Delete expense"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+              {filteredData.periodExpenses.length > 0 && (
+                <div className="flex items-center justify-between p-2.5 text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                  <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectedExpenseIds.length === filteredData.periodExpenses.length &&
+                        filteredData.periodExpenses.length > 0
+                      }
+                      onChange={handleToggleSelectAllExpenses}
+                      className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>Select All ({filteredData.periodExpenses.length})</span>
+                  </label>
+                  {selectedExpenseIds.length > 0 && (
+                    <span className="font-semibold text-rose-600">
+                      {selectedExpenseIds.length} selected
+                    </span>
+                  )}
                 </div>
-              ))}
+              )}
+
+              {filteredData.periodExpenses.map((exp) => {
+                const isSelected = selectedExpenseIds.includes(exp.id);
+                return (
+                  <div
+                    key={exp.id}
+                    className={`p-3 rounded-xl border transition-all ${
+                      isSelected
+                        ? "border-teal-500/60 bg-teal-50/20 dark:bg-teal-950/20"
+                        : "border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+                    } flex items-start justify-between gap-3`}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelectExpense(exp.id)}
+                        className="w-4 h-4 mt-1 rounded border-slate-300 text-teal-600 focus:ring-teal-500 shrink-0"
+                      />
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                            {exp.category.replace(/_/g, " ")}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {formatKarachiDate(exp.date)}
+                          </span>
+                        </div>
+                        <div className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                          {exp.title}
+                        </div>
+                        {(exp.paidTo || exp.paymentMethod) && (
+                          <div className="text-[10px] text-slate-500">
+                            Paid to: {exp.paidTo || "—"} • {exp.paymentMethod}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-right space-y-2">
+                      <div className="font-mono font-extrabold text-sm text-rose-600 whitespace-nowrap">
+                        {formatPKR(exp.amount)}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDeletingExpense(exp)}
+                        className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900 transition-colors inline-flex"
+                        title="Delete expense"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
@@ -1026,6 +1226,28 @@ export default function ProfitAndLossPage() {
           </div>
         </div>
       )}
+
+      {/* Bulk Delete Operating Expenses Modal */}
+      <BulkDeleteModal
+        isOpen={deleteExpensesModalOpen}
+        onClose={() => setDeleteExpensesModalOpen(false)}
+        entityName="Operating Expenses"
+        selectedCount={selectedExpenseIds.length}
+        totalCount={expenses.length}
+        countsByScope={expenseScopeCounts}
+        onConfirmDelete={handleExecuteBulkDeleteExpenses}
+        isDeleting={isDeletingExpense}
+      />
+
+      {/* Single Delete Operating Expense Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingExpense}
+        onClose={() => setDeletingExpense(null)}
+        itemName={`${deletingExpense?.title || ""} (${formatPKR(deletingExpense?.amount || 0)})`}
+        title="Delete Operating Expense"
+        onConfirm={handleExecuteSingleDeleteExpense}
+        isDeleting={isDeletingExpense}
+      />
     </div>
   );
 }

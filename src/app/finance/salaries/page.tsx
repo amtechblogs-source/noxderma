@@ -45,7 +45,14 @@ import {
   createDefaultDateFilter,
   isRecordInDateRange,
   getDateFilterDescription,
+  computeDateScopeCounts,
+  getItemsInScope,
 } from "@/lib/dateFilter";
+import {
+  BulkDeleteModal,
+  SingleDeleteModal,
+  type DeleteScopeType,
+} from "@/components/common/BulkDeleteModal";
 
 function numberToWordsPKR(num: number): string {
   if (!num || num === 0) return "Zero Rupees Only";
@@ -108,6 +115,12 @@ export default function StaffSalariesPage() {
   const [slipSalary, setSlipSalary] = useState<StaffSalary | null>(null);
   const [bulkDisburseModalOpen, setBulkDisburseModalOpen] = useState(false);
   const [disburseModalSalary, setDisburseModalSalary] = useState<StaffSalary | null>(null);
+
+  // Multi-Selection & Bulk Delete State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingSalary, setDeletingSalary] = useState<StaffSalary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Single Disburse Modal State
   const [disburseDate, setDisburseDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -584,14 +597,57 @@ export default function StaffSalariesPage() {
     }
   };
 
-  // Delete salary
-  const handleDeleteSalary = async (sal: StaffSalary) => {
-    if (!window.confirm(`Are you sure you want to delete the salary record for ${sal.staffName} (${sal.monthLabel})?`)) {
-      return;
+  const scopeCounts = useMemo(() => {
+    return computeDateScopeCounts(
+      monthSalaries,
+      (s) => s.disbursedAt || s.createdAt || s.month,
+      selectedIds.length
+    );
+  }, [monthSalaries, selectedIds.length]);
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filteredSalaries.length && filteredSalaries.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredSalaries.map((s) => s.id));
     }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleExecuteBulkDelete = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
     try {
-      await offlineDb.staffSalaries.delete(sal.id);
-      scheduleCloudDelete("staffSalaries", sal.id);
+      setIsDeleting(true);
+      const toDelete = getItemsInScope(
+        monthSalaries,
+        scope,
+        (s) => s.disbursedAt || s.createdAt || s.month,
+        (s) => s.id,
+        selectedIds,
+        customStart,
+        customEnd
+      );
+
+      if (toDelete.length === 0) {
+        setNotice({ type: "error", text: "No matching salaries found to delete." });
+        setIsDeleting(false);
+        setDeleteModalOpen(false);
+        return;
+      }
+
+      const idsToDelete = toDelete.map((s) => s.id);
+      await offlineDb.staffSalaries.bulkDelete(idsToDelete);
+      for (const id of idsToDelete) {
+        scheduleCloudDelete("staffSalaries", id);
+      }
 
       await recordActivity({
         userId: currentUser?.id || "usr_admin",
@@ -599,15 +655,56 @@ export default function StaffSalariesPage() {
         userRole: currentUser?.role || "owner",
         action: "delete",
         entityType: "salary",
-        entityId: sal.id,
-        entityTitle: `Deleted Salary - ${sal.staffName}`,
-        details: `Deleted salary record for ${sal.staffName} (${sal.monthLabel}) of PKR ${sal.netSalary.toLocaleString()}`,
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} staff salary record(s)`,
+        details: `Purged ${toDelete.length} salary record(s) under criteria scope: ${scope}.`,
+        snapshotBefore: toDelete,
+        canUndo: false,
       });
 
-      setNotice({ type: "success", text: `Salary record deleted.` });
+      setSelectedIds([]);
       await loadData();
+      setDeleteModalOpen(false);
+      setNotice({
+        type: "success",
+        text: `Successfully deleted ${toDelete.length} staff salary record(s).`,
+      });
+    } catch (err: any) {
+      console.error("Bulk delete salaries failed:", err);
+      setNotice({ type: "error", text: err?.message || "Failed to delete salaries." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleExecuteSingleDelete = async () => {
+    if (!deletingSalary) return;
+    try {
+      setIsDeleting(true);
+      await offlineDb.staffSalaries.delete(deletingSalary.id);
+      scheduleCloudDelete("staffSalaries", deletingSalary.id);
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "delete",
+        entityType: "salary",
+        entityId: deletingSalary.id,
+        entityTitle: `Deleted Salary - ${deletingSalary.staffName}`,
+        details: `Deleted salary record for ${deletingSalary.staffName} (${deletingSalary.monthLabel}) of PKR ${deletingSalary.netSalary.toLocaleString()}`,
+        snapshotBefore: deletingSalary,
+        canUndo: true,
+      });
+
+      setSelectedIds((prev) => prev.filter((id) => id !== deletingSalary.id));
+      await loadData();
+      setDeletingSalary(null);
+      setNotice({ type: "success", text: `Salary record deleted.` });
     } catch (err: any) {
       setNotice({ type: "error", text: "Delete error: " + err.message });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -701,6 +798,27 @@ export default function StaffSalariesPage() {
           >
             <Sparkles className="w-3.5 h-3.5 text-teal-600" />
             <span>Auto-Draft Month</span>
+          </button>
+
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition-all btn-interactive"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedIds.length})</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setDeleteModalOpen(true)}
+            className="px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
+            title="Delete with scope criteria"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete / Purge</span>
           </button>
 
           <button
@@ -885,12 +1003,45 @@ export default function StaffSalariesPage() {
           <>
             {/* 1. Mobile Feed (Vertical Cards, 0 Horizontal Scroll) */}
             <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800 print:hidden">
+              {filteredSalaries.length > 0 && (
+                <div className="flex items-center justify-between p-3 text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/40 rounded-xl mb-2">
+                  <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.length === filteredSalaries.length && filteredSalaries.length > 0}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>Select All ({filteredSalaries.length})</span>
+                  </label>
+                  {selectedIds.length > 0 && (
+                    <span className="font-semibold text-rose-600">
+                      {selectedIds.length} selected
+                    </span>
+                  )}
+                </div>
+              )}
+
               {filteredSalaries.map((sal) => {
                 const isPaid = sal.status === "paid";
+                const isSelected = selectedIds.includes(sal.id);
                 return (
-                  <div key={sal.id} className="p-4 space-y-3">
+                  <div
+                    key={sal.id}
+                    className={`p-4 space-y-3 rounded-xl transition-all ${
+                      isSelected
+                        ? "bg-teal-50/20 dark:bg-teal-950/20 border border-teal-500/40"
+                        : ""
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(sal.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 shrink-0"
+                        />
                         <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-black text-xs flex items-center justify-center shrink-0">
                           {sal.staffName.charAt(0).toUpperCase()}
                         </div>
@@ -989,7 +1140,7 @@ export default function StaffSalariesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteSalary(sal)}
+                          onClick={() => setDeletingSalary(sal)}
                           className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600"
                           title="Delete Record"
                         >
@@ -1007,6 +1158,15 @@ export default function StaffSalariesPage() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black">
                   <tr>
+                    <th className="w-10 p-3 no-print">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.length === filteredSalaries.length && filteredSalaries.length > 0}
+                        onChange={handleToggleSelectAll}
+                        className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                        title="Select All"
+                      />
+                    </th>
                     <th className="p-3">Staff Member</th>
                     <th className="p-3">Month</th>
                     <th className="p-3 text-right">Base Salary</th>
@@ -1021,11 +1181,24 @@ export default function StaffSalariesPage() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
                   {filteredSalaries.map((sal) => {
                     const isPaid = sal.status === "paid";
+                    const isSelected = selectedIds.includes(sal.id);
                     return (
                       <tr
                         key={sal.id}
-                        className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                        className={`transition-colors ${
+                          isSelected
+                            ? "bg-teal-50/40 dark:bg-teal-950/30"
+                            : "hover:bg-slate-50/60 dark:hover:bg-slate-800/40"
+                        }`}
                       >
+                        <td className="w-10 p-3 no-print">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(sal.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                          />
+                        </td>
                         {/* Staff */}
                         <td className="p-3 font-semibold text-slate-900 dark:text-slate-100">
                           <div className="flex items-center gap-2">
@@ -1144,7 +1317,7 @@ export default function StaffSalariesPage() {
 
                             <button
                               type="button"
-                              onClick={() => handleDeleteSalary(sal)}
+                              onClick={() => setDeletingSalary(sal)}
                               className="p-1 rounded-lg text-rose-400 hover:text-rose-600"
                               title="Delete Record"
                             >
@@ -1938,6 +2111,28 @@ export default function StaffSalariesPage() {
           </div>
         </>
       )}
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        entityName="Staff Salaries"
+        selectedCount={selectedIds.length}
+        totalCount={monthSalaries.length}
+        countsByScope={scopeCounts}
+        onConfirmDelete={handleExecuteBulkDelete}
+        isDeleting={isDeleting}
+      />
+
+      {/* Single Delete Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingSalary}
+        onClose={() => setDeletingSalary(null)}
+        itemName={`${deletingSalary?.staffName || ""} (${deletingSalary?.monthLabel || ""})`}
+        title="Delete Staff Salary Record"
+        onConfirm={handleExecuteSingleDelete}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }
