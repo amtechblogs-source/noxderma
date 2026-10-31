@@ -32,11 +32,42 @@ import {
   normalizeUserDisplayName,
 } from "@/types/auth";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
+import { scheduleCloudDelete } from "@/lib/offline/cloudSync";
+import { BulkDeleteModal, SingleDeleteModal, type DeleteScopeType } from "@/components/common/BulkDeleteModal";
+import { computeDateScopeCounts, getItemsInScope } from "@/lib/dateFilter";
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+
+  // Selection & Bulk/Single Deletion State
+  const { currentUser } = useAuth();
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [deleteUsersModalOpen, setDeleteUsersModalOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Protected user check (owner and currently logged in user cannot be deleted)
+  const isUserProtected = (user: UserProfile) => {
+    if (user.id === "usr_admin" || user.role === "owner" || user.role === "admin") return true;
+    if (currentUser && user.id === currentUser.id) return true;
+    return false;
+  };
+
+  const deletableUsers = React.useMemo(() => {
+    return users.filter((u) => !isUserProtected(u));
+  }, [users, currentUser]);
+
+  const userScopeCounts = React.useMemo(() => {
+    return computeDateScopeCounts(
+      deletableUsers,
+      (u) => u.createdAt || new Date().toISOString(),
+      selectedUserIds.length
+    );
+  }, [deletableUsers, selectedUserIds.length]);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -243,15 +274,123 @@ export default function UserManagementPage() {
     saveUsers(updated);
   };
 
-  // Delete user
-  const handleDeleteUser = (userId: string) => {
-    if (userId === "usr_admin") {
-      alert("Owner account delete nahi kiya ja sakta.");
+  // Delete user (Opens confirmation modal)
+  const handleDeleteUser = (u: UserProfile) => {
+    if (isUserProtected(u)) {
+      alert("Owner account ya active session wala user delete nahi kiya ja sakta.");
       return;
     }
-    if (confirm("Kiya aap waqai is staff user ko delete karna chahte hain?")) {
-      const updated = users.filter((u) => u.id !== userId);
-      saveUsers(updated, userId);
+    setDeletingUser(u);
+  };
+
+  const handleToggleSelectUser = (id: string) => {
+    const target = users.find((u) => u.id === id);
+    if (target && isUserProtected(target)) return;
+    setSelectedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllUsers = () => {
+    const selectableFilteredIds = filtered.filter((u) => !isUserProtected(u)).map((u) => u.id);
+    const allSelected =
+      selectableFilteredIds.length > 0 &&
+      selectableFilteredIds.every((id) => selectedUserIds.includes(id));
+    if (allSelected) {
+      setSelectedUserIds((prev) => prev.filter((id) => !selectableFilteredIds.includes(id)));
+    } else {
+      setSelectedUserIds((prev) => Array.from(new Set([...prev, ...selectableFilteredIds])));
+    }
+  };
+
+  const handleExecuteSingleDeleteUser = async () => {
+    if (!deletingUser) return;
+    if (isUserProtected(deletingUser)) {
+      alert("Owner account ya logged in account delete nahi kiya ja sakta.");
+      setDeletingUser(null);
+      return;
+    }
+    setIsDeletingUser(true);
+    try {
+      const updated = users.filter((u) => u.id !== deletingUser.id);
+      await saveUsers(updated, deletingUser.id);
+      scheduleCloudDelete("users", deletingUser.id);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "user",
+        entityId: deletingUser.id,
+        entityTitle: `${deletingUser.displayName} (${deletingUser.email})`,
+        details: `Deleted staff user account: ${deletingUser.displayName} (${deletingUser.email})`,
+      });
+      setSelectedUserIds((prev) => prev.filter((id) => id !== deletingUser.id));
+      setDeletingUser(null);
+    } catch (err: any) {
+      console.error("Failed to delete user:", err);
+      alert("Error deleting user: " + (err?.message || "Unknown error"));
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  const handleExecuteBulkDeleteUsers = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    const inScope = getItemsInScope(
+      deletableUsers,
+      scope,
+      (u) => u.createdAt,
+      (u) => u.id,
+      selectedUserIds,
+      customStart,
+      customEnd
+    );
+
+    const toDelete = inScope.filter((u) => !isUserProtected(u));
+
+    if (toDelete.length === 0) {
+      alert("No eligible staff accounts found in the selected scope to delete.");
+      return;
+    }
+
+    setIsDeletingUser(true);
+    try {
+      const idsToDelete = toDelete.map((u) => u.id);
+      const updated = users.filter((u) => !idsToDelete.includes(u.id));
+      setUsers(updated);
+      localStorage.setItem("noxderma_users", JSON.stringify(updated));
+      if ((offlineDb as any).users) {
+        for (const id of idsToDelete) {
+          await (offlineDb as any).users.delete(id);
+          scheduleCloudDelete("users", id);
+        }
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("noxderma-users-updated"));
+      }
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "user",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} staff account(s)`,
+        details: `Bulk deleted ${toDelete.length} staff account(s) (Scope: ${scope})`,
+      });
+      setSelectedUserIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
+      setDeleteUsersModalOpen(false);
+    } catch (err: any) {
+      console.error("Failed bulk deleting users:", err);
+      alert("Error during bulk delete: " + (err?.message || "Unknown error"));
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -284,12 +423,32 @@ export default function UserManagementPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-sm shadow-soft shadow-teal-600/20 btn-interactive self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" /> Add New Staff User
-        </button>
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          {selectedUserIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteUsersModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-soft shadow-rose-600/20 btn-interactive"
+            >
+              <Trash2 className="w-4 h-4" /> Delete Selected ({selectedUserIds.length})
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setDeleteUsersModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold text-sm hover:bg-rose-100 dark:hover:bg-rose-900/40 btn-interactive"
+          >
+            <Trash2 className="w-4 h-4" /> Delete / Purge
+          </button>
+
+          <button
+            onClick={handleOpenAddModal}
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-sm shadow-soft shadow-teal-600/20 btn-interactive"
+          >
+            <Plus className="w-4 h-4" /> Add New Staff User
+          </button>
+        </div>
       </div>
 
       {/* Role Segregation Security Alert Box */}
@@ -338,6 +497,29 @@ export default function UserManagementPage() {
 
       {/* Users Mobile Card View (< md) */}
       <div className="block md:hidden space-y-3.5">
+        {/* Mobile Select Bar */}
+        {filtered.filter((u) => !isUserProtected(u)).length > 0 && (
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={
+                  filtered.filter((u) => !isUserProtected(u)).length > 0 &&
+                  filtered.filter((u) => !isUserProtected(u)).every((u) => selectedUserIds.includes(u.id))
+                }
+                onChange={handleToggleSelectAllUsers}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+              />
+              Select All Eligible Staff ({filtered.filter((u) => !isUserProtected(u)).length})
+            </label>
+            {selectedUserIds.length > 0 && (
+              <span className="text-xs font-extrabold text-rose-600">
+                {selectedUserIds.length} Selected
+              </span>
+            )}
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
             No staff accounts found.
@@ -347,17 +529,28 @@ export default function UserManagementPage() {
             const userPermCount = Array.isArray(user.permissions)
               ? user.permissions.length
               : ROLE_PERMISSIONS[user.role]?.length || 0;
+            const protectedAccount = isUserProtected(user);
             return (
               <div
                 key={user.id}
                 className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive space-y-3"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-base leading-snug">
-                      {normalizeUserDisplayName(user.displayName, "Owner")}
-                    </h3>
-                    <p className="font-mono text-xs text-slate-400 font-medium">{user.email}</p>
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      disabled={protectedAccount}
+                      checked={selectedUserIds.includes(user.id)}
+                      onChange={() => handleToggleSelectUser(user.id)}
+                      className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                      title={protectedAccount ? "Protected Account (Cannot Delete)" : "Select Staff User"}
+                    />
+                    <div>
+                      <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-base leading-snug">
+                        {normalizeUserDisplayName(user.displayName, "Owner")}
+                      </h3>
+                      <p className="font-mono text-xs text-slate-400 font-medium">{user.email}</p>
+                    </div>
                   </div>
                   <span
                     className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase ${
@@ -411,9 +604,9 @@ export default function UserManagementPage() {
                       <Edit2 className="w-3.5 h-3.5 text-teal-600" />
                       Edit
                     </button>
-                    {user.id !== "usr_admin" && (
+                    {!protectedAccount && (
                       <button
-                        onClick={() => handleDeleteUser(user.id)}
+                        onClick={() => handleDeleteUser(user)}
                         className="min-h-[38px] min-w-[38px] p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 flex items-center justify-center btn-interactive"
                         title="Delete User"
                       >
@@ -434,6 +627,18 @@ export default function UserManagementPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={
+                      filtered.filter((u) => !isUserProtected(u)).length > 0 &&
+                      filtered.filter((u) => !isUserProtected(u)).every((u) => selectedUserIds.includes(u.id))
+                    }
+                    onChange={handleToggleSelectAllUsers}
+                    className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+                    title="Select All Eligible Staff"
+                  />
+                </th>
                 <th className="py-3 px-3">Staff Member</th>
                 <th className="py-3 px-3">Login Email & Password</th>
                 <th className="py-3 px-3">Job Role</th>
@@ -447,11 +652,22 @@ export default function UserManagementPage() {
                 const userPermCount = Array.isArray(user.permissions)
                   ? user.permissions.length
                   : ROLE_PERMISSIONS[user.role]?.length || 0;
+                const protectedAccount = isUserProtected(user);
                 return (
                   <tr
                     key={user.id}
                     className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                   >
+                    <td className="py-3.5 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        disabled={protectedAccount}
+                        checked={selectedUserIds.includes(user.id)}
+                        onChange={() => handleToggleSelectUser(user.id)}
+                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={protectedAccount ? "Protected Account (Cannot Delete)" : "Select Staff User"}
+                      />
+                    </td>
                     <td className="py-3.5 px-3">
                       <span className="font-bold text-slate-900 dark:text-slate-100 block">
                         {normalizeUserDisplayName(user.displayName, "Owner")}
@@ -521,9 +737,9 @@ export default function UserManagementPage() {
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        {user.id !== "usr_admin" && (
+                        {!protectedAccount && (
                           <button
-                            onClick={() => handleDeleteUser(user.id)}
+                            onClick={() => handleDeleteUser(user)}
                             title="Delete Staff Account"
                             className="min-h-[36px] min-w-[36px] p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors btn-interactive"
                           >
@@ -771,6 +987,28 @@ export default function UserManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={deleteUsersModalOpen}
+        onClose={() => setDeleteUsersModalOpen(false)}
+        onConfirmDelete={handleExecuteBulkDeleteUsers}
+        entityName="Staff Accounts"
+        selectedCount={selectedUserIds.length}
+        totalCount={deletableUsers.length}
+        countsByScope={userScopeCounts}
+        isDeleting={isDeletingUser}
+      />
+
+      {/* Single Delete Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingUser}
+        onClose={() => setDeletingUser(null)}
+        onConfirm={handleExecuteSingleDeleteUser}
+        title="Delete Staff Account"
+        itemName={deletingUser ? `${deletingUser.displayName} (${deletingUser.email})` : ""}
+        isDeleting={isDeletingUser}
+      />
     </div>
   );
 }

@@ -36,6 +36,11 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { scheduleCloudDelete } from "@/lib/offline/cloudSync";
+import { recordActivity } from "@/lib/audit/auditTracker";
+import { useAuth } from "@/context/AuthContext";
+import { BulkDeleteModal, SingleDeleteModal, type DeleteScopeType } from "@/components/common/BulkDeleteModal";
+import { computeDateScopeCounts, getItemsInScope } from "@/lib/dateFilter";
 import type {
   CouponCode,
   Customer,
@@ -91,6 +96,18 @@ export function CouponManagerView() {
   // Filters for Table
   const [listSearch, setListSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Selection & Bulk/Single Deletion State
+  const { currentUser } = useAuth();
+  const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
+  const [deleteCouponsModalOpen, setDeleteCouponsModalOpen] = useState(false);
+  const [deletingCoupon, setDeletingCoupon] = useState<CouponCode | null>(null);
+  const [isDeletingCoupon, setIsDeletingCoupon] = useState(false);
+
+  // Compute scope counts for coupon deletion
+  const couponScopeCounts = useMemo(() => {
+    return computeDateScopeCounts(coupons, (c) => c.createdAt, selectedCouponIds.length);
+  }, [coupons, selectedCouponIds.length]);
 
   // Load Initial Data
   const refreshData = async () => {
@@ -291,17 +308,9 @@ export function CouponManagerView() {
     }
   };
 
-  // Delete Coupon
-  const handleDeleteCoupon = async (id: string, codeName: string) => {
-    if (!confirm(`Kia aap waqai coupon "${codeName}" delete karna chahte hain?`)) return;
-    try {
-      await offlineDb.coupons.delete(id);
-      await refreshData();
-      setSuccessToast(`Coupon "${codeName}" delete ho gaya.`);
-      setTimeout(() => setSuccessToast(null), 3000);
-    } catch (e) {
-      console.error("Failed to delete coupon:", e);
-    }
+  // Delete Coupon Initiator (Opens Single Delete Confirmation Modal)
+  const handleDeleteCoupon = (coupon: CouponCode) => {
+    setDeletingCoupon(coupon);
   };
 
   // Direct WhatsApp Launcher
@@ -364,6 +373,104 @@ export function CouponManagerView() {
 
     return list;
   }, [coupons, statusFilter, listSearch]);
+
+  const handleToggleSelectCoupon = (id: string) => {
+    setSelectedCouponIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllCoupons = () => {
+    const displayedIds = displayedCoupons.map((c) => c.id);
+    const allSelected =
+      displayedIds.length > 0 && displayedIds.every((id) => selectedCouponIds.includes(id));
+    if (allSelected) {
+      setSelectedCouponIds((prev) => prev.filter((id) => !displayedIds.includes(id)));
+    } else {
+      setSelectedCouponIds((prev) => Array.from(new Set([...prev, ...displayedIds])));
+    }
+  };
+
+  const handleExecuteSingleDeleteCoupon = async () => {
+    if (!deletingCoupon) return;
+    setIsDeletingCoupon(true);
+    try {
+      await offlineDb.coupons.delete(deletingCoupon.id);
+      scheduleCloudDelete("coupons", deletingCoupon.id);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "coupon",
+        entityId: deletingCoupon.id,
+        entityTitle: deletingCoupon.code,
+        details: `Deleted coupon code "${deletingCoupon.code}" (${deletingCoupon.discountPercent}% OFF)`,
+      });
+      setSelectedCouponIds((prev) => prev.filter((id) => id !== deletingCoupon.id));
+      await refreshData();
+      setSuccessToast(`Coupon "${deletingCoupon.code}" delete ho gaya.`);
+      setTimeout(() => setSuccessToast(null), 3000);
+      setDeletingCoupon(null);
+    } catch (err: any) {
+      console.error("Failed to delete coupon:", err);
+      alert("Error deleting coupon: " + (err?.message || "Unknown error"));
+    } finally {
+      setIsDeletingCoupon(false);
+    }
+  };
+
+  const handleExecuteBulkDeleteCoupons = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    const toDelete = getItemsInScope(
+      coupons,
+      scope,
+      (c) => c.createdAt,
+      (c) => c.id,
+      selectedCouponIds,
+      customStart,
+      customEnd
+    );
+
+    if (toDelete.length === 0) {
+      alert("No coupon codes found in the selected scope to delete.");
+      return;
+    }
+
+    setIsDeletingCoupon(true);
+    try {
+      const idsToDelete = toDelete.map((c) => c.id);
+      await offlineDb.coupons.bulkDelete(idsToDelete);
+      for (const id of idsToDelete) {
+        scheduleCloudDelete("coupons", id);
+      }
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "coupon",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} coupon(s)`,
+        details: `Bulk deleted ${toDelete.length} coupon code(s) (Scope: ${scope})`,
+      });
+      setSelectedCouponIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
+      await refreshData();
+      setDeleteCouponsModalOpen(false);
+      setSuccessToast(`${toDelete.length} coupon codes delete ho gaye.`);
+      setTimeout(() => setSuccessToast(null), 4000);
+    } catch (err: any) {
+      console.error("Failed bulk deleting coupons:", err);
+      alert("Error during bulk delete: " + (err?.message || "Unknown error"));
+    } finally {
+      setIsDeletingCoupon(false);
+    }
+  };
 
   // Export JSON for Web Developers
   const developerJsonString = useMemo(() => {
@@ -1052,7 +1159,7 @@ export function CouponManagerView() {
               </p>
             </div>
 
-            {/* Table Search & Status Filter */}
+            {/* Table Search & Status Filter & Bulk Deletion */}
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
@@ -1083,6 +1190,26 @@ export function CouponManagerView() {
                 <Download className="w-3.5 h-3.5" />
                 Export CSV
               </button>
+
+              {selectedCouponIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteCouponsModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected ({selectedCouponIds.length})
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setDeleteCouponsModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete / Purge
+              </button>
             </div>
           </div>
 
@@ -1105,6 +1232,18 @@ export function CouponManagerView() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2.5 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={
+                          displayedCoupons.length > 0 &&
+                          displayedCoupons.every((c) => selectedCouponIds.includes(c.id))
+                        }
+                        onChange={handleToggleSelectAllCoupons}
+                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+                        title="Select All"
+                      />
+                    </th>
                     <th className="py-2.5 px-3">Coupon Code</th>
                     <th className="py-2.5 px-3">Discount</th>
                     <th className="py-2.5 px-3">Assigned To</th>
@@ -1117,6 +1256,16 @@ export function CouponManagerView() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                   {displayedCoupons.map((c) => (
                     <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      {/* Selection Checkbox */}
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedCouponIds.includes(c.id)}
+                          onChange={() => handleToggleSelectCoupon(c.id)}
+                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+                        />
+                      </td>
+
                       {/* Code */}
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5">
@@ -1229,7 +1378,7 @@ export function CouponManagerView() {
                           </button>
 
                           <button
-                            onClick={() => handleDeleteCoupon(c.id, c.code)}
+                            onClick={() => handleDeleteCoupon(c)}
                             className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60"
                             title="Delete coupon"
                           >
@@ -1320,6 +1469,28 @@ export function CouponManagerView() {
           </div>
         </div>
       )}
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={deleteCouponsModalOpen}
+        onClose={() => setDeleteCouponsModalOpen(false)}
+        onConfirmDelete={handleExecuteBulkDeleteCoupons}
+        entityName="Coupon Codes"
+        selectedCount={selectedCouponIds.length}
+        totalCount={coupons.length}
+        countsByScope={couponScopeCounts}
+        isDeleting={isDeletingCoupon}
+      />
+
+      {/* Single Delete Modal */}
+      <SingleDeleteModal
+        isOpen={!!deletingCoupon}
+        onClose={() => setDeletingCoupon(null)}
+        onConfirm={handleExecuteSingleDeleteCoupon}
+        title="Delete Coupon Code"
+        itemName={deletingCoupon ? `${deletingCoupon.code} (${deletingCoupon.discountPercent}% OFF)` : ""}
+        isDeleting={isDeletingCoupon}
+      />
     </div>
   );
 }
