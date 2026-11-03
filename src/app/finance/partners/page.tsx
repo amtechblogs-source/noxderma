@@ -302,33 +302,68 @@ export default function PartnersKhataPage() {
     // Listener A: Sync Partner Configurations in real-time
     const unsubConfig = onSnapshot(
       doc(firestoreDb, "partnerSettings", "config"),
-      (snapshot) => {
+      async (snapshot) => {
+        const localRaw = localStorage.getItem("nox_partner_configs");
+        let localPartners: PartnerConfig[] = [];
+        if (localRaw) {
+          try {
+            localPartners = JSON.parse(localRaw);
+          } catch {}
+        }
+        const legacyP1 = localStorage.getItem("nox_partner_1_name");
+        const legacyP2 = localStorage.getItem("nox_partner_2_name");
+        const localHasCustom =
+          localPartners.some((p) => p.name && p.name !== "Partner 1" && p.name !== "Partner 2") ||
+          (legacyP1 && legacyP1 !== "Partner 1") ||
+          (legacyP2 && legacyP2 !== "Partner 2");
+
         if (snapshot.exists()) {
           const data = snapshot.data();
-          if (Array.isArray(data?.partners) && data.partners.length > 0) {
-            // Only update active state if user is NOT currently editing in the modal to avoid typing interruption
+          const remotePartners = data?.partners;
+          const remoteHasCustom =
+            Array.isArray(remotePartners) &&
+            remotePartners.some((p: any) => p.name && p.name !== "Partner 1" && p.name !== "Partner 2");
+
+          if (!remoteHasCustom && localHasCustom && localPartners.length > 0) {
+            // Local PC has custom names, push them up to Firestore
+            try {
+              await setDoc(
+                doc(firestoreDb, "partnerSettings", "config"),
+                { partners: localPartners, updatedAt: new Date().toISOString() },
+                { merge: true }
+              );
+              setPartners(localPartners);
+            } catch (e) {
+              console.warn("Failed to push custom partner config:", e);
+            }
+          } else if (Array.isArray(remotePartners) && remotePartners.length > 0) {
             if (!isPartnerModalOpen) {
-              setPartners(data.partners);
-              localStorage.setItem("nox_partner_configs", JSON.stringify(data.partners));
-              if (data.partners[0]) localStorage.setItem("nox_partner_1_name", data.partners[0].name);
-              if (data.partners[1]) localStorage.setItem("nox_partner_2_name", data.partners[1].name);
+              setPartners(remotePartners);
+              localStorage.setItem("nox_partner_configs", JSON.stringify(remotePartners));
+              if (remotePartners[0]) localStorage.setItem("nox_partner_1_name", remotePartners[0].name);
+              if (remotePartners[1]) localStorage.setItem("nox_partner_2_name", remotePartners[1].name);
             }
           }
         } else {
-          // If Firestore config doc doesn't exist yet, seed it with current local config
-          const savedRaw = localStorage.getItem("nox_partner_configs");
-          let initialSeed = DEFAULT_PARTNERS;
-          if (savedRaw) {
-            try {
-              const p = JSON.parse(savedRaw);
-              if (Array.isArray(p) && p.length > 0) initialSeed = p;
-            } catch {}
+          // Document does not exist in Firestore yet!
+          let toPush = localPartners;
+          if (!toPush || toPush.length === 0) {
+            toPush = [
+              { id: "partner_1", name: cleanPartnerName(legacyP1 || "", "Partner 1") },
+              { id: "partner_2", name: cleanPartnerName(legacyP2 || "", "Partner 2") },
+            ];
           }
-          setDoc(
-            doc(firestoreDb, "partnerSettings", "config"),
-            { partners: initialSeed, updatedAt: new Date().toISOString() },
-            { merge: true }
-          ).catch(() => {});
+          try {
+            await setDoc(
+              doc(firestoreDb, "partnerSettings", "config"),
+              { partners: toPush, updatedAt: new Date().toISOString() },
+              { merge: true }
+            );
+            setPartners(toPush);
+            localStorage.setItem("nox_partner_configs", JSON.stringify(toPush));
+          } catch (e) {
+            console.warn("Failed to initialize partner config in Firestore:", e);
+          }
         }
       },
       (err) => {
@@ -336,27 +371,45 @@ export default function PartnersKhataPage() {
       }
     );
 
-    // Listener B: Sync Partner Transactions in real-time
+    // Listener B: Sync Partner Transactions in real-time (Two-Way Push & Pull)
     const unsubTx = onSnapshot(
       collection(firestoreDb, "partnerTransactions"),
-      (snapshot) => {
+      async (snapshot) => {
         const remoteItems: PartnerTransaction[] = [];
         snapshot.forEach((d) => {
           const data = d.data();
           remoteItems.push({ ...data, id: d.id } as PartnerTransaction);
         });
 
+        // 1. Reconcile remote items into local Dexie
         if (remoteItems.length > 0) {
-          // Reconcile into local Dexie immediately
-          offlineDb.partnerTransactions.bulkPut(remoteItems).catch(console.warn);
+          await offlineDb.partnerTransactions.bulkPut(remoteItems).catch(console.warn);
 
-          // Update React state seamlessly
           setTransactions((prev) => {
             const map = new Map<string, PartnerTransaction>();
             prev.forEach((t) => map.set(t.id, t));
             remoteItems.forEach((t) => map.set(t.id, t));
             return Array.from(map.values()).sort(comparePartnerTxNewestFirst);
           });
+        }
+
+        // 2. Check for any local transactions that are not yet in Firestore, and push them up!
+        try {
+          const localList = await offlineDb.partnerTransactions.toArray();
+          const remoteIdSet = new Set(remoteItems.map((r) => r.id));
+          const unpushed = localList.filter((l) => !remoteIdSet.has(l.id));
+
+          if (unpushed.length > 0) {
+            for (const item of unpushed) {
+              await setDoc(
+                doc(firestoreDb, "partnerTransactions", item.id),
+                sanitizeForFirestore(item),
+                { merge: true }
+              );
+            }
+          }
+        } catch (err) {
+          console.warn("[CloudSync] Error syncing unpushed local transactions:", err);
         }
       },
       (err) => {

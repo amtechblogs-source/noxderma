@@ -205,6 +205,18 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    match /partnerTransactions/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
+    }
+
+    match /partnerSettings/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
+    }
+
     // Default deny for any unmapped collection
     match /{document=**} {
       allow read, write: if false;
