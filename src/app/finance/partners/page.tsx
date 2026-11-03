@@ -46,6 +46,31 @@ import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import type { PartnerTransaction, PartnerTransactionType, BusinessSettings } from "@/types";
 
+// Helper: Extract timestamp for granular sorting (createdAt ISO or ID timestamp)
+function getPartnerTxTime(tx: PartnerTransaction): number {
+  if (tx.createdAt) {
+    const time = new Date(tx.createdAt).getTime();
+    if (!isNaN(time) && time > 0) return time;
+  }
+  const match = tx.id.match(/\d{10,13}/);
+  if (match) {
+    const num = parseInt(match[0], 10);
+    if (!isNaN(num) && num > 0) return num;
+  }
+  const dateObj = new Date(tx.date);
+  return !isNaN(dateObj.getTime()) ? dateObj.getTime() : 0;
+}
+
+// Comparator: Latest entries on TOP (Date DESC, then Creation Timestamp DESC)
+function comparePartnerTxNewestFirst(a: PartnerTransaction, b: PartnerTransaction): number {
+  const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+  if (dateDiff !== 0) return dateDiff;
+  const bTime = getPartnerTxTime(b);
+  const aTime = getPartnerTxTime(a);
+  if (bTime !== aTime) return bTime - aTime;
+  return b.id.localeCompare(a.id);
+}
+
 export default function PartnersKhataPage() {
   const { currentUser, hasPermission } = useAuth();
 
@@ -91,7 +116,7 @@ export default function PartnersKhataPage() {
         offlineDb.partnerTransactions.toArray(),
         offlineDb.settings.get("primary"),
       ]);
-      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      list.sort(comparePartnerTxNewestFirst);
       setTransactions(list);
       setBusinessSettings(settings || null);
 
@@ -241,7 +266,7 @@ export default function PartnersKhataPage() {
       }
 
       return true;
-    });
+    }).sort(comparePartnerTxNewestFirst);
   }, [transactions, selectedPartnerFilter, selectedTypeFilter, dateFilter, searchQuery, partner1Name, partner2Name]);
 
   // Handle Add Transaction Submit
