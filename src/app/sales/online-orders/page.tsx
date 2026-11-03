@@ -17,6 +17,8 @@ import {
   ExternalLink,
   DollarSign,
   Phone,
+  Trash2,
+  Boxes,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -80,7 +82,12 @@ export default function OnlineOrdersPage() {
 
   const [productMode, setProductMode] = useState<"saved" | "manual">("saved");
   const [selectedProdId, setSelectedProdId] = useState("");
-  const [orderQty, setOrderQty] = useState(1);
+  const [itemQty, setItemQty] = useState(1);
+  const [customItemName, setCustomItemName] = useState("");
+  const [customItemPackSize, setCustomItemPackSize] = useState("Pack");
+  const [customItemQty, setCustomItemQty] = useState(1);
+  const [customItemPrice, setCustomItemPrice] = useState(0);
+  const [parcelItems, setParcelItems] = useState<OnlineOrderItem[]>([]);
   const [itemsSummary, setItemsSummary] = useState("");
   const [totalAmount, setTotalAmount] = useState(0);
   const [courier, setCourier] = useState<OnlineOrder["courier"]>("TCS");
@@ -270,6 +277,129 @@ export default function OnlineOrdersPage() {
     }
   };
 
+  // Multi-item parcel helpers
+  const syncParcelItems = (newItems: OnlineOrderItem[]) => {
+    setParcelItems(newItems);
+    const summary = newItems
+      .map((i) => `${i.productName} (${i.packSize || "Pack"}) x ${i.quantity}`)
+      .join(", ");
+    setItemsSummary(summary);
+    const sum = newItems.reduce(
+      (acc, i) => acc + (Number(i.unitPrice) || 0) * (Number(i.quantity) || 0),
+      0
+    );
+    setTotalAmount(sum);
+  };
+
+  const handleAddCatalogItem = () => {
+    const prod = products.find((p) => p.id === selectedProdId);
+    if (!prod) {
+      alert("Barah-e-karam pehle list se medicine muntakhib karein.");
+      return;
+    }
+    const qty = Math.max(1, Number(itemQty) || 1);
+    const unitPrice = pricingMap[prod.id] || 650;
+
+    const existingIdx = parcelItems.findIndex((it) => it.productId === prod.id);
+    let updated: OnlineOrderItem[];
+    if (existingIdx >= 0) {
+      updated = [...parcelItems];
+      updated[existingIdx] = {
+        ...updated[existingIdx],
+        quantity: updated[existingIdx].quantity + qty,
+      };
+    } else {
+      updated = [
+        ...parcelItems,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          packSize: prod.packSize || "Pack",
+          quantity: qty,
+          unitPrice,
+        },
+      ];
+    }
+    syncParcelItems(updated);
+    setItemQty(1);
+  };
+
+  const handleAddCustomItem = () => {
+    if (!customItemName.trim()) {
+      alert("Barah-e-karam medicine / item ka naam darj karein.");
+      return;
+    }
+    const qty = Math.max(1, Number(customItemQty) || 1);
+    const price = Math.max(0, Number(customItemPrice) || 0);
+
+    const newItem: OnlineOrderItem = {
+      productId: `custom_${Date.now()}`,
+      productName: customItemName.trim(),
+      packSize: customItemPackSize.trim() || "Item",
+      quantity: qty,
+      unitPrice: price,
+    };
+    syncParcelItems([...parcelItems, newItem]);
+    setCustomItemName("");
+    setCustomItemPackSize("Pack");
+    setCustomItemQty(1);
+    setCustomItemPrice(0);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    const updated = parcelItems.filter((_, i) => i !== index);
+    syncParcelItems(updated);
+  };
+
+  const handleUpdateItemQty = (index: number, newQty: number) => {
+    if (newQty <= 0) {
+      handleRemoveItem(index);
+      return;
+    }
+    const updated = [...parcelItems];
+    updated[index] = { ...updated[index], quantity: newQty };
+    syncParcelItems(updated);
+  };
+
+  const openBookingModal = () => {
+    setCustomerMode("saved");
+    const firstCust = customers[0];
+    if (firstCust) {
+      setSelectedCustId(firstCust.id);
+      setCustomerName(firstCust.name);
+      setCustomerPhone(firstCust.phone || firstCust.whatsappNumber || "");
+      setCity(firstCust.city || "Karachi");
+      setAddress(firstCust.address || "");
+    } else {
+      setSelectedCustId("");
+      setCustomerName("");
+      setCustomerPhone("");
+      setCity("");
+      setAddress("");
+    }
+    setProductMode("saved");
+    const activeProds =
+      selectedCategoryId === "all"
+        ? products
+        : products.filter((p) => p.categoryId === selectedCategoryId);
+    if (activeProds.length > 0) {
+      setSelectedProdId(activeProds[0].id);
+    } else if (products.length > 0) {
+      setSelectedProdId(products[0].id);
+    }
+    setItemQty(1);
+    setCustomItemName("");
+    setCustomItemPackSize("Pack");
+    setCustomItemQty(1);
+    setCustomItemPrice(0);
+    setParcelItems([]);
+    setItemsSummary("");
+    setTotalAmount(0);
+    setCourier("TCS");
+    setOrderStatus("pending");
+    setIsBooking(true);
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -293,24 +423,64 @@ export default function OnlineOrdersPage() {
       return;
     }
 
-    let finalItemsSummary = itemsSummary;
-    let orderItems: OnlineOrderItem[] = [];
+    let orderItems: OnlineOrderItem[] = [...parcelItems];
 
-    if (productMode === "saved") {
-      const prod = products.find((p) => p.id === selectedProdId);
-      if (prod) {
-        finalItemsSummary = `${prod.name} (${prod.packSize}) x ${orderQty}`;
+    // If user selected a product but didn't click "Add Medicine", auto-add it so it's not missed
+    if (orderItems.length === 0) {
+      if (productMode === "saved" && selectedProdId) {
+        const prod = products.find((p) => p.id === selectedProdId);
+        if (prod) {
+          const qty = Math.max(1, Number(itemQty) || 1);
+          orderItems = [
+            {
+              productId: prod.id,
+              productName: prod.name,
+              packSize: prod.packSize || "Pack",
+              quantity: qty,
+              unitPrice: pricingMap[prod.id] || 650,
+            },
+          ];
+        }
+      } else if (productMode === "manual" && customItemName.trim()) {
         orderItems = [
           {
-            productId: prod.id,
-            productName: prod.name,
-            packSize: prod.packSize,
-            quantity: Number(orderQty),
-            unitPrice: pricingMap[prod.id] || Number(totalAmount) / Number(orderQty) || 650,
+            productId: `custom_${Date.now()}`,
+            productName: customItemName.trim(),
+            packSize: customItemPackSize.trim() || "Item",
+            quantity: Math.max(1, Number(customItemQty) || 1),
+            unitPrice: Math.max(0, Number(customItemPrice) || 0),
           },
         ];
       }
     }
+
+    if (orderItems.length === 0 && !itemsSummary.trim()) {
+      alert("Barah-e-karam parcel mein kam az kam aik medicine shamil karein (Please add at least one medicine to the parcel).");
+      return;
+    }
+
+    let finalItemsSummary = itemsSummary.trim();
+    if (!finalItemsSummary && orderItems.length > 0) {
+      finalItemsSummary = orderItems
+        .map((i) => `${i.productName} (${i.packSize || "Pack"}) x ${i.quantity}`)
+        .join(", ");
+    } else if (orderItems.length === 0 && finalItemsSummary) {
+      orderItems = [
+        {
+          productId: "manual_text",
+          productName: finalItemsSummary,
+          packSize: "Unit",
+          quantity: 1,
+          unitPrice: Number(totalAmount) || 0,
+        },
+      ];
+    }
+
+    const calculatedSubtotal = orderItems.reduce(
+      (acc, i) => acc + (Number(i.unitPrice) || 0) * (Number(i.quantity) || 0),
+      0
+    );
+    const finalAmount = totalAmount > 0 ? Number(totalAmount) : calculatedSubtotal;
 
     const ordNum = `NXD-ONL-${Math.floor(1000 + Math.random() * 9000)}`;
     const newOrd: OnlineOrder = {
@@ -323,8 +493,8 @@ export default function OnlineOrdersPage() {
       itemsSummary: finalItemsSummary,
       items: orderItems,
       stockDeducted: false,
-      totalAmount: Number(totalAmount),
-      codAmount: Number(totalAmount),
+      totalAmount: finalAmount,
+      codAmount: finalAmount,
       deliveryCharge: 250,
       courier,
       status: orderStatus,
@@ -407,7 +577,7 @@ export default function OnlineOrdersPage() {
         </div>
 
         <button
-          onClick={() => setIsBooking(true)}
+          onClick={openBookingModal}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" /> Send New Parcel (Book Courier)
@@ -518,8 +688,22 @@ export default function OnlineOrdersPage() {
                     </span>
                     <span className="text-[11px] text-slate-400">{ord.city} • {ord.customerPhone}</span>
                   </td>
-                  <td className="p-2.5 text-slate-700 dark:text-slate-300 max-w-[220px] truncate">
-                    {ord.itemsSummary}
+                  <td className="p-2.5 text-slate-700 dark:text-slate-300 max-w-[240px]">
+                    <div className="font-medium text-slate-800 dark:text-slate-200 text-xs line-clamp-2">
+                      {ord.itemsSummary}
+                    </div>
+                    {ord.items && ord.items.length > 1 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {ord.items.map((it, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60"
+                          >
+                            {it.productName} × {it.quantity}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="p-2.5">
                     <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
@@ -600,7 +784,7 @@ export default function OnlineOrdersPage() {
       {/* Booking Modal */}
       {isBooking && (
         <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -728,19 +912,27 @@ export default function OnlineOrdersPage() {
               </div>
 
               {/* Section 2: Medicine / Items Selection */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5">
+              <div className="p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 text-[11px]">
-                    2. Medicines & Items in Parcel
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 text-[11px] flex items-center gap-1.5">
+                      <PackageCheck className="w-3.5 h-3.5 text-teal-600" />
+                      2. Medicines & Items in Parcel
+                    </span>
+                    {parcelItems.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300">
+                        {parcelItems.length} {parcelItems.length === 1 ? "Item" : "Items"} ({parcelItems.reduce((acc, i) => acc + i.quantity, 0)} packs)
+                      </span>
+                    )}
+                  </div>
                   <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 p-0.5 bg-white dark:bg-slate-800 text-[10px]">
                     <button
                       type="button"
                       onClick={() => setProductMode("saved")}
-                      className={`px-2 py-0.5 rounded font-bold ${
+                      className={`px-2.5 py-1 rounded font-bold transition-colors ${
                         productMode === "saved"
-                          ? "bg-teal-600 text-white"
-                          : "text-slate-600 dark:text-slate-300"
+                          ? "bg-teal-600 text-white shadow-sm"
+                          : "text-slate-600 dark:text-slate-300 hover:text-slate-900"
                       }`}
                     >
                       From Catalog
@@ -748,10 +940,10 @@ export default function OnlineOrdersPage() {
                     <button
                       type="button"
                       onClick={() => setProductMode("manual")}
-                      className={`px-2 py-0.5 rounded font-bold ${
+                      className={`px-2.5 py-1 rounded font-bold transition-colors ${
                         productMode === "manual"
-                          ? "bg-teal-600 text-white"
-                          : "text-slate-600 dark:text-slate-300"
+                          ? "bg-teal-600 text-white shadow-sm"
+                          : "text-slate-600 dark:text-slate-300 hover:text-slate-900"
                       }`}
                     >
                       Custom Items
@@ -759,61 +951,209 @@ export default function OnlineOrdersPage() {
                   </div>
                 </div>
 
+                {/* Add Item Box */}
                 {productMode === "saved" ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="font-semibold block mb-1">Select Medicine from Catalog</label>
-                      <select
-                        value={selectedProdId}
-                        onChange={(e) => {
-                          const prodId = e.target.value;
-                          setSelectedProdId(prodId);
-                          const prod = products.find((p) => p.id === prodId);
-                          if (prod) {
-                            setItemsSummary(`${prod.name} (${prod.packSize})`);
-                            const tp = pricingMap[prod.id] || 650;
-                            setTotalAmount(tp * orderQty);
-                          }
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                      >
-                        <option value="">-- Choose Medicine --</option>
-                        {displayProducts.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.packSize}) — TP: {formatPKR(pricingMap[p.id] || 650)}
-                          </option>
-                        ))}
-                      </select>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-2 shadow-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                      <div className="sm:col-span-6">
+                        <label className="font-semibold block mb-1 text-[11px] text-slate-700 dark:text-slate-300">
+                          Select Medicine from Catalog
+                        </label>
+                        <select
+                          value={selectedProdId}
+                          onChange={(e) => setSelectedProdId(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:ring-2 focus:ring-teal-500 outline-none"
+                        >
+                          <option value="">-- Choose Medicine --</option>
+                          {displayProducts.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.packSize || "Pack"}) — TP: {formatPKR(pricingMap[p.id] || 650)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="font-semibold block mb-1 text-[11px] text-slate-700 dark:text-slate-300">
+                          Qty (Packs)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={itemQty}
+                          onChange={(e) => setItemQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <button
+                          type="button"
+                          onClick={handleAddCatalogItem}
+                          className="w-full py-2 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Medicine
+                        </button>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="font-semibold block mb-1">Quantity (Packs)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="1"
-                        value={orderQty === 0 ? "" : orderQty}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const qty = raw === "" ? 0 : Number(raw) || 0;
-                          setOrderQty(qty);
-                          const tp = pricingMap[selectedProdId] || 650;
-                          setTotalAmount(tp * qty);
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
-                      />
+                    {selectedProdId && (
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <span>Rate (TP): <strong className="text-slate-700 dark:text-slate-200 font-semibold">{formatPKR(pricingMap[selectedProdId] || 650)}</strong></span>
+                        <span>Line Subtotal: <strong className="text-teal-600 font-mono font-bold">{formatPKR((pricingMap[selectedProdId] || 650) * itemQty)}</strong></span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-2 shadow-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                      <div className="sm:col-span-5">
+                        <label className="font-semibold block mb-1 text-[11px] text-slate-700 dark:text-slate-300">
+                          Item / Medicine Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Skin Whitening Kit"
+                          value={customItemName}
+                          onChange={(e) => setCustomItemName(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="font-semibold block mb-1 text-[11px] text-slate-700 dark:text-slate-300">
+                          Qty
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={customItemQty}
+                          onChange={(e) => setCustomItemQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="font-semibold block mb-1 text-[11px] text-slate-700 dark:text-slate-300">
+                          Price (PKR)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={customItemPrice === 0 ? "" : customItemPrice}
+                          onChange={(e) => setCustomItemPrice(Number(e.target.value) || 0)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <button
+                          type="button"
+                          onClick={handleAddCustomItem}
+                          className="w-full py-2 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Item
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ) : null}
+                )}
 
+                {/* Medicines List in Parcel */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Boxes className="w-3.5 h-3.5 text-teal-600" />
+                      Medicines Included in Parcel ({parcelItems.length})
+                    </span>
+                    {parcelItems.length > 0 && (
+                      <span className="font-mono text-[11px] font-bold text-teal-700 dark:text-teal-300">
+                        Value: {formatPKR(parcelItems.reduce((acc, i) => acc + i.quantity * i.unitPrice, 0))}
+                      </span>
+                    )}
+                  </div>
+
+                  {parcelItems.length === 0 ? (
+                    <div className="p-3.5 text-center text-slate-400 dark:text-slate-500 text-xs">
+                      Koi medicine shamil nahi ki gayi. Upar se medicine select kar ke &quot;+ Add Medicine&quot; dabayein.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-48 overflow-y-auto">
+                      {parcelItems.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2.5 flex items-center justify-between gap-2.5 text-xs hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                              {item.productName}
+                            </p>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                              <span>{item.packSize || "Pack"}</span>
+                              <span>•</span>
+                              <span>Rate: {formatPKR(item.unitPrice)}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-slate-50 dark:bg-slate-800">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateItemQty(idx, item.quantity - 1)}
+                                className="px-2 py-0.5 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                                title="Kam karein"
+                              >
+                                -
+                              </button>
+                              <span className="px-2 py-0.5 text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateItemQty(idx, item.quantity + 1)}
+                                className="px-2 py-0.5 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                                title="Barhayein"
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <div className="text-right min-w-[65px]">
+                              <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs block">
+                                {formatPKR(item.quantity * item.unitPrice)}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                              title="Delete from parcel"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Auto-generated Summary */}
                 <div>
-                  <label className="font-semibold block mb-1">Medicines Summary (Print on Parcel Label)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold block text-[11px] text-slate-700 dark:text-slate-300">
+                      Medicines Summary (Print on Parcel Label)
+                    </label>
+                    <span className="text-[10px] text-slate-400">Auto-filled from above items</span>
+                  </div>
                   <input
                     type="text"
                     value={itemsSummary}
                     onChange={(e) => setItemsSummary(e.target.value)}
-                    placeholder="e.g. DermaClear Soothing Cream 50g (3 Tubes)"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    placeholder="e.g. Cream (Pack of 6) x 2, Sunblock (1) x 1"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-none"
                   />
                 </div>
               </div>
