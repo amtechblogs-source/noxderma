@@ -152,6 +152,13 @@ export interface PartnerTransaction {
   createdAt: string;
 }
 
+export interface PartnerConfig {
+  id: string; // e.g. "partner_1", "partner_2", or custom generated id
+  name: string; // e.g. "Muhammad Afzaal"
+  colorTheme?: string;
+  createdAt?: string;
+}
+
 export interface PartnerAccountSummary {
   partnerId: string;
   partnerName: string;

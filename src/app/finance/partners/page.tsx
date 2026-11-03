@@ -31,6 +31,8 @@ import {
   MapPin,
   Mail,
   PieChart,
+  UserPlus,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { offlineDb } from "@/lib/offline/db";
@@ -45,8 +47,19 @@ import {
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import { db as firestoreDb } from "@/lib/firebase/config";
-import { doc, setDoc, deleteDoc } from "firebase/firestore";
-import { scheduleCloudUpsert, scheduleCloudDelete, sanitizeForFirestore } from "@/lib/offline/cloudSync";
+import {
+  doc,
+  setDoc,
+  deleteDoc,
+  collection,
+  onSnapshot,
+  getDoc,
+} from "firebase/firestore";
+import {
+  scheduleCloudUpsert,
+  scheduleCloudDelete,
+  sanitizeForFirestore,
+} from "@/lib/offline/cloudSync";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import {
   computeDateScopeCounts,
@@ -57,7 +70,13 @@ import {
   SingleDeleteModal,
   type DeleteScopeType,
 } from "@/components/common/BulkDeleteModal";
-import type { PartnerTransaction, PartnerTransactionType, BusinessSettings } from "@/types";
+import type {
+  PartnerTransaction,
+  PartnerTransactionType,
+  BusinessSettings,
+  PartnerConfig,
+} from "@/types";
+import { PARTNER_THEMES, getPartnerTheme, DEFAULT_PARTNERS } from "@/lib/partners";
 
 // Helper: Pakistani Rupees to Words
 function numberToWordsPKR(num: number): string {
@@ -100,7 +119,7 @@ function numberToWordsPKR(num: number): string {
 }
 
 // Non-blocking firestore sync helper that times out quickly and delegates to offline queue
-function firestoreSyncBackground(promise: Promise<any>, fallback: () => void, timeoutMs = 1200) {
+function firestoreSyncBackground(promise: Promise<any>, fallback: () => void, timeoutMs = 1500) {
   let settled = false;
   const timeoutId = setTimeout(() => {
     if (!settled) {
@@ -164,18 +183,18 @@ function cleanPartnerName(name: string, fallback: string): string {
 }
 
 export default function PartnersKhataPage() {
-  const { currentUser, hasPermission } = useAuth();
+  const { currentUser } = useAuth();
 
   const [transactions, setTransactions] = useState<PartnerTransaction[]>([]);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Partner custom names (Clean names without parentheses/tags)
-  const [partner1Name, setPartner1Name] = useState("Partner 1");
-  const [partner2Name, setPartner2Name] = useState("Partner 2");
-  const [editingNames, setEditingNames] = useState(false);
-  const [tempP1Name, setTempP1Name] = useState("Partner 1");
-  const [tempP2Name, setTempP2Name] = useState("Partner 2");
+  // Dynamic Multi-Partner Management State
+  const [partners, setPartners] = useState<PartnerConfig[]>(DEFAULT_PARTNERS);
+  const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+  const [editingPartnerList, setEditingPartnerList] = useState<PartnerConfig[]>([]);
+  const [partnerToDelete, setPartnerToDelete] = useState<PartnerConfig | null>(null);
+  const [isDeleteWarningModalOpen, setIsDeleteWarningModalOpen] = useState(false);
 
   // Profit Distribution Calculator State
   const [distributableProfit, setDistributableProfit] = useState<number>(100000);
@@ -183,13 +202,13 @@ export default function PartnersKhataPage() {
 
   // Universal Date Filter (Same as other Noxderma modules)
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
-  const [selectedPartnerFilter, setSelectedPartnerFilter] = useState<"all" | "partner_1" | "partner_2">("all");
+  const [selectedPartnerFilter, setSelectedPartnerFilter] = useState<string>("all");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "investment" | "withdrawal" | "profit_payout">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Modal State for Add Transaction
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [partnerId, setPartnerId] = useState<"partner_1" | "partner_2">("partner_1");
+  const [partnerId, setPartnerId] = useState<string>("partner_1");
   const [type, setType] = useState<PartnerTransactionType>("investment");
   const [amount, setAmount] = useState<string>("");
   const [date, setDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -217,7 +236,7 @@ export default function PartnersKhataPage() {
   // Edit Modal State
   const [editingTx, setEditingTx] = useState<PartnerTransaction | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editPartnerId, setEditPartnerId] = useState<"partner_1" | "partner_2">("partner_1");
+  const [editPartnerId, setEditPartnerId] = useState<string>("partner_1");
   const [editType, setEditType] = useState<PartnerTransactionType>("investment");
   const [editAmount, setEditAmount] = useState<string>("");
   const [editDate, setEditDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -226,7 +245,19 @@ export default function PartnersKhataPage() {
   const [editReference, setEditReference] = useState<string>("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Load transactions and settings from IndexedDB
+  // Helper: Resolve dynamic partner name
+  const getPartnerName = (id: string, fallback?: string): string => {
+    const found = partners.find((p) => p.id === id);
+    if (found) return found.name;
+    return fallback || `Partner (${id})`;
+  };
+
+  const getPartnerIndex = (id: string): number => {
+    const idx = partners.findIndex((p) => p.id === id);
+    return idx >= 0 ? idx : 0;
+  };
+
+  // 1. Initial Load from Local Cache (IndexedDB & LocalStorage)
   const loadData = async () => {
     try {
       const [list, settings] = await Promise.all([
@@ -237,191 +268,262 @@ export default function PartnersKhataPage() {
       setTransactions(list);
       setBusinessSettings(settings || null);
 
-      const savedP1 = localStorage.getItem("nox_partner_1_name");
-      const savedP2 = localStorage.getItem("nox_partner_2_name");
-      const p1 = cleanPartnerName(savedP1 || "", "Partner 1");
-      const p2 = cleanPartnerName(savedP2 || "", "Partner 2");
-      setPartner1Name(p1);
-      setTempP1Name(p1);
-      setPartner2Name(p2);
-      setTempP2Name(p2);
+      // Load partner configs
+      const savedConfigsRaw = localStorage.getItem("nox_partner_configs");
+      if (savedConfigsRaw) {
+        try {
+          const parsed = JSON.parse(savedConfigsRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPartners(parsed);
+          }
+        } catch {}
+      } else {
+        // Fallback to legacy keys
+        const savedP1 = localStorage.getItem("nox_partner_1_name");
+        const savedP2 = localStorage.getItem("nox_partner_2_name");
+        const initial = [
+          { id: "partner_1", name: cleanPartnerName(savedP1 || "", "Partner 1") },
+          { id: "partner_2", name: cleanPartnerName(savedP2 || "", "Partner 2") },
+        ];
+        setPartners(initial);
+        localStorage.setItem("nox_partner_configs", JSON.stringify(initial));
+      }
     } catch (err) {
-      console.warn("Failed to load partner transactions:", err);
+      console.warn("Failed to load partner transactions locally:", err);
     } finally {
       setLoading(false);
     }
   };
 
+  // 2. Real-time Two-Way Cloud Firestore Synchronization (Mobile + Desktop)
   useEffect(() => {
     loadData();
+
+    // Listener A: Sync Partner Configurations in real-time
+    const unsubConfig = onSnapshot(
+      doc(firestoreDb, "partnerSettings", "config"),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (Array.isArray(data?.partners) && data.partners.length > 0) {
+            // Only update active state if user is NOT currently editing in the modal to avoid typing interruption
+            if (!isPartnerModalOpen) {
+              setPartners(data.partners);
+              localStorage.setItem("nox_partner_configs", JSON.stringify(data.partners));
+              if (data.partners[0]) localStorage.setItem("nox_partner_1_name", data.partners[0].name);
+              if (data.partners[1]) localStorage.setItem("nox_partner_2_name", data.partners[1].name);
+            }
+          }
+        } else {
+          // If Firestore config doc doesn't exist yet, seed it with current local config
+          const savedRaw = localStorage.getItem("nox_partner_configs");
+          let initialSeed = DEFAULT_PARTNERS;
+          if (savedRaw) {
+            try {
+              const p = JSON.parse(savedRaw);
+              if (Array.isArray(p) && p.length > 0) initialSeed = p;
+            } catch {}
+          }
+          setDoc(
+            doc(firestoreDb, "partnerSettings", "config"),
+            { partners: initialSeed, updatedAt: new Date().toISOString() },
+            { merge: true }
+          ).catch(() => {});
+        }
+      },
+      (err) => {
+        console.warn("[CloudSync] Partner settings snapshot error:", err);
+      }
+    );
+
+    // Listener B: Sync Partner Transactions in real-time
+    const unsubTx = onSnapshot(
+      collection(firestoreDb, "partnerTransactions"),
+      (snapshot) => {
+        const remoteItems: PartnerTransaction[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data();
+          remoteItems.push({ ...data, id: d.id } as PartnerTransaction);
+        });
+
+        if (remoteItems.length > 0) {
+          // Reconcile into local Dexie immediately
+          offlineDb.partnerTransactions.bulkPut(remoteItems).catch(console.warn);
+
+          // Update React state seamlessly
+          setTransactions((prev) => {
+            const map = new Map<string, PartnerTransaction>();
+            prev.forEach((t) => map.set(t.id, t));
+            remoteItems.forEach((t) => map.set(t.id, t));
+            return Array.from(map.values()).sort(comparePartnerTxNewestFirst);
+          });
+        }
+      },
+      (err) => {
+        console.warn("[CloudSync] Partner transactions snapshot error:", err);
+      }
+    );
+
+    // Listener C: dexie background sync events
     let syncTimer: any = null;
     const handleSync = () => {
       if (syncTimer) clearTimeout(syncTimer);
       syncTimer = setTimeout(() => {
-        loadData();
+        offlineDb.partnerTransactions.toArray().then((list) => {
+          list.sort(comparePartnerTxNewestFirst);
+          setTransactions(list);
+        });
       }, 300);
     };
     window.addEventListener("noxderma-cloud-synced", handleSync);
+
     return () => {
+      unsubConfig();
+      unsubTx();
       if (syncTimer) clearTimeout(syncTimer);
       window.removeEventListener("noxderma-cloud-synced", handleSync);
     };
-  }, []);
+  }, [isPartnerModalOpen]);
 
-  const handleSaveNames = () => {
-    const p1 = cleanPartnerName(tempP1Name, "Partner 1");
-    const p2 = cleanPartnerName(tempP2Name, "Partner 2");
-    setPartner1Name(p1);
-    setTempP1Name(p1);
-    localStorage.setItem("nox_partner_1_name", p1);
-
-    setPartner2Name(p2);
-    setTempP2Name(p2);
-    localStorage.setItem("nox_partner_2_name", p2);
-
-    setEditingNames(false);
-  };
-
-  // 1. Partner Investment Management & Calculation
-  // Total Investment per partner (investment date does NOT affect total investment or ratio)
-  const p1Transactions = useMemo(
-    () => transactions.filter((t) => t.partnerId === "partner_1"),
-    [transactions]
-  );
-  const p2Transactions = useMemo(
-    () => transactions.filter((t) => t.partnerId === "partner_2"),
-    [transactions]
-  );
-
-  // Total Injected Investment (Capital)
-  const p1TotalInvestment = useMemo(
-    () =>
-      p1Transactions
-        .filter((t) => t.type === "investment" || t.type === "in")
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p1Transactions]
-  );
-
-  const p2TotalInvestment = useMemo(
-    () =>
-      p2Transactions
-        .filter((t) => t.type === "investment" || t.type === "in")
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p2Transactions]
-  );
-
-  const combinedTotalInvestment = p1TotalInvestment + p2TotalInvestment;
-
-  // 2. Automatic Profit Sharing: Investment Ratio Calculation
-  // When combined investment is 0, default to 50/50.
-  const p1RatioPercent = useMemo(() => {
-    if (combinedTotalInvestment <= 0) return 50;
-    return parseFloat(((p1TotalInvestment / combinedTotalInvestment) * 100).toFixed(2));
-  }, [p1TotalInvestment, combinedTotalInvestment]);
-
-  const p2RatioPercent = useMemo(() => {
-    if (combinedTotalInvestment <= 0) return 50;
-    return parseFloat(((p2TotalInvestment / combinedTotalInvestment) * 100).toFixed(2));
-  }, [p2TotalInvestment, combinedTotalInvestment]);
-
-  // Total Capital Withdrawals / Advances
-  const p1TotalAdvance = useMemo(
-    () =>
-      p1Transactions
-        .filter((t) => t.type === "withdrawal" || t.type === "out")
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p1Transactions]
-  );
-
-  const p2TotalAdvance = useMemo(
-    () =>
-      p2Transactions
-        .filter((t) => t.type === "withdrawal" || t.type === "out")
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p2Transactions]
-  );
-
-  // Outstanding (unsettled) advances taken by each partner
-  const p1OutstandingAdvance = useMemo(
-    () =>
-      p1Transactions
-        .filter((t) => (t.type === "withdrawal" || t.type === "out") && !t.isSettled)
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p1Transactions]
-  );
-
-  const p2OutstandingAdvance = useMemo(
-    () =>
-      p2Transactions
-        .filter((t) => (t.type === "withdrawal" || t.type === "out") && !t.isSettled)
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p2Transactions]
-  );
-
-  // Total Profit Payouts Received
-  const p1TotalProfitReceived = useMemo(
-    () =>
-      p1Transactions
-        .filter((t) => t.type === "profit_payout")
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p1Transactions]
-  );
-
-  const p2TotalProfitReceived = useMemo(
-    () =>
-      p2Transactions
-        .filter((t) => t.type === "profit_payout")
-        .reduce((sum, t) => sum + t.amount, 0),
-    [p2Transactions]
-  );
-
-  // Net Capital Standing (Investment - Advance)
-  const p1NetCapital = p1TotalInvestment - p1TotalAdvance;
-  const p2NetCapital = p2TotalInvestment - p2TotalAdvance;
-
-  // Profit Distribution calculation on distributable profit pool
-  const p1GrossProfit = Math.round((distributableProfit * p1RatioPercent) / 100);
-  const p2GrossProfit = Math.round(distributableProfit - p1GrossProfit);
-
-  // Auto-calculated advance deduction: deduct up to the available profit share
-  const p1AdvanceToDeduct = Math.min(p1GrossProfit, p1OutstandingAdvance);
-  const p2AdvanceToDeduct = Math.min(p2GrossProfit, p2OutstandingAdvance);
-
-  // Net profit payable after deducting advance
-  const p1NetPayable = Math.max(0, p1GrossProfit - p1AdvanceToDeduct);
-  const p2NetPayable = Math.max(0, p2GrossProfit - p2AdvanceToDeduct);
-
-  // 4. Filtered Transactions (Unified date filter, partner, type & search)
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((t) => {
-      // Partner Filter
-      if (selectedPartnerFilter !== "all" && t.partnerId !== selectedPartnerFilter) return false;
-
-      // Type Filter
-      if (selectedTypeFilter !== "all") {
-        if (selectedTypeFilter === "investment" && t.type !== "investment" && t.type !== "in") return false;
-        if (selectedTypeFilter === "withdrawal" && t.type !== "withdrawal" && t.type !== "out") return false;
-        if (selectedTypeFilter === "profit_payout" && t.type !== "profit_payout") return false;
+  // Ensure default partnerId selection is valid whenever partners change
+  useEffect(() => {
+    if (partners.length > 0) {
+      if (!partners.some((p) => p.id === partnerId)) {
+        setPartnerId(partners[0].id);
       }
+      if (!partners.some((p) => p.id === editPartnerId)) {
+        setEditPartnerId(partners[0].id);
+      }
+    }
+  }, [partners, partnerId, editPartnerId]);
 
-      // Universal Date Range Filter
-      if (!isRecordInDateRange(t.date || t.createdAt, dateFilter)) return false;
+  // 3. Dynamic Partner Calculations (Investment, Advances, Ratio, Net Capital)
+  const { partnerStatsMap, combinedTotalInvestment } = useMemo(() => {
+    const stats: Record<
+      string,
+      {
+        partner: PartnerConfig;
+        totalInvestment: number;
+        totalAdvance: number;
+        outstandingAdvance: number;
+        totalProfitReceived: number;
+        netCapital: number;
+        ratioPercent: number;
+      }
+    > = {};
 
-      // Search Filter
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const pName = t.partnerId === "partner_1" ? partner1Name.toLowerCase() : partner2Name.toLowerCase();
-        return (
-          t.description?.toLowerCase().includes(q) ||
-          t.paymentMethod?.toLowerCase().includes(q) ||
-          t.reference?.toLowerCase().includes(q) ||
-          pName.includes(q)
+    let totalCombined = 0;
+
+    partners.forEach((p) => {
+      const pTxs = transactions.filter((t) => t.partnerId === p.id);
+      const totalInvestment = pTxs
+        .filter((t) => t.type === "investment" || t.type === "in")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const totalAdvance = pTxs
+        .filter((t) => t.type === "withdrawal" || t.type === "out")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const outstandingAdvance = pTxs
+        .filter((t) => (t.type === "withdrawal" || t.type === "out") && !t.isSettled)
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const totalProfitReceived = pTxs
+        .filter((t) => t.type === "profit_payout")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const netCapital = totalInvestment - totalAdvance;
+
+      totalCombined += totalInvestment;
+
+      stats[p.id] = {
+        partner: p,
+        totalInvestment,
+        totalAdvance,
+        outstandingAdvance,
+        totalProfitReceived,
+        netCapital,
+        ratioPercent: 0,
+      };
+    });
+
+    // Compute automatic investment ratios
+    const count = partners.length || 1;
+    partners.forEach((p) => {
+      if (totalCombined <= 0) {
+        stats[p.id].ratioPercent = parseFloat((100 / count).toFixed(2));
+      } else {
+        stats[p.id].ratioPercent = parseFloat(
+          ((stats[p.id].totalInvestment / totalCombined) * 100).toFixed(2)
         );
       }
+    });
 
-      return true;
-    }).sort(comparePartnerTxNewestFirst);
-  }, [transactions, selectedPartnerFilter, selectedTypeFilter, dateFilter, searchQuery, partner1Name, partner2Name]);
+    return { partnerStatsMap: stats, combinedTotalInvestment: totalCombined };
+  }, [partners, transactions]);
+
+  // 4. Live Dynamic Profit Distribution Breakdown across all active partners
+  const profitDistributionPreview = useMemo(() => {
+    let allocatedGross = 0;
+    return partners.map((p, idx) => {
+      const isLast = idx === partners.length - 1;
+      const stat = partnerStatsMap[p.id] || {
+        ratioPercent: 0,
+        outstandingAdvance: 0,
+      };
+
+      const grossProfit = isLast
+        ? Math.max(0, distributableProfit - allocatedGross)
+        : Math.round((distributableProfit * stat.ratioPercent) / 100);
+      allocatedGross += grossProfit;
+
+      const advanceToDeduct = Math.min(grossProfit, stat.outstandingAdvance);
+      const netPayable = Math.max(0, grossProfit - advanceToDeduct);
+
+      return {
+        partner: p,
+        ratioPercent: stat.ratioPercent,
+        grossProfit,
+        advanceToDeduct,
+        netPayable,
+        outstandingAdvance: stat.outstandingAdvance,
+      };
+    });
+  }, [partners, partnerStatsMap, distributableProfit]);
+
+  // 5. Filtered Transactions (Unified date filter, partner, type & search)
+  const filteredTransactions = useMemo(() => {
+    return transactions
+      .filter((t) => {
+        // Partner Filter
+        if (selectedPartnerFilter !== "all" && t.partnerId !== selectedPartnerFilter) return false;
+
+        // Type Filter
+        if (selectedTypeFilter !== "all") {
+          if (selectedTypeFilter === "investment" && t.type !== "investment" && t.type !== "in") return false;
+          if (selectedTypeFilter === "withdrawal" && t.type !== "withdrawal" && t.type !== "out") return false;
+          if (selectedTypeFilter === "profit_payout" && t.type !== "profit_payout") return false;
+        }
+
+        // Universal Date Range Filter
+        if (!isRecordInDateRange(t.date || t.createdAt, dateFilter)) return false;
+
+        // Search Filter
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const pName = getPartnerName(t.partnerId, t.partnerName).toLowerCase();
+          return (
+            t.description?.toLowerCase().includes(q) ||
+            t.paymentMethod?.toLowerCase().includes(q) ||
+            t.reference?.toLowerCase().includes(q) ||
+            pName.includes(q)
+          );
+        }
+
+        return true;
+      })
+      .sort(comparePartnerTxNewestFirst);
+  }, [transactions, selectedPartnerFilter, selectedTypeFilter, dateFilter, searchQuery, partners]);
 
   // Compute date scope counts for Bulk Delete modal
   const scopeCounts = useMemo(() => {
@@ -447,6 +549,97 @@ export default function PartnersKhataPage() {
     );
   };
 
+  // =========================================================================
+  // PARTNER MANAGEMENT HANDLERS (Add, Edit with Smooth Backspace, Remove)
+  // =========================================================================
+
+  const handleOpenPartnerModal = () => {
+    // Deep clone so active typing is completely isolated from background sync
+    setEditingPartnerList(JSON.parse(JSON.stringify(partners)));
+    setIsPartnerModalOpen(true);
+  };
+
+  const handleUpdatePartnerName = (index: number, newName: string) => {
+    setEditingPartnerList((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], name: newName };
+      return updated;
+    });
+  };
+
+  const handleAddPartner = () => {
+    const nextIdx = editingPartnerList.length + 1;
+    const newPartner: PartnerConfig = {
+      id: `partner_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: `Partner ${nextIdx}`,
+      createdAt: new Date().toISOString(),
+    };
+    setEditingPartnerList((prev) => [...prev, newPartner]);
+  };
+
+  const handlePromptDeletePartner = (partner: PartnerConfig) => {
+    if (editingPartnerList.length <= 1) {
+      alert("Kam az kam 1 partner ka hona zaroori hai.");
+      return;
+    }
+    setPartnerToDelete(partner);
+    setIsDeleteWarningModalOpen(true);
+  };
+
+  const handleConfirmDeletePartner = () => {
+    if (!partnerToDelete) return;
+    setEditingPartnerList((prev) => prev.filter((p) => p.id !== partnerToDelete.id));
+    setIsDeleteWarningModalOpen(false);
+    setPartnerToDelete(null);
+  };
+
+  const handleSavePartnerModal = async () => {
+    const cleaned = editingPartnerList.map((p, idx) => ({
+      ...p,
+      name: cleanPartnerName(p.name, `Partner ${idx + 1}`),
+    }));
+
+    if (cleaned.length === 0) {
+      alert("Kam az kam 1 partner ka hona zaroori hai.");
+      return;
+    }
+
+    // 1. Commit to React state immediately
+    setPartners(cleaned);
+    setIsPartnerModalOpen(false);
+
+    // 2. Commit to LocalStorage
+    localStorage.setItem("nox_partner_configs", JSON.stringify(cleaned));
+    if (cleaned[0]) localStorage.setItem("nox_partner_1_name", cleaned[0].name);
+    if (cleaned[1]) localStorage.setItem("nox_partner_2_name", cleaned[1].name);
+
+    // 3. Sync to Cloud Firestore
+    firestoreSyncBackground(
+      setDoc(
+        doc(firestoreDb, "partnerSettings", "config"),
+        { partners: cleaned, updatedAt: new Date().toISOString() },
+        { merge: true }
+      ),
+      () => scheduleCloudUpsert("partnerSettings", "config", { partners: cleaned, updatedAt: new Date().toISOString() })
+    );
+
+    // 4. Audit Trail
+    recordActivity({
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      action: "update",
+      entityType: "settings",
+      entityId: "partnerSettings_config",
+      entityTitle: `Updated Partners Configuration (${cleaned.length} Partners)`,
+      details: `Active partners: ${cleaned.map((p) => p.name).join(", ")}`,
+    }).catch(console.warn);
+  };
+
+  // =========================================================================
+  // TRANSACTION SUBMISSIONS
+  // =========================================================================
+
   // Handle Add Transaction Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -462,10 +655,11 @@ export default function PartnersKhataPage() {
 
     setIsSubmitting(true);
     try {
+      const pName = getPartnerName(partnerId);
       const newTx: PartnerTransaction = {
         id: `ptx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         partnerId,
-        partnerName: partnerId === "partner_1" ? partner1Name : partner2Name,
+        partnerName: pName,
         type,
         amount: numAmount,
         date,
@@ -515,125 +709,103 @@ export default function PartnersKhataPage() {
     }
   };
 
-  // Record Profit Share directly into Ledger for both partners
+  // Record Profit Share directly into Ledger for all active partners
   const handleRecordDistributedProfit = async () => {
     if (distributableProfit <= 0) {
       alert("Distributable profit ki raqam 0 se zyada honi chahiye.");
       return;
     }
-
-    const confirmMsg =
-      `Kya aap waqai Rs ${distributableProfit.toLocaleString()} profit dono partners ke darmiyan record karna chahte hain?\n\n` +
-      `• ${partner1Name} (${p1RatioPercent}%):\n` +
-      `   Gross Profit: ${formatPKR(p1GrossProfit)}\n` +
-      `   Advance Cut (پیشگی کٹوتی): -${formatPKR(p1AdvanceToDeduct)}\n` +
-      `   Net Payout: ${formatPKR(p1NetPayable)}\n\n` +
-      `• ${partner2Name} (${p2RatioPercent}%):\n` +
-      `   Gross Profit: ${formatPKR(p2GrossProfit)}\n` +
-      `   Advance Cut (پیشگی کٹوتی): -${formatPKR(p2AdvanceToDeduct)}\n` +
-      `   Net Payout: ${formatPKR(p2NetPayable)}`;
-
-    if (!confirm(confirmMsg)) {
+    if (partners.length === 0) {
+      alert("Koi partner mojood nahi hai.");
       return;
     }
+
+    let confirmMsg = `Kya aap waqai Rs ${distributableProfit.toLocaleString()} profit tamam partners ke darmiyan record karna chahte hain?\n\n`;
+    profitDistributionPreview.forEach((item) => {
+      confirmMsg += `• ${item.partner.name} (${item.ratioPercent}%):\n`;
+      confirmMsg += `   Gross Profit: ${formatPKR(item.grossProfit)}\n`;
+      if (item.advanceToDeduct > 0) {
+        confirmMsg += `   Advance Cut (پیشگی کٹوتی): -${formatPKR(item.advanceToDeduct)}\n`;
+      }
+      confirmMsg += `   Net Payout: ${formatPKR(item.netPayable)}\n\n`;
+    });
+
+    if (!confirm(confirmMsg)) return;
 
     setIsSubmitting(true);
     try {
       const today = new Date().toISOString().split("T")[0];
       const nowIso = new Date().toISOString();
 
-      // Find unsettled advance transactions to mark as settled
-      const p1SettledIds: string[] = [];
-      let p1RemainingDeduction = p1AdvanceToDeduct;
-      const p1Updates: PartnerTransaction[] = [];
+      const newTxList: PartnerTransaction[] = [];
+      const allSettledAdvanceUpdates: PartnerTransaction[] = [];
 
-      for (const t of p1Transactions) {
-        if ((t.type === "withdrawal" || t.type === "out") && !t.isSettled && p1RemainingDeduction > 0) {
-          p1SettledIds.push(t.id);
-          p1RemainingDeduction -= t.amount;
-          p1Updates.push({ ...t, isSettled: true });
+      profitDistributionPreview.forEach((item, idx) => {
+        const pTxs = transactions.filter((t) => t.partnerId === item.partner.id);
+        const settledIds: string[] = [];
+        let remainingDeduction = item.advanceToDeduct;
+
+        for (const t of pTxs) {
+          if ((t.type === "withdrawal" || t.type === "out") && !t.isSettled && remainingDeduction > 0) {
+            settledIds.push(t.id);
+            remainingDeduction -= t.amount;
+            allSettledAdvanceUpdates.push({ ...t, isSettled: true });
+          }
         }
-      }
 
-      const p2SettledIds: string[] = [];
-      let p2RemainingDeduction = p2AdvanceToDeduct;
-      const p2Updates: PartnerTransaction[] = [];
-
-      for (const t of p2Transactions) {
-        if ((t.type === "withdrawal" || t.type === "out") && !t.isSettled && p2RemainingDeduction > 0) {
-          p2SettledIds.push(t.id);
-          p2RemainingDeduction -= t.amount;
-          p2Updates.push({ ...t, isSettled: true });
-        }
-      }
-
-      const txP1: PartnerTransaction = {
-        id: `ptx_profit_p1_${Date.now()}`,
-        partnerId: "partner_1",
-        partnerName: partner1Name,
-        type: "profit_payout",
-        amount: p1NetPayable,
-        date: today,
-        paymentMethod: "bank_transfer",
-        description: `Profit Share (${p1RatioPercent}% of Rs ${distributableProfit.toLocaleString()}): Gross ${formatPKR(p1GrossProfit)} - Advance Cut ${formatPKR(p1AdvanceToDeduct)} = Net Paid ${formatPKR(p1NetPayable)}`,
-        reference: `PROFIT-${today}`,
-        grossProfit: p1GrossProfit,
-        advanceDeducted: p1AdvanceToDeduct,
-        netPaid: p1NetPayable,
-        settledAdvanceTxIds: p1SettledIds,
-        createdById: currentUser?.id,
-        createdByName: currentUser?.displayName || "Admin",
-        createdAt: nowIso,
-      };
-
-      const txP2: PartnerTransaction = {
-        id: `ptx_profit_p2_${Date.now() + 1}`,
-        partnerId: "partner_2",
-        partnerName: partner2Name,
-        type: "profit_payout",
-        amount: p2NetPayable,
-        date: today,
-        paymentMethod: "bank_transfer",
-        description: `Profit Share (${p2RatioPercent}% of Rs ${distributableProfit.toLocaleString()}): Gross ${formatPKR(p2GrossProfit)} - Advance Cut ${formatPKR(p2AdvanceToDeduct)} = Net Paid ${formatPKR(p2NetPayable)}`,
-        reference: `PROFIT-${today}`,
-        grossProfit: p2GrossProfit,
-        advanceDeducted: p2AdvanceToDeduct,
-        netPaid: p2NetPayable,
-        settledAdvanceTxIds: p2SettledIds,
-        createdById: currentUser?.id,
-        createdByName: currentUser?.displayName || "Admin",
-        createdAt: nowIso,
-      };
+        const tx: PartnerTransaction = {
+          id: `ptx_profit_${item.partner.id}_${Date.now()}_${idx}`,
+          partnerId: item.partner.id,
+          partnerName: item.partner.name,
+          type: "profit_payout",
+          amount: item.netPayable,
+          date: today,
+          paymentMethod: "bank_transfer",
+          description: `Profit Share (${item.ratioPercent}% of Rs ${distributableProfit.toLocaleString()}): Gross ${formatPKR(item.grossProfit)}${
+            item.advanceToDeduct > 0 ? ` - Advance Cut ${formatPKR(item.advanceToDeduct)}` : ""
+          } = Net Paid ${formatPKR(item.netPayable)}`,
+          reference: `PROFIT-${today}`,
+          grossProfit: item.grossProfit,
+          advanceDeducted: item.advanceToDeduct,
+          netPaid: item.netPayable,
+          settledAdvanceTxIds: settledIds,
+          createdById: currentUser?.id,
+          createdByName: currentUser?.displayName || "Admin",
+          createdAt: nowIso,
+        };
+        newTxList.push(tx);
+      });
 
       // 1. Update Dexie immediately
-      const allUpdates = [...p1Updates, ...p2Updates];
-      if (allUpdates.length > 0) {
-        await offlineDb.partnerTransactions.bulkPut(allUpdates);
+      if (allSettledAdvanceUpdates.length > 0) {
+        await offlineDb.partnerTransactions.bulkPut(allSettledAdvanceUpdates);
       }
-      await offlineDb.partnerTransactions.bulkAdd([txP1, txP2]);
+      await offlineDb.partnerTransactions.bulkAdd(newTxList);
 
       // 2. Update React state immediately
       setTransactions((prev) => {
-        const updateMap = new Map(allUpdates.map((u) => [u.id, u]));
+        const updateMap = new Map(allSettledAdvanceUpdates.map((u) => [u.id, u]));
         const updatedPrev = prev.map((item) => updateMap.get(item.id) || item);
-        return [txP1, txP2, ...updatedPrev].sort(comparePartnerTxNewestFirst);
+        return [...newTxList, ...updatedPrev].sort(comparePartnerTxNewestFirst);
       });
 
-      // 3. Close modal immediately
+      // 3. Close modal
       setShowProfitDistributorModal(false);
       setIsSubmitting(false);
 
       // 4. Background cloud sync
       firestoreSyncBackground(
         Promise.all([
-          setDoc(doc(firestoreDb, "partnerTransactions", txP1.id), sanitizeForFirestore(txP1), { merge: true }),
-          setDoc(doc(firestoreDb, "partnerTransactions", txP2.id), sanitizeForFirestore(txP2), { merge: true }),
-          ...allUpdates.map((u) => setDoc(doc(firestoreDb, "partnerTransactions", u.id), sanitizeForFirestore(u), { merge: true })),
+          ...newTxList.map((tx) =>
+            setDoc(doc(firestoreDb, "partnerTransactions", tx.id), sanitizeForFirestore(tx), { merge: true })
+          ),
+          ...allSettledAdvanceUpdates.map((u) =>
+            setDoc(doc(firestoreDb, "partnerTransactions", u.id), sanitizeForFirestore(u), { merge: true })
+          ),
         ]),
         () => {
-          scheduleCloudUpsert("partnerTransactions", txP1.id, txP1);
-          scheduleCloudUpsert("partnerTransactions", txP2.id, txP2);
-          allUpdates.forEach((u) => scheduleCloudUpsert("partnerTransactions", u.id, u));
+          newTxList.forEach((tx) => scheduleCloudUpsert("partnerTransactions", tx.id, tx));
+          allSettledAdvanceUpdates.forEach((u) => scheduleCloudUpsert("partnerTransactions", u.id, u));
         }
       );
 
@@ -644,12 +816,12 @@ export default function PartnersKhataPage() {
         userRole: currentUser?.role || "owner",
         action: "create",
         entityType: "transaction",
-        entityId: `${txP1.id}, ${txP2.id}`,
-        entityTitle: `Distributed Profit - ${partner1Name} & ${partner2Name}`,
-        details: `Distributed total PKR ${distributableProfit.toLocaleString()} profit. Net paid: ${partner1Name} ${formatPKR(p1NetPayable)} (after -${formatPKR(p1AdvanceToDeduct)} advance), ${partner2Name} ${formatPKR(p2NetPayable)} (after -${formatPKR(p2AdvanceToDeduct)} advance).`,
+        entityId: newTxList.map((t) => t.id).join(", "),
+        entityTitle: `Distributed Profit - ${partners.map((p) => p.name).join(" & ")}`,
+        details: `Distributed total PKR ${distributableProfit.toLocaleString()} profit across ${partners.length} partners.`,
       }).catch(console.warn);
 
-      alert("Dono partners ka profit share (advance cut karke) kamyabi se khate mein darj ho gaya hai!");
+      alert("Tamam partners ka profit share (advance cut karke) kamyabi se khate mein darj ho gaya hai!");
     } catch (err) {
       console.error("Error recording profit:", err);
       alert("Profit share record karne mein masla aaya.");
@@ -659,12 +831,8 @@ export default function PartnersKhataPage() {
 
   // Open Edit Modal
   const handleOpenEditModal = (tx: PartnerTransaction) => {
-    if (tx.type === "profit_payout" || (tx.type as string) === "profit") {
-      alert("Profit distribute wali entry edit nahi ho sakti, sirf delete ho sakti hai.");
-      return;
-    }
     setEditingTx(tx);
-    setEditPartnerId(tx.partnerId === "partner_2" ? "partner_2" : "partner_1");
+    setEditPartnerId(tx.partnerId || partners[0]?.id || "partner_1");
     setEditType(tx.type);
     setEditAmount(String(tx.amount));
     setEditDate(tx.date || new Date().toISOString().split("T")[0]);
@@ -679,13 +847,6 @@ export default function PartnersKhataPage() {
     e.preventDefault();
     if (!editingTx) return;
 
-    if (editingTx.type === "profit_payout" || (editingTx.type as string) === "profit") {
-      alert("Profit distribute wali entry edit nahi ho sakti, sirf delete ho sakti hai.");
-      setIsEditModalOpen(false);
-      setEditingTx(null);
-      return;
-    }
-
     const numAmount = parseFloat(editAmount);
     if (isNaN(numAmount) || numAmount <= 0) {
       alert("Barah-e-karam durust raqam (amount) darj karein.");
@@ -696,11 +857,13 @@ export default function PartnersKhataPage() {
       return;
     }
 
+    setIsSavingEdit(true);
     try {
+      const pName = getPartnerName(editPartnerId);
       const updatedTx: PartnerTransaction = {
         ...editingTx,
         partnerId: editPartnerId,
-        partnerName: editPartnerId === "partner_1" ? partner1Name : partner2Name,
+        partnerName: pName,
         type: editType,
         amount: numAmount,
         date: editDate,
@@ -748,7 +911,7 @@ export default function PartnersKhataPage() {
     }
   };
 
-  // Execute Bulk Delete (Scope: Selected, Today, Weekly, Monthly, Custom, All)
+  // Execute Bulk Delete
   const handleExecuteBulkDelete = async (
     scope: DeleteScopeType,
     customStart?: string,
@@ -819,7 +982,7 @@ export default function PartnersKhataPage() {
         }
       );
 
-      // 5. Audit record
+      // 4. Audit record
       recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
@@ -846,7 +1009,6 @@ export default function PartnersKhataPage() {
     const targetTx = deletingTx;
 
     try {
-      // If deleting a profit distribution that settled advances, un-settle those advances!
       const unSettledUpdates: PartnerTransaction[] = [];
       if (targetTx.type === "profit_payout" && targetTx.settledAdvanceTxIds && targetTx.settledAdvanceTxIds.length > 0) {
         for (const sid of targetTx.settledAdvanceTxIds) {
@@ -888,7 +1050,7 @@ export default function PartnersKhataPage() {
         }
       );
 
-      // 5. Audit record
+      // 4. Audit record
       recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
@@ -910,8 +1072,6 @@ export default function PartnersKhataPage() {
 
   // WhatsApp share statement (Clean, concise & to-the-point)
   const shareWhatsApp = () => {
-    const p1 = cleanPartnerName(partner1Name, "Partner 1");
-    const p2 = cleanPartnerName(partner2Name, "Partner 2");
     const brand = businessSettings?.brandName || "NOXDERMA PHARMACEUTICALS";
     const period = getDateFilterDescription(dateFilter);
 
@@ -921,17 +1081,17 @@ export default function PartnersKhataPage() {
     text += `─────────────────────────\n\n`;
 
     text += `💰 *CAPITAL & SHARE:*\n`;
-    text += `• *${p1}:* ${formatPKR(p1TotalInvestment)} (${p1RatioPercent}%)\n`;
-    text += `• *${p2}:* ${formatPKR(p2TotalInvestment)} (${p2RatioPercent}%)\n`;
+    partners.forEach((p) => {
+      const stat = partnerStatsMap[p.id];
+      text += `• *${p.name}:* ${formatPKR(stat?.totalInvestment || 0)} (${stat?.ratioPercent || 0}%)\n`;
+    });
     text += `• *Total Capital:* ${formatPKR(combinedTotalInvestment)}\n\n`;
 
-    text += `📈 *PROFIT DISTRIBUTION (Per 100k):*\n`;
-    text += `• *${p1} (${p1RatioPercent}%):* ${formatPKR(Math.round(100000 * (p1RatioPercent / 100)))}\n`;
-    text += `• *${p2} (${p2RatioPercent}%):* ${formatPKR(Math.round(100000 * (p2RatioPercent / 100)))}\n\n`;
-
     text += `💼 *CURRENT NET CAPITAL:*\n`;
-    text += `• *${p1}:* ${formatPKR(p1NetCapital)}\n`;
-    text += `• *${p2}:* ${formatPKR(p2NetCapital)}\n`;
+    partners.forEach((p) => {
+      const stat = partnerStatsMap[p.id];
+      text += `• *${p.name}:* ${formatPKR(stat?.netCapital || 0)}\n`;
+    });
     text += `─────────────────────────\n`;
     text += `_Generated via Noxderma ERP_`;
 
@@ -966,47 +1126,71 @@ export default function PartnersKhataPage() {
             <thead className="bg-slate-100">
               <tr className="border-b border-black">
                 <th className="p-2 border-r border-black font-black">Audit Metric / Detail</th>
-                <th className="p-2 border-r border-black font-black text-right">{partner1Name}</th>
-                <th className="p-2 border-r border-black font-black text-right">{partner2Name}</th>
+                {partners.map((p) => (
+                  <th key={p.id} className="p-2 border-r border-black font-black text-right">
+                    {p.name}
+                  </th>
+                ))}
                 <th className="p-2 font-black text-right bg-slate-200">Combined Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black">
               <tr>
                 <td className="p-2 border-r border-black font-bold">Total Capital Invested (Sarmayakari)</td>
-                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1TotalInvestment)}</td>
-                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2TotalInvestment)}</td>
+                {partners.map((p) => (
+                  <td key={p.id} className="p-2 border-r border-black font-mono font-bold text-right">
+                    {formatPKR(partnerStatsMap[p.id]?.totalInvestment || 0)}
+                  </td>
+                ))}
                 <td className="p-2 font-mono font-black text-right bg-slate-50">{formatPKR(combinedTotalInvestment)}</td>
               </tr>
               <tr className="bg-slate-50">
                 <td className="p-2 border-r border-black font-black">Investment Ownership Share (%)</td>
-                <td className="p-2 border-r border-black font-mono font-black text-right">{p1RatioPercent}%</td>
-                <td className="p-2 border-r border-black font-mono font-black text-right">{p2RatioPercent}%</td>
+                {partners.map((p) => (
+                  <td key={p.id} className="p-2 border-r border-black font-mono font-black text-right">
+                    {partnerStatsMap[p.id]?.ratioPercent || 0}%
+                  </td>
+                ))}
                 <td className="p-2 font-mono font-black text-right bg-slate-100">100.0%</td>
               </tr>
               <tr>
-                <td className="p-2 border-r border-black font-bold">Gross Profit Share (on Rs {distributableProfit.toLocaleString()})</td>
-                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1GrossProfit)}</td>
-                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2GrossProfit)}</td>
-                <td className="p-2 font-mono font-black text-right bg-slate-50">{formatPKR(distributableProfit)}</td>
-              </tr>
-              <tr>
                 <td className="p-2 border-r border-black font-bold">Total Advance Taken (پیشگی رقم)</td>
-                <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p1TotalAdvance)}</td>
-                <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p2TotalAdvance)}</td>
-                <td className="p-2 font-mono text-right bg-slate-50">-{formatPKR(p1TotalAdvance + p2TotalAdvance)}</td>
+                {partners.map((p) => (
+                  <td key={p.id} className="p-2 border-r border-black font-mono text-right text-rose-700">
+                    -{formatPKR(partnerStatsMap[p.id]?.totalAdvance || 0)}
+                  </td>
+                ))}
+                <td className="p-2 font-mono text-right bg-slate-50">
+                  -{formatPKR(
+                    partners.reduce((sum, p) => sum + (partnerStatsMap[p.id]?.totalAdvance || 0), 0)
+                  )}
+                </td>
               </tr>
               <tr>
                 <td className="p-2 border-r border-black font-bold">Total Profit Disbursed</td>
-                <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p1TotalProfitReceived)}</td>
-                <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p2TotalProfitReceived)}</td>
-                <td className="p-2 font-mono text-right bg-slate-50">{formatPKR(p1TotalProfitReceived + p2TotalProfitReceived)}</td>
+                {partners.map((p) => (
+                  <td key={p.id} className="p-2 border-r border-black font-mono text-right text-emerald-700">
+                    {formatPKR(partnerStatsMap[p.id]?.totalProfitReceived || 0)}
+                  </td>
+                ))}
+                <td className="p-2 font-mono text-right bg-slate-50">
+                  {formatPKR(
+                    partners.reduce((sum, p) => sum + (partnerStatsMap[p.id]?.totalProfitReceived || 0), 0)
+                  )}
+                </td>
               </tr>
               <tr className="bg-slate-100 font-black">
                 <td className="p-2 border-r border-black font-black">Net Capital Standing (سرمایہ مائنس پیشگی)</td>
-                <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p1NetCapital)}</td>
-                <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p2NetCapital)}</td>
-                <td className="p-2 font-mono text-right bg-slate-200">{formatPKR(p1NetCapital + p2NetCapital)}</td>
+                {partners.map((p) => (
+                  <td key={p.id} className="p-2 border-r border-black font-mono text-right">
+                    {formatPKR(partnerStatsMap[p.id]?.netCapital || 0)}
+                  </td>
+                ))}
+                <td className="p-2 font-mono text-right bg-slate-200">
+                  {formatPKR(
+                    partners.reduce((sum, p) => sum + (partnerStatsMap[p.id]?.netCapital || 0), 0)
+                  )}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1035,7 +1219,7 @@ export default function PartnersKhataPage() {
                   <td className="p-1.5 border-r border-black font-mono">{idx + 1}</td>
                   <td className="p-1.5 border-r border-black font-mono">{tx.date}</td>
                   <td className="p-1.5 border-r border-black font-bold">
-                    {tx.partnerId === "partner_1" ? partner1Name : partner2Name}
+                    {getPartnerName(tx.partnerId, tx.partnerName)}
                   </td>
                   <td className="p-1.5 border-r border-black uppercase font-semibold">
                     {tx.type === "investment" || tx.type === "in"
@@ -1060,17 +1244,14 @@ export default function PartnersKhataPage() {
         </div>
 
         {/* Official Sign-off Signatures Block */}
-        <div className="pt-10 mt-8 border-t-2 border-black grid grid-cols-3 gap-8 text-center text-[10px]">
-          <div>
-            <div className="border-b border-black pb-8 mb-1"></div>
-            <p className="font-black text-black">{partner1Name}</p>
-            <p className="text-slate-600">Partner 1 Signature &amp; Stamp</p>
-          </div>
-          <div>
-            <div className="border-b border-black pb-8 mb-1"></div>
-            <p className="font-black text-black">{partner2Name}</p>
-            <p className="text-slate-600">Partner 2 Signature &amp; Stamp</p>
-          </div>
+        <div className="pt-10 mt-8 border-t-2 border-black grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6 text-center text-[10px]">
+          {partners.map((p) => (
+            <div key={p.id}>
+              <div className="border-b border-black pb-8 mb-1"></div>
+              <p className="font-black text-black">{p.name}</p>
+              <p className="text-slate-600">Partner Signature &amp; Stamp</p>
+            </div>
+          ))}
           <div>
             <div className="border-b border-black pb-8 mb-1"></div>
             <p className="font-black text-black">Authorized Accountant / Auditor</p>
@@ -1098,40 +1279,49 @@ export default function PartnersKhataPage() {
               >
                 <ArrowLeft className="w-4 h-4" />
               </Link>
-              <h1 className="text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2 truncate">
-                <Users2 className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600 shrink-0" />
-                <span className="truncate">Partners Investment &amp; Profit Sharing</span>
-              </h1>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Users2 className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600 shrink-0" />
+                    <span>Partners Investment &amp; Profit Sharing</span>
+                  </h1>
+                  <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 shrink-0">
+                    {partners.length} Partners
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
+                  Complete partnership capital audit, real-time cloud sync &amp; multi-partner profit ledger
+                </p>
+              </div>
             </div>
-            <p className="text-[11px] sm:text-sm text-slate-500 mt-1 pl-7 sm:pl-9">
-              Dono partners ki separate investment, automatic ratio recalculation, aur advance cut karke profit distribution.
-            </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handleOpenPartnerModal}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/70 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-100 transition-all shadow-sm"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>Manage Partners ({partners.length})</span>
+            </button>
             <button
               type="button"
               onClick={shareWhatsApp}
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs sm:text-sm font-bold hover:bg-emerald-100 transition-all btn-interactive"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 transition-all shadow-sm"
+              title="Share via WhatsApp"
             >
-              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
-              <span className="truncate">WhatsApp</span>
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">WhatsApp</span>
             </button>
             <button
               type="button"
               onClick={() => setShowPrintPreview(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold hover:bg-slate-50 transition-all btn-interactive shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
+              title="Print Audit Statement"
             >
-              <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600 shrink-0" />
-              <span className="truncate">Print Sheet</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDeleteModalOpen(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-100 transition-all btn-interactive shadow-sm"
-            >
-              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
-              <span className="truncate">Delete / Purge</span>
+              <Printer className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">Print Statement</span>
             </button>
             <button
               type="button"
@@ -1139,111 +1329,94 @@ export default function PartnersKhataPage() {
                 setType("investment");
                 setIsModalOpen(true);
               }}
-              className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-extrabold shadow-md shadow-teal-600/20 transition-all btn-interactive col-span-2 sm:col-span-1"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all"
             >
-              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5] shrink-0" />
-              <span className="truncate">Nai Entry / Sarmaya</span>
+              <Plus className="w-4 h-4" />
+              <span>Add Transaction</span>
             </button>
           </div>
         </div>
 
         {/* ============================================================== */}
-        {/* AUTOMATIC PROFIT SHARING & INVESTMENT RATIO CALCULATOR CARD    */}
+        {/* AUTOMATIC MULTI-PARTNER PROFIT SHARING RATIO CARD             */}
         {/* ============================================================== */}
-        <div className="p-3.5 sm:p-6 rounded-2xl bg-gradient-to-br from-teal-500/10 via-white to-indigo-500/10 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 border-2 border-teal-500/30 shadow-soft space-y-4 sm:space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-teal-500/10 via-slate-50 to-indigo-500/10 dark:from-teal-950/30 dark:via-slate-900 dark:to-indigo-950/30 border border-teal-500/30 shadow-soft space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20 shrink-0">
-                <PieChart className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-md shadow-teal-600/20 shrink-0">
+                <PieChart className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
-                  <span>Automatic Profit Sharing Ratio</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
-                    Live
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
+                    Automatic Multi-Partner Profit Sharing
+                  </h2>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    Live Calculation
                   </span>
-                </h2>
+                </div>
                 <p className="text-[11px] sm:text-xs text-slate-500">
-                  Profit sirf dono partners ki total investment ke ratio se distribute hota hai.
+                  Profit tamam partners ki kul sarmayakari (total investment) ke ratio se distribute hota hai.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setEditingNames(!editingNames)}
-                className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-teal-600 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm"
-              >
-                <Edit2 className="w-3.5 h-3.5 text-teal-600" />
-                {editingNames ? "Close Edit" : "Edit Partner Names"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleOpenPartnerModal}
+              className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-teal-600 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm shrink-0"
+            >
+              <Edit2 className="w-3.5 h-3.5 text-teal-600" />
+              <span>Edit Partner Names / Add Partner</span>
+            </button>
           </div>
 
-          {/* Partner Names Edit Bar (if toggled) */}
-          {editingNames && (
-            <div className="p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700/60 flex flex-col sm:flex-row items-center gap-2.5 animate-fade-in shadow-sm">
-              <div className="w-full sm:w-1/2">
-                <label className="block text-[11px] font-bold text-slate-500 mb-1">Partner 1 Name:</label>
-                <input
-                  type="text"
-                  value={tempP1Name}
-                  onChange={(e) => setTempP1Name(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-bold"
-                />
-              </div>
-              <div className="w-full sm:w-1/2">
-                <label className="block text-[11px] font-bold text-slate-500 mb-1">Partner 2 Name:</label>
-                <input
-                  type="text"
-                  value={tempP2Name}
-                  onChange={(e) => setTempP2Name(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-bold"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleSaveNames}
-                className="w-full sm:w-auto px-4 py-2 mt-1 sm:mt-5 rounded-lg bg-teal-600 text-white font-bold text-xs flex items-center justify-center gap-1 shrink-0"
-              >
-                <Check className="w-4 h-4" /> Save
-              </button>
-            </div>
-          )}
-
-          {/* Visual Ratio Progress Split Bar */}
-          <div className="space-y-1.5">
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:justify-between text-xs font-bold gap-1">
-              <span className="text-teal-700 dark:text-teal-300 flex items-center gap-1.5 bg-teal-50 dark:bg-teal-950/40 px-2 py-1 rounded-lg border border-teal-200/50 dark:border-teal-800/40">
-                <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block shrink-0" />
-                <span className="truncate">{partner1Name}:</span>
-                <strong className="font-mono text-xs sm:text-sm">{p1RatioPercent}%</strong>
-                <span className="text-[10px] text-teal-600 font-medium font-mono">({formatPKR(p1TotalInvestment)})</span>
-              </span>
-              <span className="text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-lg border border-indigo-200/50 dark:border-indigo-800/40">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block shrink-0" />
-                <span className="truncate">{partner2Name}:</span>
-                <strong className="font-mono text-xs sm:text-sm">{p2RatioPercent}%</strong>
-                <span className="text-[10px] text-indigo-600 font-medium font-mono">({formatPKR(p2TotalInvestment)})</span>
-              </span>
+          {/* Visual Ratio Progress Split Bar for All Partners */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+              {partners.map((p, idx) => {
+                const theme = getPartnerTheme(idx);
+                const stat = partnerStatsMap[p.id];
+                return (
+                  <span
+                    key={p.id}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] sm:text-xs ${theme.bgLight} ${theme.primary} ${theme.border}`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${theme.barBg} inline-block shrink-0`} />
+                    <span className="truncate">{p.name}:</span>
+                    <strong className="font-mono">{stat?.ratioPercent || 0}%</strong>
+                    <span className="text-[10px] font-mono opacity-80">
+                      ({formatPKR(stat?.totalInvestment || 0)})
+                    </span>
+                  </span>
+                );
+              })}
             </div>
 
+            {/* Split Bar */}
             <div className="w-full h-3.5 sm:h-4 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
-              <div
-                style={{ width: `${p1RatioPercent}%` }}
-                className="h-full bg-teal-600 transition-all duration-500 relative group"
-                title={`${partner1Name}: ${p1RatioPercent}%`}
-              />
-              <div
-                style={{ width: `${p2RatioPercent}%` }}
-                className="h-full bg-indigo-600 transition-all duration-500 relative group"
-                title={`${partner2Name}: ${p2RatioPercent}%`}
-              />
+              {partners.map((p, idx) => {
+                const theme = getPartnerTheme(idx);
+                const stat = partnerStatsMap[p.id];
+                const ratio = stat?.ratioPercent || 0;
+                return (
+                  <div
+                    key={p.id}
+                    style={{ width: `${ratio}%` }}
+                    className={`h-full ${theme.barBg} transition-all duration-500 relative group`}
+                    title={`${p.name}: ${ratio}%`}
+                  />
+                );
+              })}
             </div>
 
             <div className="flex flex-col xs:flex-row justify-between text-[11px] text-slate-500 font-medium pt-0.5 gap-0.5">
-              <span>Combined Total Investment: <strong className="font-mono text-slate-900 dark:text-slate-100 font-bold">{formatPKR(combinedTotalInvestment)}</strong></span>
+              <span>
+                Combined Total Investment:{" "}
+                <strong className="font-mono text-slate-900 dark:text-slate-100 font-bold">
+                  {formatPKR(combinedTotalInvestment)}
+                </strong>
+              </span>
               <span>Total Ownership: 100%</span>
             </div>
           </div>
@@ -1271,211 +1444,151 @@ export default function PartnersKhataPage() {
               <button
                 type="button"
                 onClick={handleRecordDistributedProfit}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all shrink-0"
+                disabled={isSubmitting}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all shrink-0 disabled:opacity-50"
               >
                 <Coins className="w-4 h-4" /> Distribute Profit
               </button>
             </div>
 
-            {/* Live Profit Split Preview with Advance Deduction */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <div className="p-3 rounded-xl bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 space-y-1.5">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-teal-800 dark:text-teal-200 truncate">👤 {partner1Name} Profit Share</span>
-                  <span className="font-mono font-bold text-teal-700 dark:text-teal-300 shrink-0">{p1RatioPercent}%</span>
-                </div>
-                <div className="flex items-baseline justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
-                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{formatPKR(p1GrossProfit)}</span>
-                </div>
-                {p1AdvanceToDeduct > 0 && (
-                  <div className="flex items-baseline justify-between text-xs text-rose-600 dark:text-rose-400">
-                    <span className="font-semibold">Advance Cut (پیشگی کٹوتی):</span>
-                    <span className="font-bold font-mono">-{formatPKR(p1AdvanceToDeduct)}</span>
+            {/* Live Multi-Partner Profit Split Preview with Advance Deductions */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+              {profitDistributionPreview.map((item, idx) => {
+                const theme = getPartnerTheme(idx);
+                return (
+                  <div
+                    key={item.partner.id}
+                    className={`p-3 rounded-xl ${theme.bgLight} border ${theme.border} space-y-1.5`}
+                  >
+                    <div className="flex justify-between items-center text-xs">
+                      <span className={`font-bold ${theme.primary} truncate flex items-center gap-1`}>
+                        <span className={`w-2 h-2 rounded-full ${theme.barBg}`} />
+                        {item.partner.name} Profit Share
+                      </span>
+                      <span className={`font-mono font-bold ${theme.primary} shrink-0`}>
+                        {item.ratioPercent}%
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
+                      <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                        {formatPKR(item.grossProfit)}
+                      </span>
+                    </div>
+                    {item.advanceToDeduct > 0 && (
+                      <div className="flex items-baseline justify-between text-xs text-rose-600 dark:text-rose-400">
+                        <span className="font-semibold">Advance Cut (پیشگی کٹوتی):</span>
+                        <span className="font-bold font-mono">-{formatPKR(item.advanceToDeduct)}</span>
+                      </div>
+                    )}
+                    <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700 flex items-baseline justify-between">
+                      <span className="text-xs font-black text-slate-900 dark:text-slate-100">Net Profit Payable:</span>
+                      <span className={`text-sm sm:text-base font-black font-mono ${theme.accent}`}>
+                        {formatPKR(item.netPayable)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 block truncate">
+                      Calculated from {item.ratioPercent}% investment ratio
+                    </span>
                   </div>
-                )}
-                <div className="pt-1.5 border-t border-teal-200 dark:border-teal-800 flex items-baseline justify-between">
-                  <span className="text-xs font-black text-teal-950 dark:text-teal-100">Net Profit Payable:</span>
-                  <span className="text-sm sm:text-lg font-black font-mono text-teal-700 dark:text-teal-300">{formatPKR(p1NetPayable)}</span>
-                </div>
-                <span className="text-[10px] text-teal-600 dark:text-teal-400 block truncate">
-                  Calculated automatically from {p1RatioPercent}% investment ratio
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-indigo-800 dark:text-indigo-200 truncate">👤 {partner2Name} Profit Share</span>
-                  <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300 shrink-0">{p2RatioPercent}%</span>
-                </div>
-                <div className="flex items-baseline justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
-                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{formatPKR(p2GrossProfit)}</span>
-                </div>
-                {p2AdvanceToDeduct > 0 && (
-                  <div className="flex items-baseline justify-between text-xs text-rose-600 dark:text-rose-400">
-                    <span className="font-semibold">Advance Cut (پیشگی کٹوتی):</span>
-                    <span className="font-bold font-mono">-{formatPKR(p2AdvanceToDeduct)}</span>
-                  </div>
-                )}
-                <div className="pt-1.5 border-t border-indigo-200 dark:border-indigo-800 flex items-baseline justify-between">
-                  <span className="text-xs font-black text-indigo-950 dark:text-indigo-100">Net Profit Payable:</span>
-                  <span className="text-sm sm:text-lg font-black font-mono text-indigo-700 dark:text-indigo-300">{formatPKR(p2NetPayable)}</span>
-                </div>
-                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block truncate">
-                  Calculated automatically from {p2RatioPercent}% investment ratio
-                </span>
-              </div>
+                );
+              })}
             </div>
           </div>
         </div>
 
         {/* ============================================================== */}
-        {/* SIDE-BY-SIDE PARTNER INVESTMENT CARDS                          */}
+        {/* DYNAMIC MULTI-PARTNER INVESTMENT & CAPITAL CARDS               */}
         {/* ============================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-          {/* Partner 1 Card */}
-          <div className="p-3.5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-teal-500/30 shadow-soft space-y-3.5 sm:space-y-4 relative overflow-hidden">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-black text-sm sm:text-base shadow-sm shrink-0">
-                  P1
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+          {partners.map((p, idx) => {
+            const theme = getPartnerTheme(idx);
+            const stat = partnerStatsMap[p.id];
+            const ratio = stat?.ratioPercent || 0;
+            return (
+              <div
+                key={p.id}
+                className="p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-teal-500/40 shadow-soft space-y-3 relative overflow-hidden transition-all"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                    <div
+                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${theme.avatarBg} flex items-center justify-center font-black text-xs sm:text-sm shadow-sm shrink-0`}
+                    >
+                      P{idx + 1}
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 truncate">
+                        {p.name}
+                      </h2>
+                      <span className={`text-[10px] sm:text-[11px] font-bold ${theme.accent} uppercase tracking-wider block`}>
+                        Investment Share: {ratio}%
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartnerId(p.id);
+                      setType("investment");
+                      setIsModalOpen(true);
+                    }}
+                    className={`text-[11px] sm:text-xs font-bold ${theme.primary} ${theme.bgLight} hover:opacity-80 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg border ${theme.border} shrink-0`}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Add</span> Investment
+                  </button>
                 </div>
-                <div className="min-w-0">
-                  <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 truncate">
-                    {partner1Name}
-                  </h2>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-teal-600 uppercase tracking-wider block">
-                    Investment Share: {p1RatioPercent}%
-                  </span>
+
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-1">
+                  <div className="p-2 sm:p-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/70 dark:border-teal-800/50">
+                    <span className="text-[9px] uppercase font-bold text-teal-700 dark:text-teal-400 block truncate">
+                      Total Invested
+                    </span>
+                    <span className="text-xs sm:text-sm font-black font-mono text-teal-900 dark:text-teal-100 mt-0.5 block truncate">
+                      {formatPKR(stat?.totalInvestment || 0)}
+                    </span>
+                    <span className="text-[9px] text-teal-600 font-bold block truncate">{ratio}% Ratio</span>
+                  </div>
+
+                  <div className="p-2 sm:p-2.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
+                    <span className="text-[9px] uppercase font-bold text-rose-700 dark:text-rose-400 block truncate">
+                      Total Advance
+                    </span>
+                    <span className="text-xs sm:text-sm font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block truncate">
+                      {formatPKR(stat?.totalAdvance || 0)}
+                    </span>
+                    <span className="text-[9px] text-rose-600 font-medium block truncate">پیشگی رقم (Taken)</span>
+                  </div>
+
+                  <div className="p-2 sm:p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
+                    <span className="text-[9px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block truncate">
+                      Profit Received
+                    </span>
+                    <span className="text-xs sm:text-sm font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block truncate">
+                      {formatPKR(stat?.totalProfitReceived || 0)}
+                    </span>
+                    <span className="text-[9px] text-emerald-600 font-medium block truncate">Total Payouts</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPartnerId("partner_1");
-                    setType("investment");
-                    setIsModalOpen(true);
-                  }}
-                  className="text-[11px] sm:text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg border border-teal-300 dark:border-teal-700"
-                >
-                  <Plus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Add</span> Investment
-                </button>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-1">
-              <div className="p-2 sm:p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/70 dark:border-teal-800/50">
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-teal-700 dark:text-teal-400 block truncate">Total Investment</span>
-                <span className="text-xs sm:text-base font-black font-mono text-teal-900 dark:text-teal-100 mt-0.5 block truncate">
-                  {formatPKR(p1TotalInvestment)}
-                </span>
-                <span className="text-[9px] sm:text-[10px] text-teal-600 font-bold block truncate">{p1RatioPercent}% Ratio</span>
-              </div>
-
-              <div className="p-2 sm:p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block truncate">Total Advance</span>
-                <span className="text-xs sm:text-base font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block truncate">
-                  {formatPKR(p1TotalAdvance)}
-                </span>
-                <span className="text-[9px] sm:text-[10px] text-rose-600 font-medium block truncate">پیشگی رقم (Taken)</span>
-              </div>
-
-              <div className="p-2 sm:p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block truncate">Profit Received</span>
-                <span className="text-xs sm:text-base font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block truncate">
-                  {formatPKR(p1TotalProfitReceived)}
-                </span>
-                <span className="text-[9px] sm:text-[10px] text-emerald-600 font-medium block truncate">Total Payouts</span>
-              </div>
-            </div>
-
-            <div className="pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-[11px] sm:text-xs font-bold text-slate-500">Net Capital Standing:</span>
-              <div className="text-right">
-                <span className="text-sm sm:text-lg font-black font-mono text-teal-600 dark:text-teal-400">
-                  {formatPKR(p1NetCapital)}
-                </span>
-                <span className="block text-[9px] sm:text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Partner 2 Card */}
-          <div className="p-3.5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-indigo-500/30 shadow-soft space-y-3.5 sm:space-y-4 relative overflow-hidden">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-black text-sm sm:text-base shadow-sm shrink-0">
-                  P2
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 truncate">
-                    {partner2Name}
-                  </h2>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">
-                    Investment Share: {p2RatioPercent}%
-                  </span>
+                <div className="pt-2 sm:pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <span className="text-[11px] sm:text-xs font-bold text-slate-500">Net Capital Standing:</span>
+                  <div className="text-right">
+                    <span className={`text-sm sm:text-base font-black font-mono ${theme.accent}`}>
+                      {formatPKR(stat?.netCapital || 0)}
+                    </span>
+                    <span className="block text-[9px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPartnerId("partner_2");
-                    setType("investment");
-                    setIsModalOpen(true);
-                  }}
-                  className="text-[11px] sm:text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700"
-                >
-                  <Plus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Add</span> Investment
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-1">
-              <div className="p-2 sm:p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-400 block truncate">Total Investment</span>
-                <span className="text-xs sm:text-base font-black font-mono text-indigo-900 dark:text-indigo-100 mt-0.5 block truncate">
-                  {formatPKR(p2TotalInvestment)}
-                </span>
-                <span className="text-[9px] sm:text-[10px] text-indigo-600 font-bold block truncate">{p2RatioPercent}% Ratio</span>
-              </div>
-
-              <div className="p-2 sm:p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block truncate">Total Advance</span>
-                <span className="text-xs sm:text-base font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block truncate">
-                  {formatPKR(p2TotalAdvance)}
-                </span>
-                <span className="text-[9px] sm:text-[10px] text-rose-600 font-medium block truncate">پیشگی رقم (Taken)</span>
-              </div>
-
-              <div className="p-2 sm:p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block truncate">Profit Received</span>
-                <span className="text-xs sm:text-base font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block truncate">
-                  {formatPKR(p2TotalProfitReceived)}
-                </span>
-                <span className="text-[9px] sm:text-[10px] text-emerald-600 font-medium block truncate">Total Payouts</span>
-              </div>
-            </div>
-
-            <div className="pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-[11px] sm:text-xs font-bold text-slate-500">Net Capital Standing:</span>
-              <div className="text-right">
-                <span className="text-sm sm:text-lg font-black font-mono text-indigo-600 dark:text-indigo-400">
-                  {formatPKR(p2NetCapital)}
-                </span>
-                <span className="block text-[9px] sm:text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
-              </div>
-            </div>
-          </div>
+            );
+          })}
         </div>
 
         {/* ============================================================== */}
         {/* UNIVERSAL DATA FILTERS BAR (Matches all Noxderma ERP modules)  */}
         {/* ============================================================== */}
         <div className="space-y-3">
-          {/* Noxderma Standard Date Filter Bar */}
           <DateRangeFilterBar
             filter={dateFilter}
             onChange={setDateFilter}
@@ -1483,10 +1596,10 @@ export default function PartnersKhataPage() {
             label="Transaction Date Filter"
           />
 
-          {/* Secondary Filter Pills: Partner, Type & Search */}
+          {/* Secondary Filter Pills: Dynamic Partners, Type & Search */}
           <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 text-xs">
             <div className="flex flex-wrap items-center gap-2">
-              {/* Partner Filter */}
+              {/* Dynamic Partner Filter */}
               <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold overflow-x-auto no-scrollbar max-w-full">
                 <button
                   type="button"
@@ -1497,30 +1610,29 @@ export default function PartnersKhataPage() {
                       : "text-slate-600 dark:text-slate-400"
                   }`}
                 >
-                  All Partners
+                  All Partners ({transactions.length})
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPartnerFilter("partner_1")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
-                    selectedPartnerFilter === "partner_1"
-                      ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
-                      : "text-slate-600 dark:text-slate-400"
-                  }`}
-                >
-                  {partner1Name}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPartnerFilter("partner_2")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
-                    selectedPartnerFilter === "partner_2"
-                      ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
-                      : "text-slate-600 dark:text-slate-400"
-                  }`}
-                >
-                  {partner2Name}
-                </button>
+                {partners.map((p, idx) => {
+                  const theme = getPartnerTheme(idx);
+                  const pCount = transactions.filter((t) => t.partnerId === p.id).length;
+                  const isSelected = selectedPartnerFilter === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedPartnerFilter(p.id)}
+                      className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 flex items-center gap-1.5 ${
+                        isSelected
+                          ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
+                          : "text-slate-600 dark:text-slate-400"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${theme.barBg}`} />
+                      <span>{p.name}</span>
+                      <span className="opacity-70 font-mono text-[10px]">({pCount})</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Type Filter */}
@@ -1567,20 +1679,20 @@ export default function PartnersKhataPage() {
                       : "text-slate-600 dark:text-slate-400"
                   }`}
                 >
-                  📈 Profit
+                  📈 Profit Payout
                 </button>
               </div>
             </div>
 
             {/* Search Input */}
-            <div className="relative w-full md:w-64 min-w-0">
+            <div className="relative w-full md:w-64">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search purpose, ref, method..."
+                placeholder="Search description, ref, partner..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500"
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs focus:ring-2 focus:ring-teal-500"
               />
             </div>
           </div>
@@ -1661,98 +1773,105 @@ export default function PartnersKhataPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((tx) => (
-                    <tr
-                      key={tx.id}
-                      className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors ${
-                        selectedTxIds.includes(tx.id) ? "bg-teal-50/40 dark:bg-teal-950/30" : ""
-                      }`}
-                    >
-                      <td className="py-3 px-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedTxIds.includes(tx.id)}
-                          onChange={() => handleToggleSelect(tx.id)}
-                          aria-label={`Select transaction ${tx.id}`}
-                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
-                        />
-                      </td>
-                      <td className="py-3 px-3 font-mono font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {tx.date}
-                      </td>
-                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-slate-100">
-                        {tx.partnerId === "partner_1" ? partner1Name : partner2Name}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {tx.type === "investment" || tx.type === "in" ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                            <ArrowDownRight className="w-3.5 h-3.5" /> 💰 Investment
+                  filteredTransactions.map((tx) => {
+                    const pIdx = getPartnerIndex(tx.partnerId);
+                    const theme = getPartnerTheme(pIdx);
+                    return (
+                      <tr
+                        key={tx.id}
+                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors ${
+                          selectedTxIds.includes(tx.id) ? "bg-teal-50/40 dark:bg-teal-950/30" : ""
+                        }`}
+                      >
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedTxIds.includes(tx.id)}
+                            onChange={() => handleToggleSelect(tx.id)}
+                            aria-label={`Select transaction ${tx.id}`}
+                            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
+                          />
+                        </td>
+                        <td className="py-3 px-3 font-mono font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {tx.date}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-900 dark:text-slate-100">
+                          <span className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${theme.barBg}`} />
+                            {getPartnerName(tx.partnerId, tx.partnerName)}
                           </span>
-                        ) : tx.type === "profit_payout" ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
-                            <Coins className="w-3.5 h-3.5" /> 📈 Profit Payout
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-                            <ArrowUpRight className="w-3.5 h-3.5" /> 🔻 Advance
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 font-medium text-slate-700 dark:text-slate-300">
-                        {tx.description}
-                        {tx.reference && (
-                          <span className="text-[11px] text-slate-400 block font-mono">Ref: {tx.reference}</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 capitalize text-slate-500 font-medium">
-                        {tx.paymentMethod.replace("_", " ")}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono font-bold whitespace-nowrap">
-                        <span
-                          className={
-                            tx.type === "investment" || tx.type === "in"
-                              ? "text-emerald-600"
-                              : tx.type === "profit_payout"
-                                ? "text-teal-600"
-                                : "text-rose-600"
-                          }
-                        >
-                          {tx.type === "investment" || tx.type === "in" ? "+" : "-"}
-                          {formatPKR(tx.amount)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <div className="inline-flex items-center gap-1 justify-center">
-                          <button
-                            type="button"
-                            onClick={() => setSlipTx(tx)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
-                            title="Print Transaction Slip / Voucher"
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {tx.type === "investment" || tx.type === "in" ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              <ArrowDownRight className="w-3.5 h-3.5" /> 💰 Investment
+                            </span>
+                          ) : tx.type === "profit_payout" ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
+                              <Coins className="w-3.5 h-3.5" /> 📈 Profit Payout
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                              <ArrowUpRight className="w-3.5 h-3.5" /> 🔻 Advance
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-700 dark:text-slate-300">
+                          {tx.description}
+                          {tx.reference && (
+                            <span className="text-[11px] text-slate-400 block font-mono">Ref: {tx.reference}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 capitalize text-slate-500 font-medium">
+                          {tx.paymentMethod.replace("_", " ")}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold whitespace-nowrap">
+                          <span
+                            className={
+                              tx.type === "investment" || tx.type === "in"
+                                ? "text-emerald-600"
+                                : tx.type === "profit_payout"
+                                  ? "text-teal-600"
+                                  : "text-rose-600"
+                            }
                           >
-                            <Printer className="w-4 h-4 text-teal-600" />
-                          </button>
-                          {tx.type !== "profit_payout" && (tx.type as string) !== "profit" && (
+                            {tx.type === "investment" || tx.type === "in" ? "+" : "-"}
+                            {formatPKR(tx.amount)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <div className="inline-flex items-center gap-1 justify-center">
                             <button
                               type="button"
-                              onClick={() => handleOpenEditModal(tx)}
+                              onClick={() => setSlipTx(tx)}
                               className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
-                              title="Edit Transaction"
+                              title="Print Transaction Slip / Voucher"
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <Printer className="w-4 h-4 text-teal-600" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setDeletingTx(tx)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            title="Delete Transaction"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {tx.type !== "profit_payout" && (tx.type as string) !== "profit" && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(tx)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
+                                title="Edit Transaction"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setDeletingTx(tx)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                              title="Delete Transaction"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1765,275 +1884,279 @@ export default function PartnersKhataPage() {
                 Koi transaction mojood nahi hai.
               </div>
             ) : (
-              filteredTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className={`p-3 rounded-xl border transition-colors space-y-2 text-xs shadow-sm ${
-                    selectedTxIds.includes(tx.id)
-                      ? "border-teal-400 bg-teal-50/50 dark:bg-teal-950/40 dark:border-teal-700"
-                      : "border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-900 dark:text-slate-100 truncate">
-                      <input
-                        type="checkbox"
-                        checked={selectedTxIds.includes(tx.id)}
-                        onChange={() => handleToggleSelect(tx.id)}
-                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer shrink-0"
-                      />
-                      <span className="truncate">👤 {tx.partnerId === "partner_1" ? partner1Name : partner2Name}</span>
-                    </label>
-                    <span className="font-mono text-[10px] text-slate-500 shrink-0">{tx.date}</span>
-                  </div>
+              filteredTransactions.map((tx) => {
+                const pIdx = getPartnerIndex(tx.partnerId);
+                const theme = getPartnerTheme(pIdx);
+                return (
+                  <div
+                    key={tx.id}
+                    className={`p-3 rounded-xl border transition-colors space-y-2 text-xs shadow-sm ${
+                      selectedTxIds.includes(tx.id)
+                        ? "border-teal-400 bg-teal-50/50 dark:bg-teal-950/40 dark:border-teal-700"
+                        : "border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-900 dark:text-slate-100 truncate">
+                        <input
+                          type="checkbox"
+                          checked={selectedTxIds.includes(tx.id)}
+                          onChange={() => handleToggleSelect(tx.id)}
+                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer shrink-0"
+                        />
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span className={`w-2 h-2 rounded-full ${theme.barBg}`} />
+                          {getPartnerName(tx.partnerId, tx.partnerName)}
+                        </span>
+                      </label>
+                      <span className="font-mono text-[10px] text-slate-500 shrink-0">{tx.date}</span>
+                    </div>
 
-                  <div className="flex items-center justify-between gap-2 pt-0.5">
-                    {tx.type === "investment" || tx.type === "in" ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 shrink-0">
-                        💰 Investment
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      {tx.type === "investment" || tx.type === "in" ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 shrink-0">
+                          💰 Investment
+                        </span>
+                      ) : tx.type === "profit_payout" ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 shrink-0">
+                          📈 Profit Payout
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 shrink-0">
+                          🔻 Advance
+                        </span>
+                      )}
+
+                      <span
+                        className={`font-mono text-sm sm:text-base font-black shrink-0 ${
+                          tx.type === "investment" || tx.type === "in"
+                            ? "text-emerald-600"
+                            : tx.type === "profit_payout"
+                              ? "text-teal-600"
+                              : "text-rose-600"
+                        }`}
+                      >
+                        {tx.type === "investment" || tx.type === "in" ? "+" : "-"}
+                        {formatPKR(tx.amount)}
                       </span>
-                    ) : tx.type === "profit_payout" ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 shrink-0">
-                        📈 Profit Payout
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 shrink-0">
-                        🔻 Advance
-                      </span>
+                    </div>
+
+                    <p className="text-slate-700 dark:text-slate-300 font-medium text-xs break-words">
+                      {tx.description}
+                    </p>
+                    {tx.reference && (
+                      <span className="text-[10px] text-slate-400 block font-mono">Ref: {tx.reference}</span>
                     )}
 
-                    <span
-                      className={`font-mono text-sm sm:text-base font-black shrink-0 ${
-                        tx.type === "investment" || tx.type === "in"
-                          ? "text-emerald-600"
-                          : tx.type === "profit_payout"
-                            ? "text-teal-600"
-                            : "text-rose-600"
-                      }`}
-                    >
-                      {tx.type === "investment" || tx.type === "in" ? "+" : "-"}
-                      {formatPKR(tx.amount)}
-                    </span>
-                  </div>
-
-                  <p className="text-slate-700 dark:text-slate-300 font-medium text-xs break-words">
-                    {tx.description}
-                  </p>
-                  {tx.reference && (
-                    <span className="text-[10px] text-slate-400 block font-mono">Ref: {tx.reference}</span>
-                  )}
-
-                  <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-700/60">
-                    <span className="capitalize text-[10px]">{tx.paymentMethod.replace("_", " ")}</span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setSlipTx(tx)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 transition-colors text-[11px]"
-                        title="Print Slip"
-                      >
-                        <Printer className="w-3 h-3 text-teal-600" /> Slip
-                      </button>
-                      {tx.type !== "profit_payout" && (tx.type as string) !== "profit" && (
+                    <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <span className="capitalize text-[10px]">{tx.paymentMethod.replace("_", " ")}</span>
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => handleOpenEditModal(tx)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors text-[11px]"
+                          onClick={() => setSlipTx(tx)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 transition-colors text-[11px]"
+                          title="Print Slip"
                         >
-                          <Edit2 className="w-3 h-3" /> Edit
+                          <Printer className="w-3 h-3 text-teal-600" /> Slip
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setDeletingTx(tx)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors text-[11px]"
-                      >
-                        <Trash2 className="w-3 h-3" /> Delete
-                      </button>
+                        {tx.type !== "profit_payout" && (tx.type as string) !== "profit" && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(tx)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors text-[11px]"
+                          >
+                            <Edit2 className="w-3 h-3" /> Edit
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setDeletingTx(tx)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors text-[11px]"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
       </div>
 
       {/* ============================================================== */}
-      {/* 3. DEDICATED PRINT PREVIEW MODAL (Screen preview before print)  */}
+      {/* 3. PARTNER MANAGEMENT MODAL (Add, Rename, Delete with Warning)  */}
       {/* ============================================================== */}
-      {showPrintPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/80 backdrop-blur-sm animate-fade-in no-print">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
-            {/* Modal Bar */}
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
-              <div className="flex items-center gap-2">
-                <Printer className="w-5 h-5 text-teal-600" />
-                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">
-                  Partnership Statement Print Preview
-                </h3>
+      {isPartnerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-bold">
+                  <Users2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                    Manage Partners (پارٹنرز سیٹ کریں)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Naye partners add karein, unke naam tabdeel karein ya kisi partner ko remove karein.
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={triggerCleanPrint}
-                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
-                >
-                  <Printer className="w-4 h-4" /> Print Now (پرنٹ کریں)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPrintPreview(false)}
-                  className="p-2 rounded-lg text-slate-400 hover:text-slate-700"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsPartnerModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Scrollable Printable Document Replica */}
-            <div className="p-6 overflow-y-auto space-y-6 text-black bg-white text-xs">
-              {/* Document Header */}
-              <OfficialPrintHeader
-                title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
-                docRef={`PRT-AUDIT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`}
-                period={getDateFilterDescription(dateFilter)}
-                settings={businessSettings}
-                showInPreview={true}
-                className="pb-4"
-              />
+            {/* List of Partners being edited */}
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              {editingPartnerList.map((p, idx) => {
+                const theme = getPartnerTheme(idx);
+                const txCount = transactions.filter((t) => t.partnerId === p.id).length;
+                return (
+                  <div
+                    key={p.id}
+                    className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${theme.barBg}`} />
+                        Partner {idx + 1}
+                        {txCount > 0 && (
+                          <span className="text-[10px] font-normal text-slate-400">
+                            ({txCount} historical transactions)
+                          </span>
+                        )}
+                      </span>
+                      {editingPartnerList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handlePromptDeletePartner(p)}
+                          className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                          title="Remove this partner"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={p.name}
+                      onChange={(e) => handleUpdatePartnerName(idx, e.target.value)}
+                      placeholder={`Partner ${idx + 1} Name`}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                );
+              })}
+            </div>
 
-              {/* Capital & Profit Table */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-black uppercase text-black border-b border-black pb-1">
-                  1. Partnership Capital Ownership &amp; Profit Sharing Ratio
-                </h4>
-                <table className="w-full text-left border-collapse border border-black text-[11px]">
-                  <thead className="bg-slate-100">
-                    <tr className="border-b border-black">
-                      <th className="p-2 border-r border-black font-black">Audit Metric</th>
-                      <th className="p-2 border-r border-black font-black text-right">{partner1Name}</th>
-                      <th className="p-2 border-r border-black font-black text-right">{partner2Name}</th>
-                      <th className="p-2 font-black text-right bg-slate-200">Combined Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-black">
-                    <tr>
-                      <td className="p-2 border-r border-black font-bold">Total Capital Invested</td>
-                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1TotalInvestment)}</td>
-                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2TotalInvestment)}</td>
-                      <td className="p-2 font-mono font-black text-right bg-slate-50">{formatPKR(combinedTotalInvestment)}</td>
-                    </tr>
-                    <tr className="bg-slate-50">
-                      <td className="p-2 border-r border-black font-black">Investment Ownership Share (%)</td>
-                      <td className="p-2 border-r border-black font-mono font-black text-right">{p1RatioPercent}%</td>
-                      <td className="p-2 border-r border-black font-mono font-black text-right">{p2RatioPercent}%</td>
-                      <td className="p-2 font-mono font-black text-right bg-slate-100">100.0%</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2 border-r border-black font-bold">Gross Profit Share Allocation (on Rs {distributableProfit.toLocaleString()})</td>
-                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1GrossProfit)}</td>
-                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2GrossProfit)}</td>
-                      <td className="p-2 font-mono font-black text-right bg-slate-50">{formatPKR(distributableProfit)}</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2 border-r border-black font-bold">Total Advance Taken (پیشگی رقم)</td>
-                      <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p1TotalAdvance)}</td>
-                      <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p2TotalAdvance)}</td>
-                      <td className="p-2 font-mono text-right bg-slate-50">-{formatPKR(p1TotalAdvance + p2TotalAdvance)}</td>
-                    </tr>
-                    <tr className="bg-slate-100 font-black">
-                      <td className="p-2 border-r border-black font-black">Net Capital Standing (سرمایہ مائنس پیشگی)</td>
-                      <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p1NetCapital)}</td>
-                      <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p2NetCapital)}</td>
-                      <td className="p-2 font-mono text-right bg-slate-200">{formatPKR(p1NetCapital + p2NetCapital)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            {/* Add Partner Button */}
+            <button
+              type="button"
+              onClick={handleAddPartner}
+              className="w-full py-2.5 rounded-xl border-2 border-dashed border-teal-400 dark:border-teal-700 hover:border-teal-600 bg-teal-50/50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>+ Add Another Partner (نیا پارٹنر شامل کریں)</span>
+            </button>
 
-              {/* Ledger */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-black uppercase text-black border-b border-black pb-1">
-                  2. Transaction History ({filteredTransactions.length} records)
-                </h4>
-                <table className="w-full text-left border-collapse border border-black text-[10px]">
-                  <thead className="bg-slate-100 border-b border-black">
-                    <tr>
-                      <th className="p-1.5 border-r border-black">#</th>
-                      <th className="p-1.5 border-r border-black">Date</th>
-                      <th className="p-1.5 border-r border-black">Partner</th>
-                      <th className="p-1.5 border-r border-black">Type</th>
-                      <th className="p-1.5 border-r border-black">Description</th>
-                      <th className="p-1.5 border-r border-black">Method</th>
-                      <th className="p-1.5 text-right font-black">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-300">
-                    {filteredTransactions.map((tx, idx) => (
-                      <tr key={tx.id}>
-                        <td className="p-1.5 border-r border-black font-mono">{idx + 1}</td>
-                        <td className="p-1.5 border-r border-black font-mono">{tx.date}</td>
-                        <td className="p-1.5 border-r border-black font-bold">
-                          {tx.partnerId === "partner_1" ? partner1Name : partner2Name}
-                        </td>
-                        <td className="p-1.5 border-r border-black uppercase font-semibold">
-                          {tx.type === "investment" || tx.type === "in"
-                            ? "Investment"
-                            : tx.type === "profit_payout"
-                              ? "Profit Payout"
-                              : "Advance (پیشگی)"}
-                        </td>
-                        <td className="p-1.5 border-r border-black">{tx.description}</td>
-                        <td className="p-1.5 border-r border-black capitalize">{tx.paymentMethod.replace("_", " ")}</td>
-                        <td className="p-1.5 text-right font-mono font-bold">
-                          {tx.type === "investment" || tx.type === "in" ? "+" : "-"}
-                          {formatPKR(tx.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Signatures */}
-              <div className="pt-8 mt-6 border-t-2 border-black grid grid-cols-3 gap-6 text-center text-[10px]">
-                <div>
-                  <div className="border-b border-black pb-8 mb-1"></div>
-                  <p className="font-black">{partner1Name}</p>
-                  <p className="text-slate-600">Partner 1 Signature</p>
-                </div>
-                <div>
-                  <div className="border-b border-black pb-8 mb-1"></div>
-                  <p className="font-black">{partner2Name}</p>
-                  <p className="text-slate-600">Partner 2 Signature</p>
-                </div>
-                <div>
-                  <div className="border-b border-black pb-8 mb-1"></div>
-                  <p className="font-black">Authorized Auditor</p>
-                  <p className="text-slate-600">Noxderma ERP</p>
-                </div>
-              </div>
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsPartnerModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePartnerModal}
+                className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Save Changes (تبدیلیاں محفوظ کریں)</span>
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* ============================================================== */}
-      {/* 4. ADD TRANSACTION MODAL                                       */}
+      {/* 4. DELETE PARTNER WARNING CONFIRMATION MODAL                   */}
+      {/* ============================================================== */}
+      {isDeleteWarningModalOpen && partnerToDelete && (
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 max-w-md w-full border-2 border-rose-500/30 shadow-2xl space-y-4 animate-scale-in">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                  Remove Partner? (پارٹنر خارج کریں)
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Partner: <strong className="text-rose-600 font-bold">{partnerToDelete.name}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+              <p className="font-bold">
+                ⚠️ Kya aap waqai is partner ko active list se remove karna chahte hain?
+              </p>
+              <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300/90">
+                <strong>Wazahat (Explanation):</strong> Is partner ki ab tak ki tamam transactions (Investment, Advance ya Profit Payouts) khate (Ledger) aur audit reports mein record ke taur par hamesha mehfooz rahengi. Lekin ye partner aainda ki profit distribution aur naye transactions ke intikhab se nikaal diya jayega.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteWarningModalOpen(false);
+                  setPartnerToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100"
+              >
+                Cancel (منسوخ)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletePartner}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-md shadow-rose-600/30 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" /> Yes, Remove Partner
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 5. ADD TRANSACTION MODAL                                       */}
       {/* ============================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Plus className="w-5 h-5 text-teal-600" />
-                Add Partner Investment / Advance
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-teal-600" />
+                <span>Add Partner Transaction</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold p-1 rounded-lg"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 ✕
               </button>
@@ -2045,35 +2168,32 @@ export default function PartnersKhataPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Select Partner *
                 </label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setPartnerId("partner_1")}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
-                      partnerId === "partner_1"
-                        ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 ring-2 ring-teal-500/20"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
-                    }`}
-                  >
-                    👤 <span className="truncate">{partner1Name}</span>
-                    <span className="block text-[10px] text-teal-600 font-medium mt-0.5">
-                      Share: {p1RatioPercent}%
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPartnerId("partner_2")}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
-                      partnerId === "partner_2"
-                        ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
-                    }`}
-                  >
-                    👤 <span className="truncate">{partner2Name}</span>
-                    <span className="block text-[10px] text-indigo-600 font-medium mt-0.5">
-                      Share: {p2RatioPercent}%
-                    </span>
-                  </button>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {partners.map((p, idx) => {
+                    const theme = getPartnerTheme(idx);
+                    const isSelected = partnerId === p.id;
+                    const stat = partnerStatsMap[p.id];
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPartnerId(p.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? `${theme.buttonActive} border-2`
+                            : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs truncate">
+                          <span className={`w-2 h-2 rounded-full ${theme.barBg} shrink-0`} />
+                          <span className="truncate">{p.name}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                          Share: {stat?.ratioPercent || 0}%
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -2082,7 +2202,7 @@ export default function PartnersKhataPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Transaction Type *
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setType("investment")}
@@ -2108,26 +2228,12 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowUpRight className="w-4 h-4 text-rose-600" />
                     <span>🔻 Advance</span>
-                    <span className="text-[8px] sm:text-[9px] font-medium text-rose-600">(پیشگی رقم)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setType("profit_payout")}
-                    className={`p-2 sm:p-2.5 rounded-xl border text-[10px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
-                      type === "profit_payout"
-                        ? "border-teal-500 bg-teal-50/80 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
-                    }`}
-                  >
-                    <Coins className="w-4 h-4 text-teal-600" />
-                    <span>📈 Profit</span>
-                    <span className="text-[8px] sm:text-[9px] font-medium text-teal-600">(Munafa)</span>
+                    <span className="text-[8px] sm:text-[9px] font-medium text-rose-600">(Money Taken)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Amount and Date */}
+              {/* Amount & Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -2135,12 +2241,13 @@ export default function PartnersKhataPage() {
                   </label>
                   <input
                     type="number"
-                    required
-                    min={1}
-                    placeholder="e.g. 100000"
+                    step="any"
+                    min="1"
+                    placeholder="e.g. 50000"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold font-mono focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
                 <div>
@@ -2149,14 +2256,11 @@ export default function PartnersKhataPage() {
                   </label>
                   <input
                     type="date"
-                    required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold focus:ring-2 focus:ring-teal-500"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    (Date record keeping k liye hai, profit ratio par asar nahi karti)
-                  </span>
                 </div>
               </div>
 
@@ -2167,13 +2271,13 @@ export default function PartnersKhataPage() {
                 </label>
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
+                  onChange={(e: any) => setPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold focus:ring-2 focus:ring-teal-500"
                 >
                   <option value="bank_transfer">Bank Transfer (Meezan / HBL / etc.)</option>
-                  <option value="cash">Cash (Naqad)</option>
+                  <option value="cash">Cash in Hand</option>
                   <option value="cheque">Cheque</option>
-                  <option value="online">Online / EasyPaisa / Raast</option>
+                  <option value="online">Online Payment / JazzCash / Nayapay</option>
                 </select>
               </div>
 
@@ -2184,11 +2288,11 @@ export default function PartnersKhataPage() {
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Additional capital injection / Personal advance"
+                  placeholder="e.g. Initial Capital Injection, Advance for personal expense, etc."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
@@ -2199,15 +2303,15 @@ export default function PartnersKhataPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Cheque # 10492 / IBAN Deposit Slip"
+                  placeholder="e.g. FT-987452 / Cheque # 120045"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-mono focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -2220,7 +2324,7 @@ export default function PartnersKhataPage() {
                   disabled={isSubmitting}
                   className="px-5 sm:px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 disabled:opacity-50"
                 >
-                  {isSubmitting ? "Saving..." : "Save Record (محفوظ کریں)"}
+                  {isSubmitting ? "Saving..." : "Save Transaction"}
                 </button>
               </div>
             </form>
@@ -2229,15 +2333,15 @@ export default function PartnersKhataPage() {
       )}
 
       {/* ============================================================== */}
-      {/* 5. EDIT TRANSACTION MODAL                                      */}
+      {/* 6. EDIT TRANSACTION MODAL                                      */}
       {/* ============================================================== */}
       {isEditModalOpen && editingTx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-teal-600" />
-                Edit Partner Transaction
+                <span>Edit Partner Transaction</span>
               </h3>
               <button
                 type="button"
@@ -2245,7 +2349,7 @@ export default function PartnersKhataPage() {
                   setIsEditModalOpen(false);
                   setEditingTx(null);
                 }}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold p-1 rounded-lg"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 ✕
               </button>
@@ -2257,39 +2361,36 @@ export default function PartnersKhataPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Select Partner *
                 </label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setEditPartnerId("partner_1")}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
-                      editPartnerId === "partner_1"
-                        ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 ring-2 ring-teal-500/20"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
-                    }`}
-                  >
-                    👤 <span className="truncate">{partner1Name}</span>
-                    <span className="block text-[10px] text-teal-600 font-medium mt-0.5">
-                      Share: {p1RatioPercent}%
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditPartnerId("partner_2")}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
-                      editPartnerId === "partner_2"
-                        ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
-                    }`}
-                  >
-                    👤 <span className="truncate">{partner2Name}</span>
-                    <span className="block text-[10px] text-indigo-600 font-medium mt-0.5">
-                      Share: {p2RatioPercent}%
-                    </span>
-                  </button>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {partners.map((p, idx) => {
+                    const theme = getPartnerTheme(idx);
+                    const isSelected = editPartnerId === p.id;
+                    const stat = partnerStatsMap[p.id];
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setEditPartnerId(p.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? `${theme.buttonActive} border-2`
+                            : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs truncate">
+                          <span className={`w-2 h-2 rounded-full ${theme.barBg} shrink-0`} />
+                          <span className="truncate">{p.name}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                          Share: {stat?.ratioPercent || 0}%
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Transaction Type - Profit Payout is intentionally NOT editable, only Investment & Advance */}
+              {/* Transaction Type */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Transaction Type *
@@ -2298,7 +2399,7 @@ export default function PartnersKhataPage() {
                   <button
                     type="button"
                     onClick={() => setEditType("investment")}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       editType === "investment" || editType === "in"
                         ? "border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2306,26 +2407,26 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowDownRight className="w-4 h-4 text-emerald-600" />
                     <span>💰 Investment</span>
-                    <span className="text-[9px] sm:text-[10px] font-medium text-emerald-600">(Adds to Capital)</span>
+                    <span className="text-[9px] font-medium text-emerald-600">(Adds to Capital)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setEditType("withdrawal")}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       editType === "withdrawal" || editType === "out"
                         ? "border-rose-500 bg-rose-50/80 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 ring-2 ring-rose-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
                     }`}
                   >
                     <ArrowUpRight className="w-4 h-4 text-rose-600" />
-                    <span>🔻 Advance</span>
-                    <span className="text-[9px] sm:text-[10px] font-medium text-rose-600">(پیشگی رقم)</span>
+                    <span>🔻 Drawings</span>
+                    <span className="text-[9px] font-medium text-rose-600">(Money Taken)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Amount and Date */}
+              {/* Amount & Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -2333,12 +2434,13 @@ export default function PartnersKhataPage() {
                   </label>
                   <input
                     type="number"
-                    required
-                    min={1}
-                    placeholder="e.g. 100000"
+                    step="any"
+                    min="1"
+                    placeholder="e.g. 50000"
                     value={editAmount}
                     onChange={(e) => setEditAmount(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold font-mono focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
                 <div>
@@ -2347,10 +2449,10 @@ export default function PartnersKhataPage() {
                   </label>
                   <input
                     type="date"
-                    required
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
               </div>
@@ -2362,13 +2464,13 @@ export default function PartnersKhataPage() {
                 </label>
                 <select
                   value={editPaymentMethod}
-                  onChange={(e) => setEditPaymentMethod(e.target.value as any)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
+                  onChange={(e: any) => setEditPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-bold focus:ring-2 focus:ring-teal-500"
                 >
                   <option value="bank_transfer">Bank Transfer (Meezan / HBL / etc.)</option>
-                  <option value="cash">Cash (Naqad)</option>
+                  <option value="cash">Cash in Hand</option>
                   <option value="cheque">Cheque</option>
-                  <option value="online">Online / EasyPaisa / Raast</option>
+                  <option value="online">Online Payment / JazzCash / Nayapay</option>
                 </select>
               </div>
 
@@ -2379,11 +2481,11 @@ export default function PartnersKhataPage() {
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Additional capital injection / Personal advance"
+                  placeholder="e.g. Investment, drawings etc."
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
@@ -2394,15 +2496,15 @@ export default function PartnersKhataPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Cheque # 10492 / IBAN Deposit Slip"
+                  placeholder="e.g. FT-987452 / Cheque # 120045"
                   value={editReference}
                   onChange={(e) => setEditReference(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-mono focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -2427,250 +2529,253 @@ export default function PartnersKhataPage() {
       )}
 
       {/* ============================================================== */}
-      {/* 6. BULK DELETE MODAL                                           */}
+      {/* 7. BULK DELETE MODAL                                           */}
       {/* ============================================================== */}
       <BulkDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         entityName="Partner Transactions"
         selectedCount={selectedTxIds.length}
-        totalCount={transactions.length}
+        totalCount={filteredTransactions.length}
         countsByScope={scopeCounts}
         onConfirmDelete={handleExecuteBulkDelete}
         isDeleting={isDeleting}
       />
 
       {/* ============================================================== */}
-      {/* 7. SINGLE DELETE CONFIRMATION MODAL                            */}
+      {/* 8. SINGLE DELETE MODAL                                         */}
       {/* ============================================================== */}
       <SingleDeleteModal
         isOpen={!!deletingTx}
         onClose={() => setDeletingTx(null)}
+        onConfirm={handleExecuteSingleDelete}
         title="Delete Partner Transaction"
         itemName={
           deletingTx
-            ? `${deletingTx.partnerName} - ${deletingTx.type.toUpperCase()}: PKR ${deletingTx.amount.toLocaleString()} (${deletingTx.date})`
+            ? `${getPartnerName(deletingTx.partnerId, deletingTx.partnerName)} - ${deletingTx.type} (PKR ${deletingTx.amount.toLocaleString()})`
             : ""
         }
-        onConfirm={handleExecuteSingleDelete}
         isDeleting={isDeleting}
       />
 
       {/* ============================================================== */}
-      {/* 8. DEDICATED TRANSACTION VOUCHER SLIP MODAL (Individual Print)  */}
+      {/* 9. STATEMENT PRINT PREVIEW MODAL                               */}
       {/* ============================================================== */}
-      {slipTx && (
-        <>
-          {/* Isolated Print Stylesheet for Individual Transaction Slip */}
-          <style>{`
-            @media print {
-              body * {
-                visibility: hidden !important;
-              }
-              #printable-partner-slip, #printable-partner-slip * {
-                visibility: visible !important;
-              }
-              #printable-partner-slip {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 24px !important;
-                background: white !important;
-                color: black !important;
-              }
-            }
-          `}</style>
+      {showPrintPreview && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-teal-600" />
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                  Partnership Statement Print Preview
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={triggerCleanPrint}
+                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Now</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrintPreview(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
 
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/80 backdrop-blur-sm animate-fade-in no-print">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden">
-              {/* Modal Top Bar */}
-              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
-                <div className="flex items-center gap-2">
-                  <Printer className="w-5 h-5 text-teal-600" />
-                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">
-                    Partner Transaction Voucher Slip (تفصیلی پرنٹ سلپ)
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
-                  >
-                    <Printer className="w-4 h-4" /> Print Slip (پرنٹ کریں)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSlipTx(null)}
-                    className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+            <div className="overflow-y-auto p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 flex-1 space-y-4 text-xs">
+              <OfficialPrintHeader
+                title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
+                docRef={`PRT-AUDIT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`}
+                period={getDateFilterDescription(dateFilter)}
+                settings={businessSettings}
+                showInPreview={true}
+                className="pb-3 border-b border-slate-200 dark:border-slate-700"
+              />
+
+              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <span className="font-black text-xs uppercase tracking-wider block text-slate-800 dark:text-slate-200">
+                  Partnership Capital &amp; Profit Summary
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-[11px]">
+                  {partners.map((p) => {
+                    const stat = partnerStatsMap[p.id];
+                    return (
+                      <div key={p.id} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-500 block truncate">{p.name} ({stat?.ratioPercent || 0}%)</span>
+                        <strong className="font-mono text-teal-700 dark:text-teal-300 block">
+                          Inv: {formatPKR(stat?.totalInvestment || 0)}
+                        </strong>
+                        <span className="text-rose-600 font-mono text-[10px] block">
+                          Adv: -{formatPKR(stat?.totalAdvance || 0)}
+                        </span>
+                        <strong className="text-slate-900 dark:text-slate-100 font-mono text-[10px] block border-t pt-1 mt-1">
+                          Net: {formatPKR(stat?.netCapital || 0)}
+                        </strong>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Scrollable Printable Slip Body */}
-              <div className="p-6 overflow-y-auto bg-white text-black text-xs font-sans">
-                <div id="printable-partner-slip" className="space-y-5 bg-white text-black p-2">
-                  {/* Official Header */}
-                  <OfficialPrintHeader
-                    title={
-                      slipTx.type === "investment" || slipTx.type === "in"
-                        ? "PARTNER CAPITAL INVESTMENT VOUCHER"
-                        : slipTx.type === "profit_payout"
-                          ? "PARTNER PROFIT DISTRIBUTION VOUCHER"
-                          : "PARTNER ADVANCE PAYMENT VOUCHER"
-                    }
-                    docRef={`VCH-PTX-${slipTx.id.toUpperCase().slice(-8)}`}
-                    period={`Transaction Date: ${slipTx.date}`}
-                    settings={businessSettings}
-                    showInPreview={true}
-                    className="pb-4 border-b-2 border-black"
-                  />
-
-                  {/* Partner & Voucher Meta Grid */}
-                  <div className="grid grid-cols-2 gap-3 p-3 rounded-lg border border-black/80 bg-slate-50 text-[11px]">
-                    <div>
-                      <span className="text-slate-600 block text-[10px]">Partner Name (شراکت دار):</span>
-                      <strong className="text-black text-sm font-black">
-                        {slipTx.partnerId === "partner_1" ? partner1Name : partner2Name}
-                      </strong>
-                      <span className="text-[10px] text-teal-700 font-bold block mt-0.5">
-                        Ownership Ratio: {slipTx.partnerId === "partner_1" ? p1RatioPercent : p2RatioPercent}%
-                      </span>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-slate-600 block text-[10px]">Transaction Type (نوعیت):</span>
-                      <span className="inline-block font-black uppercase text-[11px] px-2 py-0.5 rounded border border-black bg-white">
-                        {slipTx.type === "investment" || slipTx.type === "in"
-                          ? "💰 Capital Investment"
-                          : slipTx.type === "profit_payout"
-                            ? "📈 Profit Payout"
-                            : "🔻 Advance Payment (پیشگی)"}
-                      </span>
-                      <span className="text-slate-500 text-[10px] block mt-1">
-                        Method: <strong className="uppercase text-black">{slipTx.paymentMethod.replace("_", " ")}</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Amount Highlight Box */}
-                  <div className="p-4 rounded-xl border-2 border-black bg-slate-100 text-center space-y-1">
-                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
-                      Voucher Net Amount (کل رقم)
-                    </span>
-                    <div className="text-2xl sm:text-3xl font-black font-mono text-black">
-                      {formatPKR(slipTx.amount)}
-                    </div>
-                    <div className="text-[11px] font-bold italic text-slate-800 pt-1 border-t border-slate-300">
-                      Amount in words: {numberToWordsPKR(slipTx.amount)}
-                    </div>
-                  </div>
-
-                  {/* Detailed Particulars / Profit Breakdown */}
-                  <div className="border border-black rounded-lg overflow-hidden">
-                    <div className="bg-slate-200 px-3 py-1.5 font-black text-[11px] uppercase border-b border-black">
-                      Transaction Particulars &amp; Audit Notes
-                    </div>
-                    <div className="p-3 text-[11px] space-y-2">
-                      <p className="font-semibold text-black leading-relaxed">
-                        {slipTx.description}
-                      </p>
-                      {slipTx.reference && (
-                        <p className="text-slate-600 font-mono text-[10px]">
-                          Reference / Slip #: <strong className="text-black">{slipTx.reference}</strong>
-                        </p>
-                      )}
-
-                      {/* If Profit Payout breakdown is available */}
-                      {slipTx.grossProfit && slipTx.grossProfit > 0 && (
-                        <div className="mt-2 pt-2 border-t border-slate-300">
-                          <span className="font-bold text-[10px] uppercase text-slate-600 block mb-1">
-                            Profit Settlement Breakdown:
-                          </span>
-                          <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2 rounded border border-slate-300 text-center">
-                            <div>
-                              <span className="text-[9px] text-slate-500 block">Gross Profit Share</span>
-                              <strong className="font-mono text-slate-900">{formatPKR(slipTx.grossProfit)}</strong>
-                            </div>
-                            <div>
-                              <span className="text-[9px] text-rose-600 block">Advance Deducted</span>
-                              <strong className="font-mono text-rose-700">-{formatPKR(slipTx.advanceDeducted || 0)}</strong>
-                            </div>
-                            <div>
-                              <span className="text-[9px] text-emerald-600 block">Net Paid</span>
-                              <strong className="font-mono text-emerald-800">{formatPKR(slipTx.amount)}</strong>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Partner Standing Snapshot */}
-                  <div className="border border-black rounded-lg p-3 bg-slate-50 space-y-1 text-[10px]">
-                    <span className="font-black uppercase text-black block border-b border-slate-300 pb-1">
-                      Current Partner Account Standing (موجودہ پوزیشن)
-                    </span>
-                    <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-center">
-                      <div>
-                        <span className="text-slate-500 block text-[9px]">Total Invested</span>
-                        <strong className="text-black">
-                          {formatPKR(slipTx.partnerId === "partner_1" ? p1TotalInvestment : p2TotalInvestment)}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[9px]">Total Advance Taken</span>
-                        <strong className="text-rose-700">
-                          -{formatPKR(slipTx.partnerId === "partner_1" ? p1TotalAdvance : p2TotalAdvance)}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[9px]">Net Capital</span>
-                        <strong className="text-teal-800">
-                          {formatPKR(slipTx.partnerId === "partner_1" ? p1NetCapital : p2NetCapital)}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Signature Blocks */}
-                  <div className="pt-8 grid grid-cols-3 gap-6 text-center text-[10px]">
-                    <div>
-                      <div className="border-b border-black pb-8 mb-1"></div>
-                      <p className="font-black text-black">
-                        {slipTx.partnerId === "partner_1" ? partner1Name : partner2Name}
-                      </p>
-                      <p className="text-slate-500 text-[9px]">Partner Signature &amp; Stamp</p>
-                    </div>
-                    <div>
-                      <div className="border-b border-black pb-8 mb-1"></div>
-                      <p className="font-black text-black">
-                        {slipTx.partnerId === "partner_1" ? partner2Name : partner1Name}
-                      </p>
-                      <p className="text-slate-500 text-[9px]">Second Partner Signature</p>
-                    </div>
-                    <div>
-                      <div className="border-b border-black pb-8 mb-1"></div>
-                      <p className="font-black text-black">
-                        {slipTx.createdByName || "Authorized Admin"}
-                      </p>
-                      <p className="text-slate-500 text-[9px]">Auditor / Accountant Stamp</p>
-                    </div>
-                  </div>
-
-                  {/* Footer note */}
-                  <div className="pt-2 border-t border-slate-300 text-center text-[9px] text-slate-400">
-                    Official Voucher Slip generated by Noxderma ERP • System Verified Audit Trail
-                  </div>
+              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                <span className="font-black text-xs uppercase tracking-wider block text-slate-800 dark:text-slate-200 mb-2">
+                  Transaction Ledger ({filteredTransactions.length} records)
+                </span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200">
+                      <tr>
+                        <th className="p-1.5">Date</th>
+                        <th className="p-1.5">Partner</th>
+                        <th className="p-1.5">Type</th>
+                        <th className="p-1.5">Description</th>
+                        <th className="p-1.5 text-right">Amount (PKR)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+                      {filteredTransactions.slice(0, 50).map((t) => (
+                        <tr key={t.id}>
+                          <td className="p-1.5 whitespace-nowrap">{t.date}</td>
+                          <td className="p-1.5 font-bold whitespace-nowrap">{getPartnerName(t.partnerId, t.partnerName)}</td>
+                          <td className="p-1.5 uppercase text-[10px] whitespace-nowrap">{t.type}</td>
+                          <td className="p-1.5 font-sans truncate max-w-xs">{t.description}</td>
+                          <td className="p-1.5 text-right font-bold whitespace-nowrap">{formatPKR(t.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {filteredTransactions.length > 50 && (
+                    <p className="text-center text-[10px] text-slate-400 pt-2">
+                      Showing first 50 transactions. Full print will include all {filteredTransactions.length} records.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-        </>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 10. INDIVIDUAL TRANSACTION VOUCHER SLIP MODAL                  */}
+      {/* ============================================================== */}
+      {slipTx && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-teal-600" />
+                <span>Transaction Slip Voucher</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={triggerCleanPrint}
+                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Slip</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSlipTx(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Slip Container */}
+            <div className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3.5 text-xs text-slate-800 dark:text-slate-200">
+              <OfficialPrintHeader
+                title={
+                  slipTx.type === "investment" || slipTx.type === "in"
+                    ? "PARTNER CAPITAL INVESTMENT VOUCHER"
+                    : slipTx.type === "profit_payout"
+                      ? "PARTNER PROFIT DISTRIBUTION VOUCHER"
+                      : "PARTNER ADVANCE PAYMENT VOUCHER"
+                }
+                docRef={`VCH-PTX-${slipTx.id.toUpperCase().slice(-8)}`}
+                period={`Transaction Date: ${slipTx.date}`}
+                settings={businessSettings}
+                showInPreview={true}
+                className="pb-3 border-b border-slate-200 dark:border-slate-700"
+              />
+
+              <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Partner Name:</span>
+                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100">
+                    {getPartnerName(slipTx.partnerId, slipTx.partnerName)}
+                  </strong>
+                  <span className="text-[10px] text-teal-600 font-bold block mt-0.5">
+                    Share: {partnerStatsMap[slipTx.partnerId]?.ratioPercent || 0}%
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 block">Transaction Type:</span>
+                  <span className="inline-block font-extrabold uppercase text-[11px]">
+                    {slipTx.type === "investment" || slipTx.type === "in"
+                      ? "💰 Capital Investment"
+                      : slipTx.type === "profit_payout"
+                        ? "📈 Profit Payout"
+                        : "🔻 Advance Payment"}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5 capitalize">
+                    {slipTx.paymentMethod.replace("_", " ")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Amount Box */}
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-center space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Voucher Net Amount
+                </span>
+                <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100">
+                  {formatPKR(slipTx.amount)}
+                </div>
+                <div className="text-[10px] font-medium italic text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  {numberToWordsPKR(slipTx.amount)}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">Description / Purpose</span>
+                <p className="font-medium text-slate-800 dark:text-slate-200">{slipTx.description}</p>
+                {slipTx.reference && (
+                  <p className="text-[10px] font-mono text-slate-400 pt-1">
+                    Reference #: <strong className="text-slate-700 dark:text-slate-300">{slipTx.reference}</strong>
+                  </p>
+                )}
+              </div>
+
+              {/* Signatures */}
+              <div className="pt-6 grid grid-cols-2 gap-4 text-center text-[10px]">
+                <div>
+                  <div className="border-b border-slate-300 dark:border-slate-600 pb-6 mb-1"></div>
+                  <p className="font-bold">{getPartnerName(slipTx.partnerId, slipTx.partnerName)}</p>
+                  <p className="text-slate-400 text-[9px]">Partner Signature</p>
+                </div>
+                <div>
+                  <div className="border-b border-slate-300 dark:border-slate-600 pb-6 mb-1"></div>
+                  <p className="font-bold">{slipTx.createdByName || "Authorized Admin"}</p>
+                  <p className="text-slate-400 text-[9px]">Auditor / Accountant</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
