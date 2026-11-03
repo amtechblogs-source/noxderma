@@ -709,26 +709,25 @@ export default function PartnersKhataPage() {
         reference: editReference.trim() || undefined,
       };
 
-      // 1. Update IndexedDB immediately
-      await offlineDb.partnerTransactions.put(updatedTx);
-
-      // 2. Update React state immediately
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)).sort(comparePartnerTxNewestFirst)
-      );
-
-      // 3. Close modal immediately
+      // 1. Close modal and update React state immediately (0ms instant response)
       setIsEditModalOpen(false);
       setEditingTx(null);
       setIsSavingEdit(false);
 
-      // 4. Background non-blocking sync
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)).sort(comparePartnerTxNewestFirst)
+      );
+
+      // 2. Update IndexedDB in background
+      await offlineDb.partnerTransactions.put(updatedTx);
+
+      // 3. Background non-blocking sync
       firestoreSyncBackground(
         setDoc(doc(firestoreDb, "partnerTransactions", updatedTx.id), sanitizeForFirestore(updatedTx), { merge: true }),
         () => scheduleCloudUpsert("partnerTransactions", updatedTx.id, updatedTx)
       );
 
-      // 5. Audit record in background
+      // 4. Audit record in background
       recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
@@ -743,6 +742,8 @@ export default function PartnersKhataPage() {
     } catch (err: any) {
       console.error("Error updating partner transaction:", err);
       alert("Transaction update karne mein masla aaya: " + (err?.message || ""));
+      setIsEditModalOpen(false);
+      setEditingTx(null);
       setIsSavingEdit(false);
     }
   };
@@ -787,26 +788,24 @@ export default function PartnersKhataPage() {
         }
       }
 
-      // 1. Delete from local IndexedDB
-      await offlineDb.partnerTransactions.bulkDelete(idsToDelete);
-      if (unSettledUpdates.length > 0) {
-        await offlineDb.partnerTransactions.bulkPut(unSettledUpdates);
-      }
-
-      // 2. Update React state immediately
+      // 1. Close modal and update React state immediately (0ms instant response)
+      setDeleteModalOpen(false);
+      setIsDeleting(false);
+      setSelectedTxIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
       setTransactions((prev) => {
         const updateMap = new Map(unSettledUpdates.map((u) => [u.id, u]));
         return prev
           .filter((t) => !idsToDelete.includes(t.id))
           .map((t) => updateMap.get(t.id) || t);
       });
-      setSelectedTxIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
 
-      // 3. Close modal immediately
-      setDeleteModalOpen(false);
-      setIsDeleting(false);
+      // 2. Delete from local IndexedDB in background
+      await offlineDb.partnerTransactions.bulkDelete(idsToDelete);
+      if (unSettledUpdates.length > 0) {
+        await offlineDb.partnerTransactions.bulkPut(unSettledUpdates);
+      }
 
-      // 4. Background cloud sync
+      // 3. Background cloud sync
       firestoreSyncBackground(
         (async () => {
           await Promise.all(idsToDelete.map((id) => deleteDoc(doc(firestoreDb, "partnerTransactions", id))));
@@ -858,26 +857,24 @@ export default function PartnersKhataPage() {
         }
       }
 
-      // 1. Delete from local IndexedDB
-      await offlineDb.partnerTransactions.delete(targetId);
-      if (unSettledUpdates.length > 0) {
-        await offlineDb.partnerTransactions.bulkPut(unSettledUpdates);
-      }
-
-      // 2. Update React state immediately
+      // 1. Close modal and update React state immediately (0ms instant response)
+      setDeletingTx(null);
+      setIsDeleting(false);
+      setSelectedTxIds((prev) => prev.filter((id) => id !== targetId));
       setTransactions((prev) => {
         const updateMap = new Map(unSettledUpdates.map((u) => [u.id, u]));
         return prev
           .filter((t) => t.id !== targetId)
           .map((t) => updateMap.get(t.id) || t);
       });
-      setSelectedTxIds((prev) => prev.filter((id) => id !== targetId));
 
-      // 3. Close modal immediately
-      setDeletingTx(null);
-      setIsDeleting(false);
+      // 2. Delete from local IndexedDB in background
+      await offlineDb.partnerTransactions.delete(targetId);
+      if (unSettledUpdates.length > 0) {
+        await offlineDb.partnerTransactions.bulkPut(unSettledUpdates);
+      }
 
-      // 4. Background cloud sync
+      // 3. Background cloud sync
       firestoreSyncBackground(
         (async () => {
           await deleteDoc(doc(firestoreDb, "partnerTransactions", targetId));

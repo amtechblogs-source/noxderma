@@ -546,33 +546,37 @@ export default function OnlineOrdersPage() {
     };
 
     const updated = orders.map((o) => (o.id === editingOrder.id ? updatedOrder : o));
-    await saveOrders(updated);
     setEditingOrder(null);
+    setOrders(updated);
+    saveOrders(updated).catch(console.warn);
   };
 
   // Delete Handlers
   const handleDeleteSingle = async (order: OnlineOrder) => {
     const updated = orders.filter((o) => o.id !== order.id);
-    await saveOrders(updated);
-    setSelectedOrderIds((prev) => prev.filter((id) => id !== order.id));
     setDeletingOrder(null);
+    setSelectedOrderIds((prev) => prev.filter((id) => id !== order.id));
+    setOrders(updated);
+    saveOrders(updated).catch(console.warn);
   };
 
   const handleDeleteSelected = async () => {
     if (selectedOrderIds.length === 0) return;
     const idsSet = new Set(selectedOrderIds);
     const updated = orders.filter((o) => !idsSet.has(o.id));
-    await saveOrders(updated);
-    setSelectedOrderIds([]);
     setIsBulkDeleting(false);
+    setSelectedOrderIds([]);
+    setOrders(updated);
+    saveOrders(updated).catch(console.warn);
   };
 
   const handlePurgeFiltered = async () => {
     const idsToRemove = new Set(filtered.map((o) => o.id));
     const updated = orders.filter((o) => !idsToRemove.has(o.id));
-    await saveOrders(updated);
-    setSelectedOrderIds([]);
     setIsPurgeModalOpen(false);
+    setSelectedOrderIds([]);
+    setOrders(updated);
+    saveOrders(updated).catch(console.warn);
   };
 
   const openBookingModal = () => {

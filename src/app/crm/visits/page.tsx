@@ -551,9 +551,21 @@ export default function CustomerVisitsPage() {
         editHistory: [historyEntry, ...prevHistory],
       };
 
+      // 1. Close modal and update state immediately (0ms)
+      setEditingVisit(null);
+      setIsSavingEdit(false);
+      setVisits((prev) =>
+        prev.map((v) => (v.id === updatedVisit.id ? updatedVisit : v))
+      );
+      if (viewingVisit?.id === updatedVisit.id) {
+        setViewingVisit(updatedVisit);
+      }
+
+      // 2. Persist to IndexedDB
       await offlineDb.customerVisits.put(updatedVisit);
 
-      await recordActivity({
+      // 3. Record Activity & refresh in background
+      recordActivity({
         userId: actorId,
         userName: actorName,
         userRole: actorRole,
@@ -571,17 +583,14 @@ export default function CustomerVisitsPage() {
         snapshotAfter: updatedVisit,
         canUndo: true,
         timestamp: nowIso,
-      });
+      }).catch(console.warn);
 
-      await refreshVisits();
-      if (viewingVisit?.id === updatedVisit.id) {
-        setViewingVisit(updatedVisit);
-      }
-      setEditingVisit(null);
+      refreshVisits().catch(console.warn);
       showToast(`Visit updated (${diffs.length} change${diffs.length > 1 ? "s" : ""} recorded in history & Audit Logs).`);
     } catch (err: any) {
       console.error("Failed to save visit edit:", err);
       showToast("Could not update visit: " + (err?.message || "Unknown error"), "error");
+      setEditingVisit(null);
     } finally {
       setIsSavingEdit(false);
     }
