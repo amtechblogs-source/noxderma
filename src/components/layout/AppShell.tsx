@@ -426,9 +426,9 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       return hasPermission("categories:manage");
     }
 
-    // Purchases & Warehouse Stock
+    // Add Stock (Purchases & Warehouse Receiving) - accessible for all roles
     if (pathname.startsWith("/purchases")) {
-      return hasPermission("inventory:receive");
+      return true;
     }
     if (pathname.startsWith("/inventory")) {
       return hasPermission("inventory:view");
@@ -515,7 +515,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       return {
         href: "/purchases",
         label: "Add Stock",
-        ariaLabel: "Add Stock (Purchases / GRN)",
+        ariaLabel: "Add Stock",
         Icon: ShoppingBag,
         isActive: isPrefixActive("/purchases"),
       };

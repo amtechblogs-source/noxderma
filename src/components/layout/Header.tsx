@@ -156,11 +156,10 @@ const APP_NAVIGATION_SEARCH_ITEMS: SearchNavItem[] = [
 
   // Purchases & Suppliers
   {
-    name: "Add Stock (Purchases / GRN)",
+    name: "Add Stock",
     path: "/purchases",
-    module: "Stock & Purchases",
+    module: "Stock & Inventory",
     keywords: "add stock stock add new stock purchase purchases po grn vendor supplier buy inward stock receiving order raw stock khareedari mal lena dakhla maal",
-    requiredAnyPermissions: ["inventory:receive", "inventory:view", "products:view", "finance:ledgers"],
   },
   {
     name: "Pharmaceutical Manufacturers",
@@ -529,7 +528,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           if (p.startsWith("/products/new")) return hasPermission("products:edit");
           if (p.startsWith("/products") || p.startsWith("/manufacturers")) return hasAnyPermission(["products:view", "products:edit"]);
           if (p.startsWith("/categories")) return hasPermission("categories:manage");
-          if (p.startsWith("/purchases")) return hasAnyPermission(["inventory:receive", "inventory:view", "products:view", "finance:ledgers"]);
+          if (p.startsWith("/purchases")) return true;
           if (p.startsWith("/inventory")) return hasPermission("inventory:view");
           if (p.startsWith("/customers") || p.startsWith("/distributors")) return hasPermission("crm:customers");
           if (p.startsWith("/crm/leads")) return hasPermission("crm:leads");

@@ -86,7 +86,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Batches & Expiry", href: "/inventory/batches", icon: Barcode, requiredPermission: "inventory:view" },
       { name: "Stock Alerts", href: "/inventory", icon: Boxes, requiredPermission: "inventory:view" },
       { name: "Stock History", href: "/inventory/movements", icon: ArrowLeftRight, requiredPermission: "inventory:view" },
-      { name: "Add Stock", href: "/purchases", icon: ShoppingBag, requiredPermission: "inventory:receive" },
+      { name: "Add Stock", href: "/purchases", icon: ShoppingBag },
       { name: "Manufacturers", href: "/manufacturers", icon: Factory, requiredPermission: "products:view" },
     ],
   },

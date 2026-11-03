@@ -346,7 +346,7 @@ export default function PurchasesPage() {
             <span className="text-xs text-slate-400">Purchase Orders + Delivery &amp; Received Stock</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Add Stock (Purchases &amp; Received Stock)
+            Add Stock
           </h1>
         </div>
 

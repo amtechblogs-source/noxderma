@@ -92,7 +92,7 @@ export const PERMISSION_GROUPS: {
   },
   {
     moduleName: "Stock & Medicines",
-    description: "Medicines catalog, price estimator, warehouse stock, batches, and add stock (GRN)",
+    description: "Medicines catalog, price estimator, warehouse stock, batches, and add stock",
     permissions: [
       { key: "products:view", label: "Medicines & Manufacturers", desc: "View Medicines catalog (/products) and Manufacturers (/manufacturers)" },
       { key: "products:edit", label: "Add & Edit Medicines", desc: "Create or edit medicines and upload photos (/products/new)" },
@@ -100,7 +100,7 @@ export const PERMISSION_GROUPS: {
       { key: "pricing:edit", label: "Edit Trade Prices / MRP", desc: "Change product rates and discounts" },
       { key: "categories:manage", label: "Manage Categories", desc: "Create, edit, or delete medicine categories (/categories)" },
       { key: "inventory:view", label: "Batches, Stock Alerts & History", desc: "View Stock Alerts (/inventory), Batches (/inventory/batches) & Stock History (/inventory/movements)" },
-      { key: "inventory:receive", label: "Add Stock (GRN)", desc: "Add stock, receive shipments, and manage manufacturer purchase orders (/purchases)" },
+      { key: "inventory:receive", label: "Add Stock", desc: "Add stock, receive shipments, and manage manufacturer purchase orders (/purchases)" },
       { key: "inventory:damage", label: "Record Damaged Stock", desc: "Mark broken or damaged boxes" },
       { key: "inventory:samples", label: "Issue Doctor Samples", desc: "Give free doctor promotional samples" },
       { key: "inventory:adjust", label: "Stock Adjustment", desc: "Audit and manually update stock count" },
