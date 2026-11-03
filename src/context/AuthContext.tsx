@@ -27,6 +27,7 @@ interface AuthContextType {
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
   hasModuleAccess: (moduleKey: string) => boolean;
+  updateCurrentUser: (updated: Partial<AuthenticatedUser>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -423,6 +424,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser, hasAnyPermission, hasPermission]);
 
+  const updateCurrentUser = useCallback(async (updated: Partial<AuthenticatedUser>) => {
+    if (!currentUser) return;
+    const merged: AuthenticatedUser = {
+      ...currentUser,
+      ...updated,
+    };
+    setCurrentUser(merged);
+
+    // 1. Synchronous storage mirror update
+    if (typeof window !== "undefined") {
+      try {
+        if (localStorage.getItem(ACTIVE_USER_STORAGE_KEY)) {
+          localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(merged));
+        } else {
+          sessionStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(merged));
+        }
+      } catch {}
+    }
+
+    // 2. OfflineDb users update
+    try {
+      if ((offlineDb as any).users) {
+        await (offlineDb as any).users.update(merged.id, updated);
+      }
+    } catch (e) {
+      console.warn("Failed to update offlineDb user:", e);
+    }
+
+    // 3. Dispatch broadcast event for immediate reactivity
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("noxderma_user_session_updated", { detail: merged }));
+    }
+
+    // 4. Background cloud sync to Firestore
+    try {
+      const { doc, updateDoc, setDoc } = await import("firebase/firestore");
+      const userDocRef = doc(firestoreDb, "users", merged.id);
+      await updateDoc(userDocRef, updated).catch(async () => {
+        await setDoc(userDocRef, merged, { merge: true });
+      });
+    } catch (err) {
+      console.warn("Failed to cloud-sync user update:", err);
+    }
+  }, [currentUser]);
+
   const authContextValue = useMemo(() => ({
     currentUser,
     loading,
@@ -431,7 +477,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     hasPermission,
     hasAnyPermission,
     hasModuleAccess,
-  }), [currentUser, loading, login, logout, hasPermission, hasAnyPermission, hasModuleAccess]);
+    updateCurrentUser,
+  }), [currentUser, loading, login, logout, hasPermission, hasAnyPermission, hasModuleAccess, updateCurrentUser]);
 
   return (
     <AuthContext.Provider value={authContextValue}>

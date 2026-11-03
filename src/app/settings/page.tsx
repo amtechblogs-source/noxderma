@@ -29,15 +29,83 @@ import { offlineDb } from "@/lib/offline/db";
 import { enqueueOperation } from "@/lib/offline/outbox";
 import { imageStorage } from "@/lib/image-storage/service";
 import { useTheme, type ThemeId } from "@/context/ThemeContext";
+import { useAuth } from "@/context/AuthContext";
 
 export default function BusinessSettingsPage() {
   const { currentTheme, themeId, setTheme, availableThemes } = useTheme();
+  const { currentUser, updateCurrentUser } = useAuth();
   const [settings, setSettings] = useState<BusinessSettings>(DEFAULT_BUSINESS_SETTINGS);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const [logoNotice, setLogoNotice] = useState<string | null>(null);
+
+  const compressAvatar = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const size = Math.min(img.width, img.height);
+          const startX = (img.width - size) / 2;
+          const startY = (img.height - size) / 2;
+
+          const canvas = document.createElement("canvas");
+          const targetDim = 256;
+          canvas.width = targetDim;
+          canvas.height = targetDim;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, startX, startY, size, size, 0, 0, targetDim, targetDim);
+          resolve(canvas.toDataURL("image/jpeg", 0.88));
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSettingsAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image size should be less than 5MB.");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const compressedDataUrl = await compressAvatar(file);
+      await updateCurrentUser({ avatarUrl: compressedDataUrl });
+    } catch (err: any) {
+      console.error("Avatar upload failed:", err);
+      alert("Failed to upload profile picture: " + (err.message || "Unknown error"));
+    } finally {
+      setIsUploadingAvatar(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleSettingsAvatarRemove = async () => {
+    if (confirm("Kya aap profile picture hatana chahte hain?")) {
+      setIsUploadingAvatar(true);
+      try {
+        await updateCurrentUser({ avatarUrl: "" });
+      } catch (err: any) {
+        console.error("Failed to remove avatar:", err);
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    }
+  };
 
   // Helper to persist settings across all layers instantly and reliably
   const persistBusinessSettings = async (
@@ -306,6 +374,82 @@ export default function BusinessSettingsPage() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
+        {/* Section 0: My Profile & Avatar Picture */}
+        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-teal-600" />
+              1. My Profile &amp; Picture
+            </h2>
+            <span className="text-xs text-slate-400 font-medium">Logged in as {currentUser?.displayName || "User"}</span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 pt-1">
+            <div className="relative group shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-black text-2xl shadow-md overflow-hidden ring-4 ring-teal-500/20">
+                {isUploadingAvatar ? (
+                  <Loader2 className="w-7 h-7 animate-spin text-white" />
+                ) : currentUser?.avatarUrl ? (
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt={currentUser.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span>{currentUser?.displayName ? currentUser.displayName[0].toUpperCase() : "O"}</span>
+                )}
+              </div>
+
+              <label
+                htmlFor="settings-avatar-upload"
+                className="absolute inset-0 bg-slate-950/60 rounded-2xl flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold"
+                title="Upload or Change Profile Photo"
+              >
+                <Upload className="w-5 h-5 mb-1" />
+                <span>Change</span>
+              </label>
+              <input
+                id="settings-avatar-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleSettingsAvatarUpload}
+              />
+            </div>
+
+            <div className="flex-1 space-y-3 w-full text-center sm:text-left">
+              <div>
+                <p className="font-extrabold text-base text-slate-900 dark:text-slate-100">
+                  {currentUser?.displayName || "System User"}
+                </p>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">
+                  {currentUser?.email || "admin@noxderma.com"}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                <label
+                  htmlFor="settings-avatar-upload"
+                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm shadow-teal-600/20 transition-all"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{isUploadingAvatar ? "Uploading..." : currentUser?.avatarUrl ? "Change Profile Picture" : "Upload Profile Picture"}</span>
+                </label>
+                {currentUser?.avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={handleSettingsAvatarRemove}
+                    disabled={isUploadingAvatar}
+                    className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all"
+                  >
+                    Remove Picture
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Section 1: Color Themes (Visual Palette) */}
         <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
           <div className="flex items-center justify-between">

@@ -19,6 +19,7 @@ export interface UserProfile {
   active: boolean;
   createdAt: string;
   lastLoginAt?: string;
+  avatarUrl?: string;
 }
 
 export type Permission =

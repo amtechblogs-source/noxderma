@@ -669,10 +669,25 @@ export default function UserManagementPage() {
                       />
                     </td>
                     <td className="py-3.5 px-3">
-                      <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                        {normalizeUserDisplayName(user.displayName, "Owner")}
-                      </span>
-                      <span className="font-mono text-xs text-slate-400">{user.id}</span>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-bold text-xs shrink-0 overflow-hidden ring-1 ring-teal-500/30">
+                          {user.avatarUrl ? (
+                            <img
+                              src={user.avatarUrl}
+                              alt={user.displayName}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span>{(user.displayName || user.email || "U")[0].toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                            {normalizeUserDisplayName(user.displayName, "Owner")}
+                          </span>
+                          <span className="font-mono text-xs text-slate-400">{user.id}</span>
+                        </div>
+                      </div>
                     </td>
 
                     <td className="py-3.5 px-3 text-slate-700 dark:text-slate-300 font-mono text-xs">

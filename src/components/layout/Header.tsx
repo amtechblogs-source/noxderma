@@ -32,6 +32,8 @@ import {
   Ticket,
   Factory,
   Truck,
+  Camera,
+  Loader2,
 } from "lucide-react";
 import { formatPKR } from "@/lib/formatting";
 import { syncManager } from "@/lib/offline/sync";
@@ -338,13 +340,81 @@ const APP_NAVIGATION_SEARCH_ITEMS: SearchNavItem[] = [
 export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) {
   const router = useRouter();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
-  const { hasPermission, hasAnyPermission } = useAuth();
+  const { hasPermission, hasAnyPermission, updateCurrentUser } = useAuth();
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const compressAvatarImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const size = Math.min(img.width, img.height);
+          const startX = (img.width - size) / 2;
+          const startY = (img.height - size) / 2;
+
+          const canvas = document.createElement("canvas");
+          const targetDim = 256;
+          canvas.width = targetDim;
+          canvas.height = targetDim;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, startX, startY, size, size, 0, 0, targetDim, targetDim);
+          resolve(canvas.toDataURL("image/jpeg", 0.88));
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image size should be less than 5MB.");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const compressedDataUrl = await compressAvatarImage(file);
+      await updateCurrentUser({ avatarUrl: compressedDataUrl });
+    } catch (err: any) {
+      console.error("Avatar upload failed:", err);
+      alert("Failed to update profile picture: " + (err.message || "Unknown error"));
+    } finally {
+      setIsUploadingAvatar(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleRemoveAvatar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm("Kya aap profile picture remove karna chahte hain?")) {
+      setIsUploadingAvatar(true);
+      try {
+        await updateCurrentUser({ avatarUrl: "" });
+      } catch (err: any) {
+        console.error("Failed to remove avatar:", err);
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    }
+  };
 
   // Universal Search State
   const [searchQuery, setSearchQuery] = useState("");
@@ -949,9 +1019,18 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
               className="flex items-center gap-1.5 sm:gap-2 p-1 min-h-[40px] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all btn-interactive"
+              title="Click to view profile or change photo"
             >
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
-                {displayUserName ? displayUserName[0].toUpperCase() : "O"}
+              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0 overflow-hidden ring-2 ring-teal-500/20">
+                {currentUser?.avatarUrl ? (
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt={displayUserName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span>{displayUserName ? displayUserName[0].toUpperCase() : "O"}</span>
+                )}
               </div>
               <div className="hidden sm:flex flex-col text-left">
                 <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
@@ -968,43 +1047,108 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
 
             {isProfileMenuOpen && (
               <div
-                className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-dropdown border border-slate-200 dark:border-slate-700 py-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
-                onClick={() => setIsProfileMenuOpen(false)}
+                className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-dropdown border border-slate-200 dark:border-slate-700 py-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
               >
-                <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                    {displayUserName}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    {currentUser?.email || "admin@noxderma.com"}
-                  </p>
-                  <span className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                    <Shield className="w-3.5 h-3.5" />
-                    {roleIsDuplicateOfName ? "Full System Access" : roleLabel}
-                  </span>
+                <div className="px-4 py-3.5 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="relative group shrink-0">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-extrabold text-base shadow-md overflow-hidden ring-2 ring-teal-500/30">
+                        {isUploadingAvatar ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-white" />
+                        ) : currentUser?.avatarUrl ? (
+                          <img
+                            src={currentUser.avatarUrl}
+                            alt={displayUserName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span>{displayUserName ? displayUserName[0].toUpperCase() : "O"}</span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={isUploadingAvatar}
+                        className="absolute inset-0 bg-slate-950/60 rounded-full flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[9px] font-bold"
+                        title="Upload or Change Profile Photo"
+                      >
+                        <Camera className="w-4 h-4 mb-0.5" />
+                        <span>Change</span>
+                      </button>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                        {displayUserName}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {currentUser?.email || "admin@noxderma.com"}
+                      </p>
+                      <span className="inline-flex items-center gap-1.5 mt-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                        <Shield className="w-3 h-3" />
+                        {roleIsDuplicateOfName ? "Full System Access" : roleLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Photo Upload & Remove Buttons */}
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={isUploadingAvatar}
+                      className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400 hover:text-teal-700 font-bold transition-colors disabled:opacity-50"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>{isUploadingAvatar ? "Uploading..." : currentUser?.avatarUrl ? "Change Photo" : "Upload Photo"}</span>
+                    </button>
+
+                    {currentUser?.avatarUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        disabled={isUploadingAvatar}
+                        className="text-slate-400 hover:text-rose-500 font-semibold transition-colors text-xs"
+                        title="Remove profile picture"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
                 </div>
 
-                {hasPermission("settings:manage") && (
-                  <>
+                <div className="py-1">
+                  {hasPermission("settings:manage") && (
                     <Link
                       href="/settings"
+                      onClick={() => setIsProfileMenuOpen(false)}
                       className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors font-medium"
                     >
                       <User className="w-4 h-4 text-slate-400" />
                       <span>My Profile &amp; Settings</span>
                     </Link>
+                  )}
 
-                    <div className="border-t border-slate-100 dark:border-slate-800 my-1.5" />
-                  </>
-                )}
-
-                <button
-                  onClick={onLogout}
-                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2.5 transition-colors font-semibold"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Log Out (Sign Out)</span>
-                </button>
+                  <button
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onLogout?.();
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2.5 transition-colors font-semibold"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Log Out (Sign Out)</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
