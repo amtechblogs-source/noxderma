@@ -142,6 +142,11 @@ export interface PartnerTransaction {
   paymentMethod: "cash" | "bank_transfer" | "cheque" | "online";
   description: string; // reason/notes
   reference?: string;
+  isSettled?: boolean;
+  grossProfit?: number;
+  advanceDeducted?: number;
+  netPaid?: number;
+  settledAdvanceTxIds?: string[];
   createdById?: string;
   createdByName?: string;
   createdAt: string;

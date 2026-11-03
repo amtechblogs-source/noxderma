@@ -390,6 +390,72 @@ function CustomerDetailContent() {
     }
   };
 
+  const creditUtilization =
+    customer && customer.creditLimit > 0
+      ? Math.round((customer.currentOutstandingBalance / customer.creditLimit) * 100)
+      : 0;
+
+  const isOverLimit = customer
+    ? customer.currentOutstandingBalance > customer.creditLimit
+    : false;
+
+  // Build clean ledger entries by merging Invoices & Payments chronologically
+  const ledgerEntries = useMemo(() => {
+    return [
+      ...invoices.map((i) => ({
+        id: `ledg_inv_${i.id}`,
+        date: (i.invoiceDate || i.createdAt).slice(0, 10),
+        type: "invoice" as const,
+        reference: i.provisionalReference || i.id,
+        description: `Sales Invoice (${i.lines?.length || 1} items)`,
+        debit: i.netTotal,
+        credit: 0,
+        timestamp: new Date(i.createdAt).getTime(),
+      })),
+      ...payments.map((p) => ({
+        id: `ledg_pay_${p.id}`,
+        date: (p.paymentDate || p.createdAt).slice(0, 10),
+        type: "payment" as const,
+        reference: p.referenceNumber || p.id,
+        description: `Payment Received (${p.paymentMethod.toUpperCase()})`,
+        debit: 0,
+        credit: p.amount,
+        timestamp: new Date(p.createdAt).getTime(),
+      })),
+    ].sort((a, b) => a.timestamp - b.timestamp);
+  }, [invoices, payments]);
+
+  // Compute running balance
+  const computedLedger = useMemo(() => {
+    let currentRunBal = 0;
+    return ledgerEntries.map((e) => {
+      currentRunBal += e.debit - e.credit;
+      return {
+        ...e,
+        runningBalance: currentRunBal,
+      };
+    });
+  }, [ledgerEntries]);
+
+  // Filtered lists based on dateFilter (All hooks defined at top level to obey Rules of Hooks)
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((inv) =>
+      isRecordInDateRange(inv.invoiceDate || inv.createdAt, dateFilter)
+    );
+  }, [invoices, dateFilter]);
+
+  const filteredLedger = useMemo(() => {
+    return computedLedger.filter((entry) =>
+      isRecordInDateRange(entry.date || entry.timestamp, dateFilter)
+    );
+  }, [computedLedger, dateFilter]);
+
+  const filteredVisits = useMemo(() => {
+    return visits.filter((v) =>
+      isRecordInDateRange(v.visitDate || v.createdAt, dateFilter)
+    );
+  }, [visits, dateFilter]);
+
   if (loading) {
     return (
       <div className="p-8 text-center text-slate-500 flex flex-col items-center justify-center min-h-[400px]">
@@ -437,66 +503,6 @@ function CustomerDetailContent() {
       </div>
     );
   }
-
-  const creditUtilization =
-    customer.creditLimit > 0
-      ? Math.round((customer.currentOutstandingBalance / customer.creditLimit) * 100)
-      : 0;
-
-  const isOverLimit = customer.currentOutstandingBalance > customer.creditLimit;
-
-  // Build clean ledger entries by merging Invoices & Payments chronologically
-  const ledgerEntries = [
-    ...invoices.map((i) => ({
-      id: `ledg_inv_${i.id}`,
-      date: (i.invoiceDate || i.createdAt).slice(0, 10),
-      type: "invoice" as const,
-      reference: i.provisionalReference || i.id,
-      description: `Sales Invoice (${i.lines?.length || 1} items)`,
-      debit: i.netTotal,
-      credit: 0,
-      timestamp: new Date(i.createdAt).getTime(),
-    })),
-    ...payments.map((p) => ({
-      id: `ledg_pay_${p.id}`,
-      date: (p.paymentDate || p.createdAt).slice(0, 10),
-      type: "payment" as const,
-      reference: p.referenceNumber || p.id,
-      description: `Payment Received (${p.paymentMethod.toUpperCase()})`,
-      debit: 0,
-      credit: p.amount,
-      timestamp: new Date(p.createdAt).getTime(),
-    })),
-  ].sort((a, b) => a.timestamp - b.timestamp);
-
-  // Compute running balance
-  let currentRunBal = 0;
-  const computedLedger = ledgerEntries.map((e) => {
-    currentRunBal += e.debit - e.credit;
-    return {
-      ...e,
-      runningBalance: currentRunBal,
-    };
-  });
-
-  // Filtered lists based on dateFilter
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter((inv) =>
-      isRecordInDateRange(inv.invoiceDate || inv.createdAt, dateFilter)
-    );
-  }, [invoices, dateFilter]);
-
-  const filteredLedger = useMemo(() => {
-    return computedLedger.filter((entry) =>
-      isRecordInDateRange(entry.date || entry.timestamp, dateFilter)
-    );
-  }, [computedLedger, dateFilter]);
-
-  const filteredVisits = useMemo(() => {
-    return visits.filter((v) =>
-      isRecordInDateRange(v.visitDate || v.createdAt, dateFilter)
-    );
-  }, [visits, dateFilter]);
 
   return (
     <div className="space-y-6">

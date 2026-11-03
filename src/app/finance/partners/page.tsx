@@ -59,6 +59,78 @@ import {
 } from "@/components/common/BulkDeleteModal";
 import type { PartnerTransaction, PartnerTransactionType, BusinessSettings } from "@/types";
 
+// Helper: Pakistani Rupees to Words
+function numberToWordsPKR(num: number): string {
+  if (!num || num === 0) return "Zero Rupees Only";
+  const a = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  function inWords(n: number): string {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 !== 0 ? " " + a[n % 10] : "");
+    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 !== 0 ? " and " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 !== 0 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 !== 0 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 !== 0 ? " " + inWords(n % 10000000) : "");
+  }
+
+  const rounded = Math.round(Math.abs(num));
+  return `${inWords(rounded).trim()} Rupees Only`;
+}
+
+// Non-blocking firestore sync helper that times out quickly and delegates to offline queue
+function firestoreSyncBackground(promise: Promise<any>, fallback: () => void, timeoutMs = 1200) {
+  let settled = false;
+  const timeoutId = setTimeout(() => {
+    if (!settled) {
+      settled = true;
+      try {
+        fallback();
+      } catch (e) {
+        console.warn("Fallback cloud sync warning:", e);
+      }
+    }
+  }, timeoutMs);
+
+  promise
+    .then(() => {
+      settled = true;
+      clearTimeout(timeoutId);
+    })
+    .catch((err) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        try {
+          fallback();
+        } catch (e) {
+          console.warn("Fallback cloud sync warning:", e);
+        }
+      }
+    });
+}
+
 // Helper: Extract timestamp for granular sorting (createdAt ISO or ID timestamp)
 function getPartnerTxTime(tx: PartnerTransaction): number {
   if (tx.createdAt) {
@@ -126,8 +198,11 @@ export default function PartnersKhataPage() {
   const [reference, setReference] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Print Preview Modal State
+  // Print Preview Modal State (Full statement)
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+
+  // Individual Transaction Slip Modal State
+  const [slipTx, setSlipTx] = useState<PartnerTransaction | null>(null);
 
   // Selection state
   const [selectedTxIds, setSelectedTxIds] = useState<string[]>([]);
@@ -249,8 +324,8 @@ export default function PartnersKhataPage() {
     return parseFloat(((p2TotalInvestment / combinedTotalInvestment) * 100).toFixed(2));
   }, [p2TotalInvestment, combinedTotalInvestment]);
 
-  // Total Capital Withdrawals / Drawings
-  const p1TotalWithdrawals = useMemo(
+  // Total Capital Withdrawals / Advances
+  const p1TotalAdvance = useMemo(
     () =>
       p1Transactions
         .filter((t) => t.type === "withdrawal" || t.type === "out")
@@ -258,10 +333,27 @@ export default function PartnersKhataPage() {
     [p1Transactions]
   );
 
-  const p2TotalWithdrawals = useMemo(
+  const p2TotalAdvance = useMemo(
     () =>
       p2Transactions
         .filter((t) => t.type === "withdrawal" || t.type === "out")
+        .reduce((sum, t) => sum + t.amount, 0),
+    [p2Transactions]
+  );
+
+  // Outstanding (unsettled) advances taken by each partner
+  const p1OutstandingAdvance = useMemo(
+    () =>
+      p1Transactions
+        .filter((t) => (t.type === "withdrawal" || t.type === "out") && !t.isSettled)
+        .reduce((sum, t) => sum + t.amount, 0),
+    [p1Transactions]
+  );
+
+  const p2OutstandingAdvance = useMemo(
+    () =>
+      p2Transactions
+        .filter((t) => (t.type === "withdrawal" || t.type === "out") && !t.isSettled)
         .reduce((sum, t) => sum + t.amount, 0),
     [p2Transactions]
   );
@@ -283,13 +375,21 @@ export default function PartnersKhataPage() {
     [p2Transactions]
   );
 
-  // Net Capital Standing (Investment - Withdrawals)
-  const p1NetCapital = p1TotalInvestment - p1TotalWithdrawals;
-  const p2NetCapital = p2TotalInvestment - p2TotalWithdrawals;
+  // Net Capital Standing (Investment - Advance)
+  const p1NetCapital = p1TotalInvestment - p1TotalAdvance;
+  const p2NetCapital = p2TotalInvestment - p2TotalAdvance;
 
   // Profit Distribution calculation on distributable profit pool
-  const p1CalculatedProfit = Math.round((distributableProfit * p1RatioPercent) / 100);
-  const p2CalculatedProfit = Math.round(distributableProfit - p1CalculatedProfit);
+  const p1GrossProfit = Math.round((distributableProfit * p1RatioPercent) / 100);
+  const p2GrossProfit = Math.round(distributableProfit - p1GrossProfit);
+
+  // Auto-calculated advance deduction: deduct up to the available profit share
+  const p1AdvanceToDeduct = Math.min(p1GrossProfit, p1OutstandingAdvance);
+  const p2AdvanceToDeduct = Math.min(p2GrossProfit, p2OutstandingAdvance);
+
+  // Net profit payable after deducting advance
+  const p1NetPayable = Math.max(0, p1GrossProfit - p1AdvanceToDeduct);
+  const p2NetPayable = Math.max(0, p2GrossProfit - p2AdvanceToDeduct);
 
   // 4. Filtered Transactions (Unified date filter, partner, type & search)
   const filteredTransactions = useMemo(() => {
@@ -377,17 +477,27 @@ export default function PartnersKhataPage() {
         createdAt: new Date().toISOString(),
       };
 
+      // 1. Save locally in IndexedDB immediately
       await offlineDb.partnerTransactions.add(newTx);
 
-      try {
-        await setDoc(doc(firestoreDb, "partnerTransactions", newTx.id), sanitizeForFirestore(newTx), { merge: true });
-      } catch {
-        scheduleCloudUpsert("partnerTransactions", newTx.id, newTx);
-      }
-
+      // 2. Update React state immediately
       setTransactions((prev) => [newTx, ...prev].sort(comparePartnerTxNewestFirst));
 
-      await recordActivity({
+      // 3. Close modal immediately
+      setIsModalOpen(false);
+      setAmount("");
+      setDescription("");
+      setReference("");
+      setIsSubmitting(false);
+
+      // 4. Background cloud sync
+      firestoreSyncBackground(
+        setDoc(doc(firestoreDb, "partnerTransactions", newTx.id), sanitizeForFirestore(newTx), { merge: true }),
+        () => scheduleCloudUpsert("partnerTransactions", newTx.id, newTx)
+      );
+
+      // 5. Audit record in background
+      recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
@@ -397,16 +507,10 @@ export default function PartnersKhataPage() {
         entityTitle: `Added Partner ${newTx.type} - ${newTx.partnerName}`,
         details: `Recorded ${newTx.type} of PKR ${newTx.amount.toLocaleString()} for ${newTx.partnerName}`,
         snapshotAfter: newTx,
-      });
-
-      setIsModalOpen(false);
-      setAmount("");
-      setDescription("");
-      setReference("");
+      }).catch(console.warn);
     } catch (err) {
       console.error("Error saving partner transaction:", err);
       alert("Transaction save karne mein masla aaya.");
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -417,11 +521,19 @@ export default function PartnersKhataPage() {
       alert("Distributable profit ki raqam 0 se zyada honi chahiye.");
       return;
     }
-    if (
-      !confirm(
-        `Kya aap waqai Rs ${distributableProfit.toLocaleString()} ko dono partners ke darmiyan unke investment ratio (${p1RatioPercent}% / ${p2RatioPercent}%) ke mutabiq khate mein record karna chahte hain?\n\n• ${partner1Name}: ${formatPKR(p1CalculatedProfit)}\n• ${partner2Name}: ${formatPKR(p2CalculatedProfit)}`
-      )
-    ) {
+
+    const confirmMsg =
+      `Kya aap waqai Rs ${distributableProfit.toLocaleString()} profit dono partners ke darmiyan record karna chahte hain?\n\n` +
+      `• ${partner1Name} (${p1RatioPercent}%):\n` +
+      `   Gross Profit: ${formatPKR(p1GrossProfit)}\n` +
+      `   Advance Cut (پیشگی کٹوتی): -${formatPKR(p1AdvanceToDeduct)}\n` +
+      `   Net Payout: ${formatPKR(p1NetPayable)}\n\n` +
+      `• ${partner2Name} (${p2RatioPercent}%):\n` +
+      `   Gross Profit: ${formatPKR(p2GrossProfit)}\n` +
+      `   Advance Cut (پیشگی کٹوتی): -${formatPKR(p2AdvanceToDeduct)}\n` +
+      `   Net Payout: ${formatPKR(p2NetPayable)}`;
+
+    if (!confirm(confirmMsg)) {
       return;
     }
 
@@ -430,16 +542,45 @@ export default function PartnersKhataPage() {
       const today = new Date().toISOString().split("T")[0];
       const nowIso = new Date().toISOString();
 
+      // Find unsettled advance transactions to mark as settled
+      const p1SettledIds: string[] = [];
+      let p1RemainingDeduction = p1AdvanceToDeduct;
+      const p1Updates: PartnerTransaction[] = [];
+
+      for (const t of p1Transactions) {
+        if ((t.type === "withdrawal" || t.type === "out") && !t.isSettled && p1RemainingDeduction > 0) {
+          p1SettledIds.push(t.id);
+          p1RemainingDeduction -= t.amount;
+          p1Updates.push({ ...t, isSettled: true });
+        }
+      }
+
+      const p2SettledIds: string[] = [];
+      let p2RemainingDeduction = p2AdvanceToDeduct;
+      const p2Updates: PartnerTransaction[] = [];
+
+      for (const t of p2Transactions) {
+        if ((t.type === "withdrawal" || t.type === "out") && !t.isSettled && p2RemainingDeduction > 0) {
+          p2SettledIds.push(t.id);
+          p2RemainingDeduction -= t.amount;
+          p2Updates.push({ ...t, isSettled: true });
+        }
+      }
+
       const txP1: PartnerTransaction = {
         id: `ptx_profit_p1_${Date.now()}`,
         partnerId: "partner_1",
         partnerName: partner1Name,
         type: "profit_payout",
-        amount: p1CalculatedProfit,
+        amount: p1NetPayable,
         date: today,
         paymentMethod: "bank_transfer",
-        description: `Profit Share Distribution (${p1RatioPercent}% of Rs ${distributableProfit.toLocaleString()})`,
+        description: `Profit Share (${p1RatioPercent}% of Rs ${distributableProfit.toLocaleString()}): Gross ${formatPKR(p1GrossProfit)} - Advance Cut ${formatPKR(p1AdvanceToDeduct)} = Net Paid ${formatPKR(p1NetPayable)}`,
         reference: `PROFIT-${today}`,
+        grossProfit: p1GrossProfit,
+        advanceDeducted: p1AdvanceToDeduct,
+        netPaid: p1NetPayable,
+        settledAdvanceTxIds: p1SettledIds,
         createdById: currentUser?.id,
         createdByName: currentUser?.displayName || "Admin",
         createdAt: nowIso,
@@ -450,31 +591,54 @@ export default function PartnersKhataPage() {
         partnerId: "partner_2",
         partnerName: partner2Name,
         type: "profit_payout",
-        amount: p2CalculatedProfit,
+        amount: p2NetPayable,
         date: today,
         paymentMethod: "bank_transfer",
-        description: `Profit Share Distribution (${p2RatioPercent}% of Rs ${distributableProfit.toLocaleString()})`,
+        description: `Profit Share (${p2RatioPercent}% of Rs ${distributableProfit.toLocaleString()}): Gross ${formatPKR(p2GrossProfit)} - Advance Cut ${formatPKR(p2AdvanceToDeduct)} = Net Paid ${formatPKR(p2NetPayable)}`,
         reference: `PROFIT-${today}`,
+        grossProfit: p2GrossProfit,
+        advanceDeducted: p2AdvanceToDeduct,
+        netPaid: p2NetPayable,
+        settledAdvanceTxIds: p2SettledIds,
         createdById: currentUser?.id,
         createdByName: currentUser?.displayName || "Admin",
         createdAt: nowIso,
       };
 
+      // 1. Update Dexie immediately
+      const allUpdates = [...p1Updates, ...p2Updates];
+      if (allUpdates.length > 0) {
+        await offlineDb.partnerTransactions.bulkPut(allUpdates);
+      }
       await offlineDb.partnerTransactions.bulkAdd([txP1, txP2]);
 
-      try {
-        await Promise.all([
+      // 2. Update React state immediately
+      setTransactions((prev) => {
+        const updateMap = new Map(allUpdates.map((u) => [u.id, u]));
+        const updatedPrev = prev.map((item) => updateMap.get(item.id) || item);
+        return [txP1, txP2, ...updatedPrev].sort(comparePartnerTxNewestFirst);
+      });
+
+      // 3. Close modal immediately
+      setShowProfitDistributorModal(false);
+      setIsSubmitting(false);
+
+      // 4. Background cloud sync
+      firestoreSyncBackground(
+        Promise.all([
           setDoc(doc(firestoreDb, "partnerTransactions", txP1.id), sanitizeForFirestore(txP1), { merge: true }),
           setDoc(doc(firestoreDb, "partnerTransactions", txP2.id), sanitizeForFirestore(txP2), { merge: true }),
-        ]);
-      } catch {
-        scheduleCloudUpsert("partnerTransactions", txP1.id, txP1);
-        scheduleCloudUpsert("partnerTransactions", txP2.id, txP2);
-      }
+          ...allUpdates.map((u) => setDoc(doc(firestoreDb, "partnerTransactions", u.id), sanitizeForFirestore(u), { merge: true })),
+        ]),
+        () => {
+          scheduleCloudUpsert("partnerTransactions", txP1.id, txP1);
+          scheduleCloudUpsert("partnerTransactions", txP2.id, txP2);
+          allUpdates.forEach((u) => scheduleCloudUpsert("partnerTransactions", u.id, u));
+        }
+      );
 
-      setTransactions((prev) => [txP1, txP2, ...prev].sort(comparePartnerTxNewestFirst));
-
-      await recordActivity({
+      // 5. Audit record
+      recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
@@ -482,21 +646,23 @@ export default function PartnersKhataPage() {
         entityType: "transaction",
         entityId: `${txP1.id}, ${txP2.id}`,
         entityTitle: `Distributed Profit - ${partner1Name} & ${partner2Name}`,
-        details: `Distributed total PKR ${distributableProfit.toLocaleString()} profit: ${partner1Name} received PKR ${txP1.amount.toLocaleString()} (${p1RatioPercent}%), ${partner2Name} received PKR ${txP2.amount.toLocaleString()} (${p2RatioPercent}%)`,
-      });
+        details: `Distributed total PKR ${distributableProfit.toLocaleString()} profit. Net paid: ${partner1Name} ${formatPKR(p1NetPayable)} (after -${formatPKR(p1AdvanceToDeduct)} advance), ${partner2Name} ${formatPKR(p2NetPayable)} (after -${formatPKR(p2AdvanceToDeduct)} advance).`,
+      }).catch(console.warn);
 
-      setShowProfitDistributorModal(false);
-      alert("Dono partners ka profit share kamyabi se khate mein darj ho gaya hai!");
+      alert("Dono partners ka profit share (advance cut karke) kamyabi se khate mein darj ho gaya hai!");
     } catch (err) {
       console.error("Error recording profit:", err);
       alert("Profit share record karne mein masla aaya.");
-    } finally {
       setIsSubmitting(false);
     }
   };
 
   // Open Edit Modal
   const handleOpenEditModal = (tx: PartnerTransaction) => {
+    if (tx.type === "profit_payout" || (tx.type as string) === "profit") {
+      alert("Profit distribute wali entry edit nahi ho sakti, sirf delete ho sakti hai.");
+      return;
+    }
     setEditingTx(tx);
     setEditPartnerId(tx.partnerId === "partner_2" ? "partner_2" : "partner_1");
     setEditType(tx.type);
@@ -513,6 +679,13 @@ export default function PartnersKhataPage() {
     e.preventDefault();
     if (!editingTx) return;
 
+    if (editingTx.type === "profit_payout" || (editingTx.type as string) === "profit") {
+      alert("Profit distribute wali entry edit nahi ho sakti, sirf delete ho sakti hai.");
+      setIsEditModalOpen(false);
+      setEditingTx(null);
+      return;
+    }
+
     const numAmount = parseFloat(editAmount);
     if (isNaN(numAmount) || numAmount <= 0) {
       alert("Barah-e-karam durust raqam (amount) darj karein.");
@@ -523,7 +696,6 @@ export default function PartnersKhataPage() {
       return;
     }
 
-    setIsSavingEdit(true);
     try {
       const updatedTx: PartnerTransaction = {
         ...editingTx,
@@ -537,19 +709,27 @@ export default function PartnersKhataPage() {
         reference: editReference.trim() || undefined,
       };
 
+      // 1. Update IndexedDB immediately
       await offlineDb.partnerTransactions.put(updatedTx);
 
-      try {
-        await setDoc(doc(firestoreDb, "partnerTransactions", updatedTx.id), sanitizeForFirestore(updatedTx), { merge: true });
-      } catch {
-        scheduleCloudUpsert("partnerTransactions", updatedTx.id, updatedTx);
-      }
-
+      // 2. Update React state immediately
       setTransactions((prev) =>
         prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)).sort(comparePartnerTxNewestFirst)
       );
 
-      await recordActivity({
+      // 3. Close modal immediately
+      setIsEditModalOpen(false);
+      setEditingTx(null);
+      setIsSavingEdit(false);
+
+      // 4. Background non-blocking sync
+      firestoreSyncBackground(
+        setDoc(doc(firestoreDb, "partnerTransactions", updatedTx.id), sanitizeForFirestore(updatedTx), { merge: true }),
+        () => scheduleCloudUpsert("partnerTransactions", updatedTx.id, updatedTx)
+      );
+
+      // 5. Audit record in background
+      recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
@@ -559,14 +739,10 @@ export default function PartnersKhataPage() {
         entityTitle: `Updated Partner Transaction - ${updatedTx.partnerName}`,
         details: `Updated ${updatedTx.type} of PKR ${updatedTx.amount.toLocaleString()} for ${updatedTx.partnerName}`,
         snapshotAfter: updatedTx,
-      });
-
-      setIsEditModalOpen(false);
-      setEditingTx(null);
+      }).catch(console.warn);
     } catch (err: any) {
       console.error("Error updating partner transaction:", err);
       alert("Transaction update karne mein masla aaya: " + (err?.message || ""));
-    } finally {
       setIsSavingEdit(false);
     }
   };
@@ -592,26 +768,60 @@ export default function PartnersKhataPage() {
       if (toDelete.length === 0) {
         alert("No matching transactions found to delete.");
         setDeleteModalOpen(false);
+        setIsDeleting(false);
         return;
       }
 
       const idsToDelete = toDelete.map((t) => t.id);
-      await offlineDb.partnerTransactions.bulkDelete(idsToDelete);
 
-      await Promise.allSettled(
-        idsToDelete.map(async (id) => {
-          try {
-            await deleteDoc(doc(firestoreDb, "partnerTransactions", id));
-          } catch {
-            scheduleCloudDelete("partnerTransactions", id);
+      // Check if any deleted profit payout settled advances, and un-settle them
+      const unSettledUpdates: PartnerTransaction[] = [];
+      for (const tx of toDelete) {
+        if (tx.type === "profit_payout" && tx.settledAdvanceTxIds && tx.settledAdvanceTxIds.length > 0) {
+          for (const sid of tx.settledAdvanceTxIds) {
+            const adv = transactions.find((t) => t.id === sid);
+            if (adv && adv.isSettled) {
+              unSettledUpdates.push({ ...adv, isSettled: false });
+            }
           }
-        })
-      );
+        }
+      }
 
-      setTransactions((prev) => prev.filter((t) => !idsToDelete.includes(t.id)));
+      // 1. Delete from local IndexedDB
+      await offlineDb.partnerTransactions.bulkDelete(idsToDelete);
+      if (unSettledUpdates.length > 0) {
+        await offlineDb.partnerTransactions.bulkPut(unSettledUpdates);
+      }
+
+      // 2. Update React state immediately
+      setTransactions((prev) => {
+        const updateMap = new Map(unSettledUpdates.map((u) => [u.id, u]));
+        return prev
+          .filter((t) => !idsToDelete.includes(t.id))
+          .map((t) => updateMap.get(t.id) || t);
+      });
       setSelectedTxIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
 
-      await recordActivity({
+      // 3. Close modal immediately
+      setDeleteModalOpen(false);
+      setIsDeleting(false);
+
+      // 4. Background cloud sync
+      firestoreSyncBackground(
+        (async () => {
+          await Promise.all(idsToDelete.map((id) => deleteDoc(doc(firestoreDb, "partnerTransactions", id))));
+          for (const u of unSettledUpdates) {
+            await setDoc(doc(firestoreDb, "partnerTransactions", u.id), sanitizeForFirestore(u), { merge: true });
+          }
+        })(),
+        () => {
+          idsToDelete.forEach((id) => scheduleCloudDelete("partnerTransactions", id));
+          unSettledUpdates.forEach((u) => scheduleCloudUpsert("partnerTransactions", u.id, u));
+        }
+      );
+
+      // 5. Audit record
+      recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
@@ -622,13 +832,10 @@ export default function PartnersKhataPage() {
         details: `Purged ${toDelete.length} partner transactions under scope: ${scope}.`,
         snapshotBefore: toDelete,
         canUndo: false,
-      });
-
-      setDeleteModalOpen(false);
+      }).catch(console.warn);
     } catch (err: any) {
       console.error("Bulk delete partner transactions failed:", err);
       alert("Transactions delete karne mein masla aaya: " + (err?.message || ""));
-    } finally {
       setIsDeleting(false);
     }
   };
@@ -638,20 +845,54 @@ export default function PartnersKhataPage() {
     if (!deletingTx) return;
     const targetId = deletingTx.id;
     const targetTx = deletingTx;
-    try {
-      setIsDeleting(true);
-      await offlineDb.partnerTransactions.delete(targetId);
 
-      try {
-        await deleteDoc(doc(firestoreDb, "partnerTransactions", targetId));
-      } catch {
-        scheduleCloudDelete("partnerTransactions", targetId);
+    try {
+      // If deleting a profit distribution that settled advances, un-settle those advances!
+      const unSettledUpdates: PartnerTransaction[] = [];
+      if (targetTx.type === "profit_payout" && targetTx.settledAdvanceTxIds && targetTx.settledAdvanceTxIds.length > 0) {
+        for (const sid of targetTx.settledAdvanceTxIds) {
+          const adv = transactions.find((t) => t.id === sid);
+          if (adv && adv.isSettled) {
+            unSettledUpdates.push({ ...adv, isSettled: false });
+          }
+        }
       }
 
-      setTransactions((prev) => prev.filter((t) => t.id !== targetId));
+      // 1. Delete from local IndexedDB
+      await offlineDb.partnerTransactions.delete(targetId);
+      if (unSettledUpdates.length > 0) {
+        await offlineDb.partnerTransactions.bulkPut(unSettledUpdates);
+      }
+
+      // 2. Update React state immediately
+      setTransactions((prev) => {
+        const updateMap = new Map(unSettledUpdates.map((u) => [u.id, u]));
+        return prev
+          .filter((t) => t.id !== targetId)
+          .map((t) => updateMap.get(t.id) || t);
+      });
       setSelectedTxIds((prev) => prev.filter((id) => id !== targetId));
 
-      await recordActivity({
+      // 3. Close modal immediately
+      setDeletingTx(null);
+      setIsDeleting(false);
+
+      // 4. Background cloud sync
+      firestoreSyncBackground(
+        (async () => {
+          await deleteDoc(doc(firestoreDb, "partnerTransactions", targetId));
+          for (const u of unSettledUpdates) {
+            await setDoc(doc(firestoreDb, "partnerTransactions", u.id), sanitizeForFirestore(u), { merge: true });
+          }
+        })(),
+        () => {
+          scheduleCloudDelete("partnerTransactions", targetId);
+          unSettledUpdates.forEach((u) => scheduleCloudUpsert("partnerTransactions", u.id, u));
+        }
+      );
+
+      // 5. Audit record
+      recordActivity({
         userId: currentUser?.id || "usr_admin",
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
@@ -662,13 +903,10 @@ export default function PartnersKhataPage() {
         details: `Deleted ${targetTx.type} of PKR ${targetTx.amount.toLocaleString()} for ${targetTx.partnerName}`,
         snapshotBefore: targetTx,
         canUndo: false,
-      });
-
-      setDeletingTx(null);
+      }).catch(console.warn);
     } catch (err: any) {
       console.error("Delete partner transaction error:", err);
       alert("Transaction delete karne mein masla aaya: " + (err?.message || ""));
-    } finally {
       setIsDeleting(false);
     }
   };
@@ -750,25 +988,25 @@ export default function PartnersKhataPage() {
                 <td className="p-2 font-mono font-black text-right bg-slate-100">100.0%</td>
               </tr>
               <tr>
-                <td className="p-2 border-r border-black font-bold">Profit Share Allocation (e.g. on Rs {distributableProfit.toLocaleString()})</td>
-                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1CalculatedProfit)}</td>
-                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2CalculatedProfit)}</td>
+                <td className="p-2 border-r border-black font-bold">Gross Profit Share (on Rs {distributableProfit.toLocaleString()})</td>
+                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1GrossProfit)}</td>
+                <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2GrossProfit)}</td>
                 <td className="p-2 font-mono font-black text-right bg-slate-50">{formatPKR(distributableProfit)}</td>
               </tr>
               <tr>
-                <td className="p-2 border-r border-black font-bold">Total Capital Withdrawn / Drawings</td>
-                <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p1TotalWithdrawals)}</td>
-                <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p2TotalWithdrawals)}</td>
-                <td className="p-2 font-mono text-right bg-slate-50">-{formatPKR(p1TotalWithdrawals + p2TotalWithdrawals)}</td>
+                <td className="p-2 border-r border-black font-bold">Total Advance Taken (پیشگی رقم)</td>
+                <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p1TotalAdvance)}</td>
+                <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p2TotalAdvance)}</td>
+                <td className="p-2 font-mono text-right bg-slate-50">-{formatPKR(p1TotalAdvance + p2TotalAdvance)}</td>
               </tr>
               <tr>
-                <td className="p-2 border-r border-black font-bold">Total Profit Payouts Disbursed</td>
+                <td className="p-2 border-r border-black font-bold">Total Profit Disbursed</td>
                 <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p1TotalProfitReceived)}</td>
                 <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p2TotalProfitReceived)}</td>
                 <td className="p-2 font-mono text-right bg-slate-50">{formatPKR(p1TotalProfitReceived + p2TotalProfitReceived)}</td>
               </tr>
               <tr className="bg-slate-100 font-black">
-                <td className="p-2 border-r border-black font-black">Net Capital Standing in Business</td>
+                <td className="p-2 border-r border-black font-black">Net Capital Standing (سرمایہ مائنس پیشگی)</td>
                 <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p1NetCapital)}</td>
                 <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p2NetCapital)}</td>
                 <td className="p-2 font-mono text-right bg-slate-200">{formatPKR(p1NetCapital + p2NetCapital)}</td>
@@ -807,7 +1045,7 @@ export default function PartnersKhataPage() {
                       ? "Investment (Capital)"
                       : tx.type === "profit_payout"
                         ? "Profit Payout"
-                        : "Drawing (Withdrawal)"}
+                        : "Advance (پیشگی رقم)"}
                   </td>
                   <td className="p-1.5 border-r border-black">
                     {tx.description}
@@ -852,7 +1090,7 @@ export default function PartnersKhataPage() {
       {/* ============================================================== */}
       {/* 2. INTERACTIVE WEB / MOBILE APPLICATION VIEW (Hidden on Print) */}
       {/* ============================================================== */}
-      <div className="space-y-6 pb-16 print:hidden no-print">
+      <div className={`space-y-6 pb-16 no-print ${slipTx ? "print:hidden" : ""}`}>
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
           <div>
@@ -869,7 +1107,7 @@ export default function PartnersKhataPage() {
               </h1>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Dono partners ki separate investment, automatic ratio recalculation, aur equitable profit distribution.
+              Dono partners ki separate investment, automatic ratio recalculation, aur advance cut karke profit distribution.
             </p>
           </div>
 
@@ -925,7 +1163,7 @@ export default function PartnersKhataPage() {
                   </span>
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Profit sirf dono partners ki total investment ke ratio se distribute hota hai.
+                  Profit investment ratio se divide hota hai aur pehle se liya gaya advance us se deduct ho jata hai.
                 </p>
               </div>
             </div>
@@ -1034,31 +1272,53 @@ export default function PartnersKhataPage() {
               </button>
             </div>
 
-            {/* Live Profit Split Preview */}
+            {/* Live Profit Split Preview with Advance Deduction */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div className="p-3 rounded-xl bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800">
+              <div className="p-3.5 rounded-xl bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 space-y-1.5">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-teal-800 dark:text-teal-200">👤 {partner1Name} Profit Share:</span>
+                  <span className="font-bold text-teal-800 dark:text-teal-200">👤 {partner1Name} Profit Share</span>
                   <span className="font-mono font-bold text-teal-700 dark:text-teal-300">{p1RatioPercent}%</span>
                 </div>
-                <div className="text-lg sm:text-xl font-black font-mono text-teal-900 dark:text-teal-100 mt-1">
-                  {formatPKR(p1CalculatedProfit)}
+                <div className="flex items-baseline justify-between text-xs">
+                  <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
+                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{formatPKR(p1GrossProfit)}</span>
                 </div>
-                <span className="text-[10px] text-teal-600 dark:text-teal-400">
-                  Calculated automatically from {p1RatioPercent}% investment ratio
+                {p1AdvanceToDeduct > 0 && (
+                  <div className="flex items-baseline justify-between text-xs text-rose-600 dark:text-rose-400">
+                    <span className="font-semibold">Advance Cut (پیشگی کٹوتی):</span>
+                    <span className="font-bold font-mono">-{formatPKR(p1AdvanceToDeduct)}</span>
+                  </div>
+                )}
+                <div className="pt-1.5 border-t border-teal-200 dark:border-teal-800 flex items-baseline justify-between">
+                  <span className="text-xs font-black text-teal-950 dark:text-teal-100">Net Profit Payable:</span>
+                  <span className="text-base sm:text-lg font-black font-mono text-teal-700 dark:text-teal-300">{formatPKR(p1NetPayable)}</span>
+                </div>
+                <span className="text-[10px] text-teal-600 dark:text-teal-400 block">
+                  Advance deducted automatically from {p1RatioPercent}% share
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800">
+              <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-indigo-800 dark:text-indigo-200">👤 {partner2Name} Profit Share:</span>
+                  <span className="font-bold text-indigo-800 dark:text-indigo-200">👤 {partner2Name} Profit Share</span>
                   <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300">{p2RatioPercent}%</span>
                 </div>
-                <div className="text-lg sm:text-xl font-black font-mono text-indigo-900 dark:text-indigo-100 mt-1">
-                  {formatPKR(p2CalculatedProfit)}
+                <div className="flex items-baseline justify-between text-xs">
+                  <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
+                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{formatPKR(p2GrossProfit)}</span>
                 </div>
-                <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
-                  Calculated automatically from {p2RatioPercent}% investment ratio
+                {p2AdvanceToDeduct > 0 && (
+                  <div className="flex items-baseline justify-between text-xs text-rose-600 dark:text-rose-400">
+                    <span className="font-semibold">Advance Cut (پیشگی کٹوتی):</span>
+                    <span className="font-bold font-mono">-{formatPKR(p2AdvanceToDeduct)}</span>
+                  </div>
+                )}
+                <div className="pt-1.5 border-t border-indigo-200 dark:border-indigo-800 flex items-baseline justify-between">
+                  <span className="text-xs font-black text-indigo-950 dark:text-indigo-100">Net Profit Payable:</span>
+                  <span className="text-base sm:text-lg font-black font-mono text-indigo-700 dark:text-indigo-300">{formatPKR(p2NetPayable)}</span>
+                </div>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block">
+                  Advance deducted automatically from {p2RatioPercent}% share
                 </span>
               </div>
             </div>
@@ -1108,11 +1368,11 @@ export default function PartnersKhataPage() {
               </div>
 
               <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
-                <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Drawings / Out</span>
+                <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Total Advance</span>
                 <span className="text-base sm:text-lg font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block">
-                  {formatPKR(p1TotalWithdrawals)}
+                  {formatPKR(p1TotalAdvance)}
                 </span>
-                <span className="text-[10px] text-rose-600 font-medium block">Capital Withdrawn</span>
+                <span className="text-[10px] text-rose-600 font-medium block">پیشگی رقم (Taken)</span>
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
@@ -1130,7 +1390,7 @@ export default function PartnersKhataPage() {
                 <span className="text-base sm:text-lg font-black font-mono text-teal-600 dark:text-teal-400">
                   {formatPKR(p1NetCapital)}
                 </span>
-                <span className="block text-[10px] text-slate-400 font-medium">Investment minus Withdrawals</span>
+                <span className="block text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
               </div>
             </div>
           </div>
@@ -1174,11 +1434,11 @@ export default function PartnersKhataPage() {
               </div>
 
               <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
-                <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Drawings / Out</span>
+                <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Total Advance</span>
                 <span className="text-base sm:text-lg font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block">
-                  {formatPKR(p2TotalWithdrawals)}
+                  {formatPKR(p2TotalAdvance)}
                 </span>
-                <span className="text-[10px] text-rose-600 font-medium block">Capital Withdrawn</span>
+                <span className="text-[10px] text-rose-600 font-medium block">پیشگی رقم (Taken)</span>
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
@@ -1196,7 +1456,7 @@ export default function PartnersKhataPage() {
                 <span className="text-base sm:text-lg font-black font-mono text-indigo-600 dark:text-indigo-400">
                   {formatPKR(p2NetCapital)}
                 </span>
-                <span className="block text-[10px] text-slate-400 font-medium">Investment minus Withdrawals</span>
+                <span className="block text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
               </div>
             </div>
           </div>
@@ -1287,7 +1547,7 @@ export default function PartnersKhataPage() {
                       : "text-slate-600 dark:text-slate-400"
                   }`}
                 >
-                  🔻 Drawings
+                  🔻 Advance
                 </button>
                 <button
                   type="button"
@@ -1425,7 +1685,7 @@ export default function PartnersKhataPage() {
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-                            <ArrowUpRight className="w-3.5 h-3.5" /> 🔻 Drawings / Out
+                            <ArrowUpRight className="w-3.5 h-3.5" /> 🔻 Advance
                           </span>
                         )}
                       </td>
@@ -1456,12 +1716,22 @@ export default function PartnersKhataPage() {
                         <div className="inline-flex items-center gap-1 justify-center">
                           <button
                             type="button"
-                            onClick={() => handleOpenEditModal(tx)}
+                            onClick={() => setSlipTx(tx)}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
-                            title="Edit Transaction"
+                            title="Print Transaction Slip / Voucher"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Printer className="w-4 h-4 text-teal-600" />
                           </button>
+                          {tx.type !== "profit_payout" && (tx.type as string) !== "profit" && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(tx)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
+                              title="Edit Transaction"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setDeletingTx(tx)}
@@ -1519,7 +1789,7 @@ export default function PartnersKhataPage() {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-                        🔻 Drawings
+                        🔻 Advance
                       </span>
                     )}
 
@@ -1546,18 +1816,28 @@ export default function PartnersKhataPage() {
 
                   <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-700/60">
                     <span className="capitalize">{tx.paymentMethod.replace("_", " ")}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleOpenEditModal(tx)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors"
+                        onClick={() => setSlipTx(tx)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 transition-colors text-[11px]"
+                        title="Print Slip"
                       >
-                        <Edit2 className="w-3 h-3" /> Edit
+                        <Printer className="w-3 h-3 text-teal-600" /> Slip
                       </button>
+                      {tx.type !== "profit_payout" && (tx.type as string) !== "profit" && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(tx)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors text-[11px]"
+                        >
+                          <Edit2 className="w-3 h-3" /> Edit
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setDeletingTx(tx)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors text-[11px]"
                       >
                         <Trash2 className="w-3 h-3" /> Delete
                       </button>
@@ -1642,19 +1922,19 @@ export default function PartnersKhataPage() {
                       <td className="p-2 font-mono font-black text-right bg-slate-100">100.0%</td>
                     </tr>
                     <tr>
-                      <td className="p-2 border-r border-black font-bold">Profit Share Allocation (on Rs {distributableProfit.toLocaleString()})</td>
-                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1CalculatedProfit)}</td>
-                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2CalculatedProfit)}</td>
+                      <td className="p-2 border-r border-black font-bold">Gross Profit Share Allocation (on Rs {distributableProfit.toLocaleString()})</td>
+                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p1GrossProfit)}</td>
+                      <td className="p-2 border-r border-black font-mono font-bold text-right">{formatPKR(p2GrossProfit)}</td>
                       <td className="p-2 font-mono font-black text-right bg-slate-50">{formatPKR(distributableProfit)}</td>
                     </tr>
                     <tr>
-                      <td className="p-2 border-r border-black font-bold">Total Capital Withdrawn / Drawings</td>
-                      <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p1TotalWithdrawals)}</td>
-                      <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p2TotalWithdrawals)}</td>
-                      <td className="p-2 font-mono text-right bg-slate-50">-{formatPKR(p1TotalWithdrawals + p2TotalWithdrawals)}</td>
+                      <td className="p-2 border-r border-black font-bold">Total Advance Taken (پیشگی رقم)</td>
+                      <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p1TotalAdvance)}</td>
+                      <td className="p-2 border-r border-black font-mono text-right">-{formatPKR(p2TotalAdvance)}</td>
+                      <td className="p-2 font-mono text-right bg-slate-50">-{formatPKR(p1TotalAdvance + p2TotalAdvance)}</td>
                     </tr>
                     <tr className="bg-slate-100 font-black">
-                      <td className="p-2 border-r border-black font-black">Net Capital Standing</td>
+                      <td className="p-2 border-r border-black font-black">Net Capital Standing (سرمایہ مائنس پیشگی)</td>
                       <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p1NetCapital)}</td>
                       <td className="p-2 border-r border-black font-mono text-right">{formatPKR(p2NetCapital)}</td>
                       <td className="p-2 font-mono text-right bg-slate-200">{formatPKR(p1NetCapital + p2NetCapital)}</td>
@@ -1693,7 +1973,7 @@ export default function PartnersKhataPage() {
                             ? "Investment"
                             : tx.type === "profit_payout"
                               ? "Profit Payout"
-                              : "Drawings"}
+                              : "Advance (پیشگی)"}
                         </td>
                         <td className="p-1.5 border-r border-black">{tx.description}</td>
                         <td className="p-1.5 border-r border-black capitalize">{tx.paymentMethod.replace("_", " ")}</td>
@@ -1818,8 +2098,8 @@ export default function PartnersKhataPage() {
                     }`}
                   >
                     <ArrowUpRight className="w-4 h-4 text-rose-600" />
-                    <span>🔻 Drawings</span>
-                    <span className="text-[9px] font-medium text-rose-600">(Money Taken)</span>
+                    <span>🔻 Advance</span>
+                    <span className="text-[9px] font-medium text-rose-600">(پیشگی رقم)</span>
                   </button>
 
                   <button
@@ -1896,7 +2176,7 @@ export default function PartnersKhataPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Additional stock purchase capital injection / Personal drawings"
+                  placeholder="e.g. Additional stock purchase capital injection / Personal advance"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-teal-500"
@@ -2000,16 +2280,16 @@ export default function PartnersKhataPage() {
                 </div>
               </div>
 
-              {/* Transaction Type */}
+              {/* Transaction Type - Profit Payout is intentionally NOT editable, only Investment & Advance */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Transaction Type *
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setEditType("investment")}
-                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       editType === "investment" || editType === "in"
                         ? "border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2017,35 +2297,21 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowDownRight className="w-4 h-4 text-emerald-600" />
                     <span>💰 Investment</span>
-                    <span className="text-[9px] font-medium text-emerald-600">(Adds to Capital)</span>
+                    <span className="text-[10px] font-medium text-emerald-600">(Adds to Capital)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setEditType("withdrawal")}
-                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       editType === "withdrawal" || editType === "out"
                         ? "border-rose-500 bg-rose-50/80 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 ring-2 ring-rose-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
                     }`}
                   >
                     <ArrowUpRight className="w-4 h-4 text-rose-600" />
-                    <span>🔻 Drawings</span>
-                    <span className="text-[9px] font-medium text-rose-600">(Money Taken)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setEditType("profit_payout")}
-                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
-                      editType === "profit_payout"
-                        ? "border-teal-500 bg-teal-50/80 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20"
-                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
-                    }`}
-                  >
-                    <Coins className="w-4 h-4 text-teal-600" />
-                    <span>📈 Profit</span>
-                    <span className="text-[9px] font-medium text-teal-600">(Munafa Share)</span>
+                    <span>🔻 Advance</span>
+                    <span className="text-[10px] font-medium text-rose-600">(پیشگی رقم)</span>
                   </button>
                 </div>
               </div>
@@ -2105,7 +2371,7 @@ export default function PartnersKhataPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Additional stock purchase capital injection / Personal drawings"
+                  placeholder="e.g. Additional stock purchase capital injection / Personal advance"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-teal-500"
@@ -2180,6 +2446,223 @@ export default function PartnersKhataPage() {
         onConfirm={handleExecuteSingleDelete}
         isDeleting={isDeleting}
       />
+
+      {/* ============================================================== */}
+      {/* 8. DEDICATED TRANSACTION VOUCHER SLIP MODAL (Individual Print)  */}
+      {/* ============================================================== */}
+      {slipTx && (
+        <>
+          {/* Isolated Print Stylesheet for Individual Transaction Slip */}
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-partner-slip, #printable-partner-slip * {
+                visibility: visible !important;
+              }
+              #printable-partner-slip {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 24px !important;
+                background: white !important;
+                color: black !important;
+              }
+            }
+          `}</style>
+
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/80 backdrop-blur-sm animate-fade-in no-print">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden">
+              {/* Modal Top Bar */}
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-teal-600" />
+                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">
+                    Partner Transaction Voucher Slip (تفصیلی پرنٹ سلپ)
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+                  >
+                    <Printer className="w-4 h-4" /> Print Slip (پرنٹ کریں)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSlipTx(null)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Printable Slip Body */}
+              <div className="p-6 overflow-y-auto bg-white text-black text-xs font-sans">
+                <div id="printable-partner-slip" className="space-y-5 bg-white text-black p-2">
+                  {/* Official Header */}
+                  <OfficialPrintHeader
+                    title={
+                      slipTx.type === "investment" || slipTx.type === "in"
+                        ? "PARTNER CAPITAL INVESTMENT VOUCHER"
+                        : slipTx.type === "profit_payout"
+                          ? "PARTNER PROFIT DISTRIBUTION VOUCHER"
+                          : "PARTNER ADVANCE PAYMENT VOUCHER"
+                    }
+                    docRef={`VCH-PTX-${slipTx.id.toUpperCase().slice(-8)}`}
+                    period={`Transaction Date: ${slipTx.date}`}
+                    settings={businessSettings}
+                    showInPreview={true}
+                    className="pb-4 border-b-2 border-black"
+                  />
+
+                  {/* Partner & Voucher Meta Grid */}
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-lg border border-black/80 bg-slate-50 text-[11px]">
+                    <div>
+                      <span className="text-slate-600 block text-[10px]">Partner Name (شراکت دار):</span>
+                      <strong className="text-black text-sm font-black">
+                        {slipTx.partnerId === "partner_1" ? partner1Name : partner2Name}
+                      </strong>
+                      <span className="text-[10px] text-teal-700 font-bold block mt-0.5">
+                        Ownership Ratio: {slipTx.partnerId === "partner_1" ? p1RatioPercent : p2RatioPercent}%
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-slate-600 block text-[10px]">Transaction Type (نوعیت):</span>
+                      <span className="inline-block font-black uppercase text-[11px] px-2 py-0.5 rounded border border-black bg-white">
+                        {slipTx.type === "investment" || slipTx.type === "in"
+                          ? "💰 Capital Investment"
+                          : slipTx.type === "profit_payout"
+                            ? "📈 Profit Payout"
+                            : "🔻 Advance Payment (پیشگی)"}
+                      </span>
+                      <span className="text-slate-500 text-[10px] block mt-1">
+                        Method: <strong className="uppercase text-black">{slipTx.paymentMethod.replace("_", " ")}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Amount Highlight Box */}
+                  <div className="p-4 rounded-xl border-2 border-black bg-slate-100 text-center space-y-1">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                      Voucher Net Amount (کل رقم)
+                    </span>
+                    <div className="text-2xl sm:text-3xl font-black font-mono text-black">
+                      {formatPKR(slipTx.amount)}
+                    </div>
+                    <div className="text-[11px] font-bold italic text-slate-800 pt-1 border-t border-slate-300">
+                      Amount in words: {numberToWordsPKR(slipTx.amount)}
+                    </div>
+                  </div>
+
+                  {/* Detailed Particulars / Profit Breakdown */}
+                  <div className="border border-black rounded-lg overflow-hidden">
+                    <div className="bg-slate-200 px-3 py-1.5 font-black text-[11px] uppercase border-b border-black">
+                      Transaction Particulars &amp; Audit Notes
+                    </div>
+                    <div className="p-3 text-[11px] space-y-2">
+                      <p className="font-semibold text-black leading-relaxed">
+                        {slipTx.description}
+                      </p>
+                      {slipTx.reference && (
+                        <p className="text-slate-600 font-mono text-[10px]">
+                          Reference / Slip #: <strong className="text-black">{slipTx.reference}</strong>
+                        </p>
+                      )}
+
+                      {/* If Profit Payout breakdown is available */}
+                      {slipTx.grossProfit && slipTx.grossProfit > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-300">
+                          <span className="font-bold text-[10px] uppercase text-slate-600 block mb-1">
+                            Profit Settlement Breakdown:
+                          </span>
+                          <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2 rounded border border-slate-300 text-center">
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Gross Profit Share</span>
+                              <strong className="font-mono text-slate-900">{formatPKR(slipTx.grossProfit)}</strong>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-rose-600 block">Advance Deducted</span>
+                              <strong className="font-mono text-rose-700">-{formatPKR(slipTx.advanceDeducted || 0)}</strong>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-emerald-600 block">Net Paid</span>
+                              <strong className="font-mono text-emerald-800">{formatPKR(slipTx.amount)}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Partner Standing Snapshot */}
+                  <div className="border border-black rounded-lg p-3 bg-slate-50 space-y-1 text-[10px]">
+                    <span className="font-black uppercase text-black block border-b border-slate-300 pb-1">
+                      Current Partner Account Standing (موجودہ پوزیشن)
+                    </span>
+                    <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-center">
+                      <div>
+                        <span className="text-slate-500 block text-[9px]">Total Invested</span>
+                        <strong className="text-black">
+                          {formatPKR(slipTx.partnerId === "partner_1" ? p1TotalInvestment : p2TotalInvestment)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[9px]">Total Advance Taken</span>
+                        <strong className="text-rose-700">
+                          -{formatPKR(slipTx.partnerId === "partner_1" ? p1TotalAdvance : p2TotalAdvance)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[9px]">Net Capital</span>
+                        <strong className="text-teal-800">
+                          {formatPKR(slipTx.partnerId === "partner_1" ? p1NetCapital : p2NetCapital)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Signature Blocks */}
+                  <div className="pt-8 grid grid-cols-3 gap-6 text-center text-[10px]">
+                    <div>
+                      <div className="border-b border-black pb-8 mb-1"></div>
+                      <p className="font-black text-black">
+                        {slipTx.partnerId === "partner_1" ? partner1Name : partner2Name}
+                      </p>
+                      <p className="text-slate-500 text-[9px]">Partner Signature &amp; Stamp</p>
+                    </div>
+                    <div>
+                      <div className="border-b border-black pb-8 mb-1"></div>
+                      <p className="font-black text-black">
+                        {slipTx.partnerId === "partner_1" ? partner2Name : partner1Name}
+                      </p>
+                      <p className="text-slate-500 text-[9px]">Second Partner Signature</p>
+                    </div>
+                    <div>
+                      <div className="border-b border-black pb-8 mb-1"></div>
+                      <p className="font-black text-black">
+                        {slipTx.createdByName || "Authorized Admin"}
+                      </p>
+                      <p className="text-slate-500 text-[9px]">Auditor / Accountant Stamp</p>
+                    </div>
+                  </div>
+
+                  {/* Footer note */}
+                  <div className="pt-2 border-t border-slate-300 text-center text-[9px] text-slate-400">
+                    Official Voucher Slip generated by Noxderma ERP • System Verified Audit Trail
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
