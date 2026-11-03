@@ -44,6 +44,7 @@ import {
   normalizeUserDisplayName,
   type DynamicCategory,
   type UserProfile,
+  type Permission,
 } from "@/types";
 
 interface HeaderProps {
@@ -52,37 +53,66 @@ interface HeaderProps {
   onLogout?: () => void;
 }
 
-const APP_NAVIGATION_SEARCH_ITEMS = [
+interface SearchNavItem {
+  name: string;
+  path: string;
+  module: string;
+  keywords: string;
+  requiredPermission?: Permission;
+  requiredAnyPermissions?: Permission[];
+}
+
+const APP_NAVIGATION_SEARCH_ITEMS: SearchNavItem[] = [
+  // Dashboard / Home
+  {
+    name: "Business Dashboard (Daily Overview)",
+    path: "/",
+    module: "Dashboard",
+    keywords: "dashboard home overview today sales cash stats quick stats business overview rozana karobar",
+  },
+
   // Products & Costing Estimator
   {
     name: "New Product Price Estimator & Margin Calculator",
     path: "/products/price-estimator",
     module: "Products",
-    keywords: "estimator price estimate new product formula costing cost margin calculator packaging markup profit roi batch sizing batch size tablet syrup ointment raw material excipient",
+    keywords: "estimator price estimate new product formula costing cost margin calculator packaging markup profit roi batch sizing batch size tablet syrup ointment raw material excipient formula qeemat andaza",
+    requiredPermission: "pricing:view",
   },
   {
     name: "Medicine Catalog & Products",
     path: "/products",
     module: "Inventory",
-    keywords: "products medicine items skus catalog list all medicines tablet capsule syrup derma cream serum lotion price",
+    keywords: "products product medicine medicines items skus catalog list all medicines tablet capsule syrup derma cream serum lotion price dawai adwiyat",
+    requiredAnyPermissions: ["products:view", "products:edit"],
   },
   {
     name: "Stock & Low-Stock Alerts",
     path: "/inventory",
     module: "Inventory",
-    keywords: "stock godown warehouse alert reorder low stock inventory count available stock quantity",
+    keywords: "stock godown warehouse alert reorder low stock inventory count available stock quantity mal godam kam stock",
+    requiredPermission: "inventory:view",
   },
   {
     name: "Batch Stock & FEFO Expiry Dates",
     path: "/inventory/batches",
     module: "Inventory",
-    keywords: "batch expiry near fefo date expiry alert expired batches stock remaining quantity",
+    keywords: "batch batches expiry near fefo date expiry alert expired batches stock remaining quantity miad tareekh",
+    requiredPermission: "inventory:view",
+  },
+  {
+    name: "Stock Movement History & Audit",
+    path: "/inventory/movements",
+    module: "Inventory",
+    keywords: "stock movements stock history audit stock in stock out transfer adjustment batch tracking damage inventory history mal ki harkat",
+    requiredPermission: "inventory:view",
   },
   {
     name: "Medicine Categories & Types",
     path: "/categories",
     module: "Catalog",
-    keywords: "category categories classification types derma antibiotic syrup tablet ointments",
+    keywords: "category categories classification types derma antibiotic syrup tablet ointments iqsam qisam",
+    requiredPermission: "categories:manage",
   },
 
   // Sales & Invoicing
@@ -90,31 +120,36 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Customer Bills (Invoices)",
     path: "/sales/invoices",
     module: "Sales",
-    keywords: "bill invoice sale memo receipt history invoices list sales record",
+    keywords: "bill bills invoice invoices sale sales memo receipt history invoices list sales record farokht parchi",
+    requiredPermission: "invoices:view",
   },
   {
     name: "Make New Bill (New Sale Invoice)",
     path: "/sales/invoices/new",
     module: "Sales",
-    keywords: "new bill create invoice add medicine sell billing pos counter instant invoice",
+    keywords: "new bill make bill create invoice add medicine sell billing pos counter instant invoice naya bill parchi",
+    requiredPermission: "invoices:create",
   },
   {
     name: "Field Staff Orders (Bookings)",
     path: "/sales/bookings",
     module: "Sales",
-    keywords: "booking order rep staff field orders approval order booking medical rep",
+    keywords: "booking bookings order orders rep staff field orders approval order booking medical rep dcr",
+    requiredPermission: "invoices:create",
   },
   {
-    name: "Customer Returns & Damage",
+    name: "Customer Returns & Damage Claims",
     path: "/sales/returns",
     module: "Sales",
-    keywords: "return credit note damage expired refund exchange return goods claim",
+    keywords: "return returns credit note damage expired refund exchange return goods claim wapsi nuqsan",
+    requiredPermission: "invoices:reverse",
   },
   {
-    name: "Online Pharmacy Orders",
+    name: "Courier & Online Pharmacy Orders",
     path: "/sales/online-orders",
     module: "Sales",
-    keywords: "online order web app pharmacy portal checkout booking store incoming orders",
+    keywords: "online order orders web app pharmacy portal courier tcs leopards checkout booking store incoming orders dak",
+    requiredPermission: "invoices:view",
   },
 
   // Purchases & Suppliers
@@ -122,19 +157,22 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Buy Stock (Purchases / GRN)",
     path: "/purchases",
     module: "Purchases",
-    keywords: "purchase po grn vendor supplier buy inward stock receiving order raw stock",
+    keywords: "purchase purchases po grn vendor supplier buy inward stock receiving order raw stock khareedari mal lena",
+    requiredPermission: "inventory:receive",
   },
   {
     name: "Pharmaceutical Manufacturers",
     path: "/manufacturers",
     module: "Suppliers",
-    keywords: "manufacturer supplier vendor factory pharma company brand producer source direct",
+    keywords: "manufacturer manufacturers supplier vendor factory pharma company brand producer source direct karakhana factory",
+    requiredAnyPermissions: ["products:view", "products:edit"],
   },
   {
     name: "Distributors & Supply Network",
     path: "/distributors",
     module: "Suppliers",
-    keywords: "distributor distribution supply network wholesale dealer agency vendor",
+    keywords: "distributor distributors distribution supply network wholesale dealer agency vendor agency mal",
+    requiredPermission: "crm:customers",
   },
 
   // Clients & CRM
@@ -142,19 +180,22 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Pharmacies & Medical Stores",
     path: "/customers",
     module: "Clients",
-    keywords: "customer pharmacy shop medical store client chemist hospital clinic address phone",
+    keywords: "customer customers pharmacy pharmacies shop medical store client clients chemist hospital clinic address phone dukandar grahak",
+    requiredPermission: "crm:customers",
   },
   {
     name: "CRM Leads & Prospective Doctors",
     path: "/crm/leads",
     module: "CRM",
-    keywords: "crm lead leads doctor clinic prospect prospective new customer inquiry call pipeline",
+    keywords: "crm lead leads doctor clinic prospect prospective new customer inquiry call pipeline raabta naye doctor",
+    requiredPermission: "crm:leads",
   },
   {
     name: "Doctor & Pharmacy Field Visits",
     path: "/crm/visits",
     module: "CRM",
-    keywords: "visit doctor visit field call tour dcr daily call report rep visit tracking logs",
+    keywords: "visit visits doctor visit field call tour dcr daily call report rep visit tracking logs chakkar mulakat",
+    requiredPermission: "crm:visits",
   },
 
   // Finance & Ledgers
@@ -162,31 +203,43 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Market Udhaar (Pending Credit Balance)",
     path: "/finance/credit",
     module: "Finance",
-    keywords: "udhaar credit balance receive ledger khata market recovery pending aging outstanding",
+    keywords: "udhaar credit balance receive ledger khata market recovery pending aging outstanding baqaya wasooli udhar",
+    requiredPermission: "finance:aging",
   },
   {
     name: "Customer Khata (Receivables Ledger)",
     path: "/finance/ledgers/customers",
     module: "Finance",
-    keywords: "khata ledger customer statement receivable account balance payment receipt slip",
-  },
-  {
-    name: "Partners Khata (Capital & Drawings)",
-    path: "/finance/partners",
-    module: "Finance",
-    keywords: "partners khata partner hisab sharakat capital drawings profit withdrawal investment share partner 1 partner 2",
+    keywords: "khata ledger customer customers statement receivable account balance payment receipt slip hisab kitab grahak khata",
+    requiredPermission: "finance:ledgers",
   },
   {
     name: "Company Khata (Payables / Vendors)",
     path: "/finance/ledgers/manufacturers",
     module: "Finance",
-    keywords: "khata company manufacturer vendor payable supplier payment clear cheques",
+    keywords: "khata company manufacturer vendor payable supplier payment clear cheques company ka hisab dena",
+    requiredPermission: "finance:ledgers",
+  },
+  {
+    name: "Partners Khata (Capital, Investment & Profit Sharing)",
+    path: "/finance/partners",
+    module: "Finance",
+    keywords: "partners khata partner hisab sharakat capital drawings profit withdrawal investment share partner 1 partner 2 sarmaya munafa sharakat dar partnership",
+    requiredPermission: "finance:pnl",
+  },
+  {
+    name: "Staff Salaries & Payroll (Tankhwah)",
+    path: "/finance/salaries",
+    module: "Finance",
+    keywords: "salary salaries staff tankhwah payroll allowances deductions net salary pay slip bank cash slip finance employee wages tankhah tankhwa",
+    requiredPermission: "finance:pnl",
   },
   {
     name: "Profit & Loss Statement (P&L / Kamai)",
     path: "/finance/pnl",
     module: "Finance",
-    keywords: "profit loss pnl kamai margin revenue net profit gross income finance report",
+    keywords: "profit loss pnl kamai margin revenue net profit gross income finance report munafa nuqsan bachath",
+    requiredPermission: "finance:pnl",
   },
 
   // Marketing & Promotions
@@ -194,19 +247,22 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Promotional Coupons & Privilege Codes",
     path: "/marketing/coupons",
     module: "Marketing",
-    keywords: "coupon coupons promo code discount privilege offer discount voucher campaign privilege discount",
+    keywords: "coupon coupons promo code discount privilege offer discount voucher campaign privilege discount riayat chhoot",
+    requiredPermission: "marketing:manage",
   },
   {
     name: "WhatsApp Campaigns & Bulk Messaging",
     path: "/marketing/whatsapp",
     module: "Marketing",
-    keywords: "whatsapp campaign marketing message broadcast offer promo blast alert",
+    keywords: "whatsapp campaign marketing message broadcast offer promo blast alert paighamat paigham",
+    requiredPermission: "marketing:manage",
   },
   {
     name: "Marketing Hub & Promotion Overview",
     path: "/marketing",
     module: "Marketing",
-    keywords: "marketing promotion discount schemes privilege loyalty campaigns ads",
+    keywords: "marketing promotion discount schemes privilege loyalty campaigns ads ishtihar tarweej",
+    requiredPermission: "marketing:manage",
   },
 
   // Staff & HR
@@ -214,19 +270,22 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Staff Live Location & Multi-Device Battery",
     path: "/employees/monitoring",
     module: "HR / Staff",
-    keywords: "staff live location gps mobile battery charging phone model multi device computer tracking field map",
+    keywords: "staff live location gps mobile battery charging phone model multi device computer tracking field map mulazmeen location",
+    requiredPermission: "staff:monitoring",
   },
   {
     name: "Sales Targets & Staff Performance",
     path: "/employees/targets",
     module: "HR / Staff",
-    keywords: "target targets employee staff performance kpi quota rep achievement commission target sheet",
+    keywords: "target targets employee staff performance kpi quota rep achievement commission target sheet hadaf",
+    requiredPermission: "staff:targets",
   },
   {
     name: "Staff Accounts & Permissions (RBAC)",
     path: "/users",
     module: "Settings",
-    keywords: "users staff login permission rbac roles user management account employee access",
+    keywords: "users staff login permission rbac roles user management account employee access mulazmeen access ijazat",
+    requiredPermission: "users:manage",
   },
 
   // Reports & Analytics
@@ -234,7 +293,8 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Business Reports & Analytics",
     path: "/reports",
     module: "Analytics",
-    keywords: "reports analytics charts sales report inventory report ledger summary export pdf excel",
+    keywords: "reports analytics charts sales report inventory report ledger summary export pdf excel karobari report",
+    requiredPermission: "finance:pnl",
   },
 
   // System & Settings
@@ -242,19 +302,36 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     name: "Company Settings, Branding & Theme",
     path: "/settings",
     module: "Settings",
-    keywords: "settings theme logo profile address print bill format invoice setup config company details",
+    keywords: "settings theme logo profile address print bill format invoice setup config company details tareeqat setting",
+    requiredPermission: "settings:manage",
+  },
+  {
+    name: "System Notifications & Alerts",
+    path: "/notifications",
+    module: "Settings",
+    keywords: "notifications alerts system messages expiry low stock credit warnings itilahaat paigham",
+    requiredPermission: "settings:manage",
+  },
+  {
+    name: "External Integrations & Webhooks",
+    path: "/integrations",
+    module: "Settings",
+    keywords: "integrations api webhooks whatsapp gateway cloud connection external sync rabtay jor",
+    requiredPermission: "settings:manage",
   },
   {
     name: "Data Sync & Offline Cloud Status",
     path: "/sync",
     module: "System",
-    keywords: "sync offline online backup cloud pending queue storage dexie indexeddb status",
+    keywords: "sync offline online backup cloud pending queue storage dexie indexeddb status mehfooz backup",
+    requiredPermission: "sync:reconcile",
   },
   {
     name: "Action History & Audit Logs (Owner)",
     path: "/audit",
     module: "Owner / Security",
-    keywords: "audit logs history tracker who did what undo activity logs owner changes delete revert restore roll back khata",
+    keywords: "audit logs history tracker who did what undo activity logs owner changes delete revert restore roll back khata tareekh karwayi",
+    requiredPermission: "audit:view",
   },
 ];
 
@@ -389,8 +466,10 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           if (p.startsWith("/crm/visits")) return hasPermission("crm:visits");
           if (p.startsWith("/employees/monitoring")) return hasPermission("staff:monitoring");
           if (p.startsWith("/employees/targets")) return hasPermission("staff:targets");
+          if (p.startsWith("/employees/salaries") || p.startsWith("/finance/salaries")) return hasPermission("finance:pnl");
           if (p.startsWith("/finance/credit")) return hasPermission("finance:aging");
           if (p.startsWith("/finance/ledgers")) return hasPermission("finance:ledgers");
+          if (p.startsWith("/finance/partners")) return hasPermission("finance:pnl");
           if (p.startsWith("/finance/pnl") || p.startsWith("/reports")) return hasPermission("finance:pnl");
           if (p.startsWith("/marketing")) return hasPermission("marketing:manage");
           if (p.startsWith("/audit")) return hasPermission("audit:view");
@@ -400,13 +479,30 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
           return false;
         };
 
+        const canAccessNavItem = (item: SearchNavItem): boolean => {
+          if (item.path === "/") return true;
+          if (item.requiredAnyPermissions && item.requiredAnyPermissions.length > 0) {
+            return hasAnyPermission(item.requiredAnyPermissions);
+          }
+          if (item.requiredPermission) {
+            return hasPermission(item.requiredPermission);
+          }
+          return canAccessSearchPath(item.path);
+        };
+
+        const qClean = q.trim().toLowerCase();
+        const searchTokens = qClean.split(/\s+/).filter(Boolean);
+
+        const isTokenMatch = (targetText: string): boolean => {
+          const lower = targetText.toLowerCase();
+          if (lower.includes(qClean)) return true;
+          return searchTokens.length > 0 && searchTokens.every((token) => lower.includes(token));
+        };
+
         const matchedNav = APP_NAVIGATION_SEARCH_ITEMS.filter((item) => {
-          if (!canAccessSearchPath(item.path)) return false;
-          return (
-            item.name.toLowerCase().includes(q) ||
-            item.keywords.toLowerCase().includes(q) ||
-            item.module.toLowerCase().includes(q)
-          );
+          if (!canAccessNavItem(item)) return false;
+          const searchableText = `${item.name} ${item.module} ${item.keywords} ${item.path}`;
+          return isTokenMatch(searchableText);
         }).slice(0, 10);
 
         // 2. Database records matching (strictly filtered by user permissions)
@@ -480,7 +576,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, currentUser]);
+  }, [searchQuery, currentUser, hasPermission, hasAnyPermission]);
 
   // Sync state subscription
   useEffect(() => {
