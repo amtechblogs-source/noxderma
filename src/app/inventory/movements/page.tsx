@@ -92,25 +92,24 @@ export default function StockMovementsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-          <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+          <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0 text-xs">
             <Filter className="w-3.5 h-3.5" /> Filter:
           </span>
           {[
             { id: "all", label: "All Records" },
             { id: "sales_deduction", label: "Sold in Bills (-)" },
-            { id: "purchase_receipt", label: "Bought from Company (+)" },
-            { id: "damaged_stock", label: "Broken / Damaged (-)" },
-            { id: "sample_issue", label: "Free Doctor Samples (-)" },
+            { id: "purchase_receipt", label: "Bought (+)" },
+            { id: "damaged_stock", label: "Damaged (-)" },
+            { id: "sample_issue", label: "Samples (-)" },
           ].map((t) => (
             <button
               key={t.id}
               onClick={() => setTypeFilter(t.id)}
-              className={`px-3 py-1 rounded-lg font-bold shrink-0 transition-all ${
-                typeFilter === t.id
+              className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition-all text-xs ${typeFilter === t.id
                   ? "bg-teal-600 text-white"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-              }`}
+                }`}
             >
               {t.label}
             </button>
@@ -145,29 +144,27 @@ export default function StockMovementsPage() {
                     <td className="py-3 font-mono text-teal-600 font-bold">{m.batchNumber || "—"}</td>
                     <td className="py-3">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          m.type === "sales_deduction"
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${m.type === "sales_deduction"
                             ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
                             : m.type === "purchase_receipt"
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                            : m.type === "damaged_stock"
-                            ? "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-                            : "bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300"
-                        }`}
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                              : m.type === "damaged_stock"
+                                ? "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                                : "bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300"
+                          }`}
                       >
                         {m.type === "sales_deduction"
                           ? "SOLD IN BILL"
                           : m.type === "purchase_receipt"
-                          ? "STOCK BOUGHT"
-                          : m.type === "damaged_stock"
-                          ? "BROKEN STOCK"
-                          : "DOCTOR SAMPLE"}
+                            ? "STOCK BOUGHT"
+                            : m.type === "damaged_stock"
+                              ? "BROKEN STOCK"
+                              : "DOCTOR SAMPLE"}
                       </span>
                     </td>
                     <td
-                      className={`py-3 text-right font-extrabold ${
-                        m.quantityChange < 0 ? "text-rose-600" : "text-emerald-600"
-                      }`}
+                      className={`py-3 text-right font-extrabold ${m.quantityChange < 0 ? "text-rose-600" : "text-emerald-600"
+                        }`}
                     >
                       {m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}
                     </td>

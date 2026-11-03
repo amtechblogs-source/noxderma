@@ -140,17 +140,17 @@ export function DateRangeFilterBar({
   // Full Rich Pills & Date Bar
   return (
     <div className={`space-y-2.5 ${className}`}>
-      {/* Preset Buttons Bar (Horizontal scroll on mobile) */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
-          <Filter className="w-3.5 h-3.5 text-teal-600" />
+      {/* Preset Buttons Bar (Mobile Optimized Wrapping - No horizontal scroll) */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+          <Filter className="w-3.5 h-3.5 text-teal-600 shrink-0" />
           <span>{label}:</span>
         </span>
 
         <button
           type="button"
           onClick={() => setPreset("all")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
             filter.preset === "all"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -162,19 +162,19 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("today")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
             filter.preset === "today"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
           }`}
         >
-          Today (Daily)
+          Today <span className="hidden sm:inline">(Daily)</span>
         </button>
 
         <button
           type="button"
           onClick={() => setPreset("weekly")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
             filter.preset === "weekly"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -186,7 +186,7 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("monthly")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
             filter.preset === "monthly"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -198,7 +198,7 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("last_month")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
             filter.preset === "last_month"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -210,31 +210,31 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("custom_month")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 ${
             filter.preset === "custom_month"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
           }`}
         >
-          <Calendar className="w-3.5 h-3.5" />
+          <Calendar className="w-3.5 h-3.5 shrink-0" />
           <span>Custom Month</span>
         </button>
 
         <button
           type="button"
           onClick={() => setPreset("custom_range")}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 ${
             filter.preset === "custom_range"
               ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
           }`}
         >
-          <Calendar className="w-3.5 h-3.5" />
+          <Calendar className="w-3.5 h-3.5 shrink-0" />
           <span>Custom Dates</span>
         </button>
 
         {typeof count === "number" && (
-          <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold ml-auto shrink-0">
+          <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold ml-auto shrink-0 self-center">
             {count} found
           </span>
         )}
@@ -242,15 +242,15 @@ export function DateRangeFilterBar({
 
       {/* Expanded Custom Month Picker */}
       {filter.preset === "custom_month" && (
-        <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-xs animate-in fade-in">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-xs animate-in fade-in">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
-            <span className="font-bold text-slate-700 dark:text-slate-300">Select Month &amp; Year:</span>
+            <span className="font-bold text-slate-700 dark:text-slate-300 text-xs">Select Month &amp; Year:</span>
             <input
               type="month"
               value={filter.customMonth || currentMonth}
               onChange={handleCustomMonthChange}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 text-xs w-full sm:w-auto"
             />
           </div>
           <span className="text-[11px] text-slate-500">
@@ -261,24 +261,24 @@ export function DateRangeFilterBar({
 
       {/* Expanded Custom Date Range Picker */}
       {filter.preset === "custom_range" && (
-        <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-xs animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-700 dark:text-slate-300">From Date:</span>
+        <div className="flex flex-wrap items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-xs animate-in fade-in">
+          <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
+            <span className="font-bold text-slate-700 dark:text-slate-300 text-[11px] shrink-0">From:</span>
             <input
               type="date"
               value={filter.startDate || ""}
               onChange={handleStartDateChange}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 text-xs w-full"
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-700 dark:text-slate-300">To Date:</span>
+          <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
+            <span className="font-bold text-slate-700 dark:text-slate-300 text-[11px] shrink-0">To:</span>
             <input
               type="date"
               value={filter.endDate || ""}
               onChange={handleEndDateChange}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 text-xs w-full"
             />
           </div>
 
@@ -286,10 +286,10 @@ export function DateRangeFilterBar({
             <button
               type="button"
               onClick={clearCustomDates}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline ml-auto"
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline py-1 px-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Reset Dates</span>
+              <span>Reset</span>
             </button>
           )}
         </div>

@@ -207,15 +207,15 @@ export default function ManufacturerLedgersPage() {
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-            <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+            <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0 text-xs">
               <Filter className="w-3.5 h-3.5" /> Select Company:
             </span>
             {["all", "Bayer", "GSK", "Nox Laboratories"].map((m) => (
               <button
                 key={m}
                 onClick={() => setSelectedMfr(m)}
-                className={`px-3 py-1 rounded-lg font-bold shrink-0 transition-all ${
+                className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition-all text-xs ${
                   selectedMfr.toLowerCase() === m.toLowerCase()
                     ? "bg-teal-600 text-white"
                     : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"

@@ -856,14 +856,14 @@ export default function AuditLogsPage() {
       <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
         {/* Quick Date Range Filter Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-100 dark:border-slate-800/80">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 text-xs">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
-              <Filter className="w-3.5 h-3.5 text-teal-600" /> Date Criteria:
+          <div className="flex flex-wrap items-center gap-1.5 py-0.5 text-xs">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5 text-teal-600 shrink-0" /> Date Criteria:
             </span>
             <button
               type="button"
               onClick={() => setDateRangeFilter("all")}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 text-xs ${
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 text-xs ${
                 dateRangeFilter === "all"
                   ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -877,7 +877,7 @@ export default function AuditLogsPage() {
             <button
               type="button"
               onClick={() => setDateRangeFilter("today")}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 text-xs ${
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 text-xs ${
                 dateRangeFilter === "today"
                   ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -891,7 +891,7 @@ export default function AuditLogsPage() {
             <button
               type="button"
               onClick={() => setDateRangeFilter("weekly")}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 text-xs ${
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 text-xs ${
                 dateRangeFilter === "weekly"
                   ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -905,7 +905,7 @@ export default function AuditLogsPage() {
             <button
               type="button"
               onClick={() => setDateRangeFilter("monthly")}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 text-xs ${
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 text-xs ${
                 dateRangeFilter === "monthly"
                   ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -919,7 +919,7 @@ export default function AuditLogsPage() {
             <button
               type="button"
               onClick={() => setDateRangeFilter("custom")}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 text-xs ${
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 text-xs ${
                 dateRangeFilter === "custom"
                   ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"

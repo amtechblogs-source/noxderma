@@ -476,7 +476,7 @@ export default function CustomersDirectoryPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
+        <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
           <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0 text-xs">
             <Filter className="w-3.5 h-3.5" /> Type:
           </span>
@@ -484,7 +484,7 @@ export default function CustomersDirectoryPage() {
             <button
               key={cat}
               onClick={() => setCategoryFilter(cat)}
-              className={`min-h-[40px] px-4 py-2 rounded-xl font-bold capitalize shrink-0 btn-interactive transition-all ${
+              className={`min-h-[38px] px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold capitalize btn-interactive transition-all text-xs sm:text-sm ${
                 categoryFilter === cat
                   ? "bg-teal-600 text-white shadow-soft"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"

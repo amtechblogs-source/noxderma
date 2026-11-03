@@ -71,6 +71,13 @@ function comparePartnerTxNewestFirst(a: PartnerTransaction, b: PartnerTransactio
   return b.id.localeCompare(a.id);
 }
 
+// Helper: Clean partner name from any parenthetical tag like (Aap / Owner)
+function cleanPartnerName(name: string, fallback: string): string {
+  if (!name) return fallback;
+  const stripped = name.replace(/\s*\([^)]*\)/g, "").trim();
+  return stripped || fallback;
+}
+
 export default function PartnersKhataPage() {
   const { currentUser, hasPermission } = useAuth();
 
@@ -78,12 +85,12 @@ export default function PartnersKhataPage() {
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Partner custom names
-  const [partner1Name, setPartner1Name] = useState("Partner 1 (Aap / Owner)");
-  const [partner2Name, setPartner2Name] = useState("Partner 2 (Sharakat-dar)");
+  // Partner custom names (Clean names without parentheses/tags)
+  const [partner1Name, setPartner1Name] = useState("Partner 1");
+  const [partner2Name, setPartner2Name] = useState("Partner 2");
   const [editingNames, setEditingNames] = useState(false);
-  const [tempP1Name, setTempP1Name] = useState(partner1Name);
-  const [tempP2Name, setTempP2Name] = useState(partner2Name);
+  const [tempP1Name, setTempP1Name] = useState("Partner 1");
+  const [tempP2Name, setTempP2Name] = useState("Partner 2");
 
   // Profit Distribution Calculator State
   const [distributableProfit, setDistributableProfit] = useState<number>(100000);
@@ -122,14 +129,12 @@ export default function PartnersKhataPage() {
 
       const savedP1 = localStorage.getItem("nox_partner_1_name");
       const savedP2 = localStorage.getItem("nox_partner_2_name");
-      if (savedP1) {
-        setPartner1Name(savedP1);
-        setTempP1Name(savedP1);
-      }
-      if (savedP2) {
-        setPartner2Name(savedP2);
-        setTempP2Name(savedP2);
-      }
+      const p1 = cleanPartnerName(savedP1 || "", "Partner 1");
+      const p2 = cleanPartnerName(savedP2 || "", "Partner 2");
+      setPartner1Name(p1);
+      setTempP1Name(p1);
+      setPartner2Name(p2);
+      setTempP2Name(p2);
     } catch (err) {
       console.warn("Failed to load partner transactions:", err);
     } finally {
@@ -142,14 +147,16 @@ export default function PartnersKhataPage() {
   }, []);
 
   const handleSaveNames = () => {
-    if (tempP1Name.trim()) {
-      setPartner1Name(tempP1Name.trim());
-      localStorage.setItem("nox_partner_1_name", tempP1Name.trim());
-    }
-    if (tempP2Name.trim()) {
-      setPartner2Name(tempP2Name.trim());
-      localStorage.setItem("nox_partner_2_name", tempP2Name.trim());
-    }
+    const p1 = cleanPartnerName(tempP1Name, "Partner 1");
+    const p2 = cleanPartnerName(tempP2Name, "Partner 2");
+    setPartner1Name(p1);
+    setTempP1Name(p1);
+    localStorage.setItem("nox_partner_1_name", p1);
+
+    setPartner2Name(p2);
+    setTempP2Name(p2);
+    localStorage.setItem("nox_partner_2_name", p2);
+
     setEditingNames(false);
   };
 
@@ -384,29 +391,32 @@ export default function PartnersKhataPage() {
     }
   };
 
-  // WhatsApp share statement
+  // WhatsApp share statement (Clean, concise & to-the-point)
   const shareWhatsApp = () => {
-    let text = `💼 *PARTNERSHIP CAPITAL & PROFIT AUDIT STATEMENT*\n`;
-    text += `🏢 *${businessSettings?.brandName || "NOXDERMA PHARMACEUTICALS"}*\n`;
-    text += `📅 Period: ${getDateFilterDescription(dateFilter)}\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    const p1 = cleanPartnerName(partner1Name, "Partner 1");
+    const p2 = cleanPartnerName(partner2Name, "Partner 2");
+    const brand = businessSettings?.brandName || "NOXDERMA PHARMACEUTICALS";
+    const period = getDateFilterDescription(dateFilter);
 
-    text += `💰 *TOTAL INVESTMENT SHARE:*\n`;
-    text += `• Total Combined Capital: ${formatPKR(combinedTotalInvestment)}\n`;
-    text += `• ${partner1Name}: ${formatPKR(p1TotalInvestment)} (*${p1RatioPercent}%*)\n`;
-    text += `• ${partner2Name}: ${formatPKR(p2TotalInvestment)} (*${p2RatioPercent}%*)\n\n`;
+    let text = `📊 *PARTNERSHIP AUDIT STATEMENT*\n`;
+    text += `🏢 *${brand}*\n`;
+    text += `📅 Period: ${period}\n`;
+    text += `─────────────────────────\n\n`;
 
-    text += `📈 *PROFIT DISTRIBUTION RATIO:*\n`;
-    text += `(Har Rs 100,000 munafay par):\n`;
-    text += `• ${partner1Name} Share: ${formatPKR(Math.round(100000 * (p1RatioPercent / 100)))}\n`;
-    text += `• ${partner2Name} Share: ${formatPKR(Math.round(100000 * (p2RatioPercent / 100)))}\n\n`;
+    text += `💰 *CAPITAL & SHARE:*\n`;
+    text += `• *${p1}:* ${formatPKR(p1TotalInvestment)} (${p1RatioPercent}%)\n`;
+    text += `• *${p2}:* ${formatPKR(p2TotalInvestment)} (${p2RatioPercent}%)\n`;
+    text += `• *Total Capital:* ${formatPKR(combinedTotalInvestment)}\n\n`;
 
-    text += `💼 *CAPITAL STANDING (Investment - Drawings):*\n`;
-    text += `• ${partner1Name} Net: ${formatPKR(p1NetCapital)}\n`;
-    text += `• ${partner2Name} Net: ${formatPKR(p2NetCapital)}\n`;
+    text += `📈 *PROFIT DISTRIBUTION (Per 100k):*\n`;
+    text += `• *${p1} (${p1RatioPercent}%):* ${formatPKR(Math.round(100000 * (p1RatioPercent / 100)))}\n`;
+    text += `• *${p2} (${p2RatioPercent}%):* ${formatPKR(Math.round(100000 * (p2RatioPercent / 100)))}\n\n`;
 
-    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `_Official Statement generated by Noxderma ERP_`;
+    text += `💼 *CURRENT NET CAPITAL:*\n`;
+    text += `• *${p1}:* ${formatPKR(p1NetCapital)}\n`;
+    text += `• *${p2}:* ${formatPKR(p2NetCapital)}\n`;
+    text += `─────────────────────────\n`;
+    text += `_Generated via Noxderma ERP_`;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
@@ -916,14 +926,14 @@ export default function PartnersKhataPage() {
           />
 
           {/* Secondary Filter Pills: Partner, Type & Search */}
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               {/* Partner Filter */}
-              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold">
+              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold max-w-full">
                 <button
                   type="button"
                   onClick={() => setSelectedPartnerFilter("all")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedPartnerFilter === "all"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -934,7 +944,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedPartnerFilter("partner_1")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedPartnerFilter === "partner_1"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -945,7 +955,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedPartnerFilter("partner_2")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedPartnerFilter === "partner_2"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -956,11 +966,11 @@ export default function PartnersKhataPage() {
               </div>
 
               {/* Type Filter */}
-              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold">
+              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold max-w-full">
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("all")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedTypeFilter === "all"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -971,7 +981,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("investment")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedTypeFilter === "investment"
                       ? "bg-emerald-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -982,7 +992,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("withdrawal")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedTypeFilter === "withdrawal"
                       ? "bg-rose-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -993,7 +1003,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("profit_payout")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
                     selectedTypeFilter === "profit_payout"
                       ? "bg-teal-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1005,7 +1015,7 @@ export default function PartnersKhataPage() {
             </div>
 
             {/* Search Input */}
-            <div className="relative w-full md:w-64">
+            <div className="relative w-full md:w-64 min-w-0">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
