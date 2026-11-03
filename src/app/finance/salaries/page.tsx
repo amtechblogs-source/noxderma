@@ -40,6 +40,7 @@ import type { StaffSalary, UserProfile, SalaryPaymentStatus } from "@/types";
 import { getUserRoleLabel, normalizeUserDisplayName } from "@/types/auth";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import {
   DateFilterState,
   createDefaultDateFilter,
@@ -736,23 +737,13 @@ export default function StaffSalariesPage() {
       {/* Main Ledger Content (Entirely hidden from printer when a Salary Slip is being printed) */}
       <div className={`space-y-4 sm:space-y-6 ${slipSalary ? "print:hidden" : ""}`}>
         {/* Official Print-Only Sheet Header (When printing entire list) */}
-      <div className="hidden print:block border-b-2 border-black pb-3 mb-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-xl font-black tracking-tight text-black uppercase">
-              NOXDERMA PHARMACEUTICALS
-            </h1>
-            <p className="text-[11px] text-slate-700 font-semibold">
-              Monthly Staff Payroll &amp; Salary Disbursement Ledger
-            </p>
-          </div>
-          <div className="text-right text-[10px] text-slate-700">
-            <p><strong>Period:</strong> {getDateFilterDescription(dateFilter)}</p>
-            <p><strong>Printed:</strong> {formatKarachiDate(new Date(), true)}</p>
-            <p><strong>Prepared By:</strong> {currentUser?.displayName || "Owner"}</p>
-          </div>
-        </div>
-      </div>
+        <OfficialPrintHeader
+          title="Staff Payroll & Salary Disbursement Ledger"
+          subtitle="Monthly Staff Payroll & Compensation"
+          period={getDateFilterDescription(dateFilter)}
+          metaItems={[{ label: "Prepared By", value: currentUser?.displayName || "Owner" }]}
+          className="mb-4"
+        />
 
       {/* Screen Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print border-b border-slate-200 dark:border-slate-800 pb-4">
@@ -1935,30 +1926,13 @@ export default function StaffSalariesPage() {
                 className="border border-slate-300 rounded-2xl p-6 sm:p-8 space-y-6 bg-white text-slate-900 print:border print:border-slate-800 print:rounded-xl print:p-6 print:space-y-4 print:m-0 print:w-full"
               >
                 {/* Slip Header */}
-                <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
-                  <div>
-                    <h1 className="text-xl font-black uppercase tracking-tight text-black">
-                      NOXDERMA PHARMACEUTICALS
-                    </h1>
-                    <p className="text-xs text-slate-600 font-semibold">
-                      Derma &amp; Healthcare Solutions
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
-                      Suite # 402, Trade Heights, Karachi, Pakistan
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-block px-3 py-1 rounded bg-slate-100 border border-slate-400 text-[11px] font-black uppercase tracking-wider text-black mb-1">
-                      Salary Disbursement Slip
-                    </span>
-                    <p className="text-[10px] text-slate-600">
-                      <strong>Slip Ref:</strong> {slipSalary.id.toUpperCase().slice(-10)}
-                    </p>
-                    <p className="text-[10px] text-slate-600">
-                      <strong>Period:</strong> {slipSalary.monthLabel}
-                    </p>
-                  </div>
-                </div>
+                <OfficialPrintHeader
+                  title="Salary Disbursement Slip"
+                  docRef={`SLIP-${slipSalary.id.toUpperCase().slice(-8)}`}
+                  period={slipSalary.monthLabel}
+                  showInPreview={true}
+                  className="pb-4"
+                />
 
                 {/* Employee Meta Info */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">

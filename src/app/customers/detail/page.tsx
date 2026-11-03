@@ -37,6 +37,7 @@ import type {
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import {
   isRecordInDateRange,
   createDefaultDateFilter,
@@ -500,29 +501,12 @@ function CustomerDetailContent() {
   return (
     <div className="space-y-6">
       {/* Official Print-Only Header */}
-      <div className="hidden print:flex justify-between items-start border-b-2 border-slate-900 pb-3">
-        <div>
-          <h1 className="text-base font-black tracking-tight text-black uppercase">
-            NOXDERMA PHARMACEUTICALS
-          </h1>
-          <p className="text-[10px] text-slate-600 font-medium">Derma & Healthcare Solutions</p>
-          <p className="text-[10px] text-slate-600 mt-0.5">Suite # 402, Trade Heights, Karachi, Pakistan</p>
-        </div>
-        <div className="text-right">
-          <span className="inline-block px-3 py-1 rounded bg-slate-100 border border-slate-400 text-[11px] font-black uppercase tracking-wider text-black mb-1">
-            Customer Statement
-          </span>
-          <p className="text-[10px] text-slate-600">
-            <strong>Period:</strong> {getDateFilterDescription(dateFilter)}
-          </p>
-          <p className="text-[10px] text-slate-600">
-            <strong>Printed:</strong> {formatKarachiDate(new Date(), true)}
-          </p>
-          <p className="text-[10px] text-slate-600">
-            <strong>Customer:</strong> {customer.name} ({customer.city})
-          </p>
-        </div>
-      </div>
+      <OfficialPrintHeader
+        title="Customer Statement"
+        period={getDateFilterDescription(dateFilter)}
+        targetLabel="Customer"
+        targetName={`${customer.name} (${customer.city})`}
+      />
 
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

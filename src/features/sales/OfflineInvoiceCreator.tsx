@@ -37,6 +37,7 @@ import { syncManager } from "@/lib/offline/sync";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import type {
   Customer,
   InventoryBatch,
@@ -1014,50 +1015,17 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
         <div className="print-page p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-6 text-slate-900 dark:text-slate-100 print:p-0 print:m-0 print:border-none print:rounded-none print:shadow-none print:bg-white print:text-black">
           {/* Header with Print Logo support */}
-          <div className="flex justify-between items-start pb-5 border-b-2 border-slate-900 dark:border-slate-700 print:border-black gap-4">
-            <div className="flex items-start gap-3.5">
-              {(businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl) && (
-                <img
-                  src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
-                  alt="Invoice Logo"
-                  className="h-16 w-auto max-w-[160px] object-contain shrink-0"
-                />
-              )}
-              <div>
-                <div className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 print:text-black leading-tight">
-                  {businessSettings?.brandName || "NOXDERMA PHARMA"}
-                </div>
-                <div className="mt-1.5 space-y-0.5 text-xs sm:text-sm font-semibold text-slate-700 print:text-black">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
-                    <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
-                    <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
-                    <span>{businessSettings?.email || "info@noxderma.com"}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="text-right shrink-0">
-              <span className="inline-block px-3 py-1 rounded text-xs sm:text-sm font-black bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 print:bg-slate-100 print:border print:border-black print:text-black tracking-wider uppercase">
-                SALE INVOICE
-              </span>
-              <p className="font-mono text-base sm:text-lg font-black text-teal-700 print:text-black mt-1.5">
-                {createdInvoice.provisionalReference}
-              </p>
-              <p className="text-xs sm:text-sm font-bold text-slate-700 print:text-black mt-0.5">
-                Date: {formatKarachiDate(createdInvoice.invoiceDate, true)}
-              </p>
-              <p className="text-xs sm:text-sm font-bold text-slate-700 print:text-black">
-                Due Date: {formatKarachiDate(createdInvoice.dueDate)}
-              </p>
-            </div>
-          </div>
+          <OfficialPrintHeader
+            title={createdInvoice.paymentMethod === "cash" ? "Cash Invoice" : "Sale Invoice"}
+            docRef={createdInvoice.provisionalReference}
+            date={createdInvoice.invoiceDate}
+            metaItems={[
+              ...(createdInvoice.dueDate ? [{ label: "Due Date", value: formatKarachiDate(createdInvoice.dueDate) }] : []),
+            ]}
+            settings={businessSettings}
+            showInPreview={true}
+            className="pb-5"
+          />
 
           {/* Customer & Payment Details Cards */}
           <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm">

@@ -31,6 +31,7 @@ import { openWhatsAppShare } from "@/lib/whatsapp/share";
 import { useAuth } from "@/context/AuthContext";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import {
   isRecordInDateRange,
   createDefaultDateFilter,
@@ -920,51 +921,17 @@ export default function SalesInvoicesListPage() {
       {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
       {selectedInvoice && (
         <div className="hidden print:block print-page bg-white text-black p-6 font-sans text-xs w-full max-w-none m-0">
-          {/* Header with Print Logo support */}
-          <div className="flex justify-between items-start pb-5 border-b-2 border-black gap-4">
-            <div className="flex items-start gap-3.5">
-              {(businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl) && (
-                <img
-                  src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
-                  alt="Invoice Logo"
-                  className="h-16 w-auto max-w-[160px] object-contain shrink-0"
-                />
-              )}
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-black leading-tight">
-                  {businessSettings?.brandName || "NOXDERMA PHARMA"}
-                </h1>
-                <div className="mt-1.5 space-y-0.5 text-xs sm:text-sm font-semibold text-slate-800">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-black shrink-0" />
-                    <span>{businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-black shrink-0" />
-                    <span>{businessSettings?.contactPhone || "+92 300 1234567"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-black shrink-0" />
-                    <span>{businessSettings?.email || "info@noxderma.com"}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="text-right shrink-0">
-              <span className="inline-block px-3 py-1 rounded text-xs sm:text-sm font-black border border-black text-black bg-slate-100 tracking-wider uppercase">
-                SALE INVOICE
-              </span>
-              <p className="font-mono text-base sm:text-lg font-black text-black mt-1.5">
-                {selectedInvoice.provisionalReference}
-              </p>
-              <p className="text-xs sm:text-sm font-bold text-black mt-0.5">
-                Date: {selectedInvoice.invoiceDate?.slice(0, 10)}
-              </p>
-              <p className="text-xs sm:text-sm font-bold text-black">
-                Due Date: {selectedInvoice.dueDate?.slice(0, 10)}
-              </p>
-            </div>
-          </div>
+          {/* Official Branded Print Header */}
+          <OfficialPrintHeader
+            title={selectedInvoice.paymentMethod === "cash" ? "Cash Invoice" : "Sale Invoice"}
+            docRef={selectedInvoice.provisionalReference}
+            date={selectedInvoice.invoiceDate?.slice(0, 10)}
+            metaItems={[
+              ...(selectedInvoice.dueDate ? [{ label: "Due Date", value: selectedInvoice.dueDate.slice(0, 10) }] : []),
+            ]}
+            settings={businessSettings}
+            className="pb-5"
+          />
 
           {/* Customer & Payment Details Cards */}
           <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm my-4">

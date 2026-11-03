@@ -29,6 +29,7 @@ import { offlineDb } from "@/lib/offline/db";
 import { scheduleCloudUpsert, scheduleCloudDelete } from "@/lib/offline/cloudSync";
 import { useAuth } from "@/context/AuthContext";
 import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import {
   DateFilterState,
   createDefaultDateFilter,
@@ -546,16 +547,25 @@ export default function ProfitAndLossPage() {
 
       {/* Structured P&L Statement Card */}
       <div className="p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 sm:space-y-6 text-xs md:text-sm print:border-none print:shadow-none print:p-0 print:space-y-4 print:text-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-4 border-b border-slate-200 dark:border-slate-800 print:border-slate-900">
+        {/* Official Branded Print Header (Print Only) */}
+        <OfficialPrintHeader
+          title="PROFIT & LOSS STATEMENT"
+          period={getDateFilterDescription(dateFilter)}
+          metaItems={[{ label: "Currency", value: "PKR (Pakistani Rupee)" }]}
+          className="mb-2"
+        />
+
+        {/* Screen Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-4 border-b border-slate-200 dark:border-slate-800 no-print print:hidden">
           <div className="min-w-0">
-            <h2 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 print:text-black tracking-tight">
+            <h2 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight">
               Noxderma Pharmaceuticals Ltd.
             </h2>
-            <p className="text-[11px] sm:text-xs text-slate-500 print:text-slate-600 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
               Profit &amp; Loss Statement • {getDateFilterDescription(dateFilter)} • Generated: {formatKarachiDate(new Date(), true)}
             </p>
           </div>
-          <span className="font-mono text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 w-fit shrink-0 border border-teal-200/60 dark:border-teal-800/60 print:bg-slate-100 print:text-black print:border-slate-300">
+          <span className="font-mono text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 w-fit shrink-0 border border-teal-200/60 dark:border-teal-800/60">
             Currency: Pakistani Rupee (PKR ₨)
           </span>
         </div>

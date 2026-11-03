@@ -43,6 +43,7 @@ import {
   getDateFilterDescription,
 } from "@/lib/dateFilter";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import type { PartnerTransaction, PartnerTransactionType, BusinessSettings } from "@/types";
 
 export default function PartnersKhataPage() {
@@ -395,34 +396,14 @@ export default function PartnersKhataPage() {
       {/* 1. DEDICATED PRINTABLE INVOICE / STATEMENT (Print Only View)  */}
       {/* ============================================================== */}
       <div className="hidden print:block text-black bg-white p-4 font-sans text-xs">
-        {/* Header */}
-        <div className="flex justify-between items-start pb-4 border-b-2 border-black">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-black uppercase tracking-tight text-black">
-              {businessSettings?.brandName || "NOXDERMA PHARMACEUTICALS"}
-            </h1>
-            <p className="text-[11px] text-slate-700 font-semibold">
-              Derma &amp; Healthcare Solutions &bull; {businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}
-            </p>
-            <p className="text-[10px] text-slate-700">
-              Tel: {businessSettings?.contactPhone || "+92 300 1234567"} &bull; Email: {businessSettings?.email || "info@noxderma.com"}
-            </p>
-          </div>
-          <div className="text-right space-y-1">
-            <span className="inline-block px-3 py-1 bg-slate-100 border border-black font-black uppercase text-[11px] tracking-wider">
-              PARTNERSHIP INVESTMENT &amp; PROFIT AUDIT STATEMENT
-            </span>
-            <p className="font-mono text-[11px] font-bold mt-1">
-              Doc Ref: PRT-AUDIT-{new Date().toISOString().slice(0, 10).replace(/-/g, "")}
-            </p>
-            <p className="text-[10px]">
-              <strong>Printed On:</strong> {formatKarachiDate(new Date(), true)}
-            </p>
-            <p className="text-[10px]">
-              <strong>Period:</strong> {getDateFilterDescription(dateFilter)}
-            </p>
-          </div>
-        </div>
+        {/* Official Branded Header */}
+        <OfficialPrintHeader
+          title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
+          docRef={`PRT-AUDIT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`}
+          period={getDateFilterDescription(dateFilter)}
+          settings={businessSettings}
+          className="pb-4"
+        />
 
         {/* Partnership Capital & Profit Sharing Table */}
         <div className="my-5">
@@ -1216,33 +1197,14 @@ export default function PartnersKhataPage() {
             {/* Scrollable Printable Document Replica */}
             <div className="p-6 overflow-y-auto space-y-6 text-black bg-white text-xs">
               {/* Document Header */}
-              <div className="flex justify-between items-start pb-4 border-b-2 border-black">
-                <div className="space-y-1">
-                  <h1 className="text-2xl font-black uppercase tracking-tight text-black">
-                    {businessSettings?.brandName || "NOXDERMA PHARMACEUTICALS"}
-                  </h1>
-                  <p className="text-[11px] text-slate-700 font-semibold">
-                    Derma &amp; Healthcare Solutions &bull; {businessSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan"}
-                  </p>
-                  <p className="text-[10px] text-slate-700">
-                    Tel: {businessSettings?.contactPhone || "+92 300 1234567"} &bull; Email: {businessSettings?.email || "info@noxderma.com"}
-                  </p>
-                </div>
-                <div className="text-right space-y-1">
-                  <span className="inline-block px-3 py-1 bg-slate-100 border border-black font-black uppercase text-[11px] tracking-wider">
-                    PARTNERSHIP STATEMENT &amp; AUDIT
-                  </span>
-                  <p className="font-mono text-[11px] font-bold mt-1">
-                    Doc Ref: PRT-AUDIT-{new Date().toISOString().slice(0, 10).replace(/-/g, "")}
-                  </p>
-                  <p className="text-[10px]">
-                    <strong>Printed On:</strong> {formatKarachiDate(new Date(), true)}
-                  </p>
-                  <p className="text-[10px]">
-                    <strong>Period:</strong> {getDateFilterDescription(dateFilter)}
-                  </p>
-                </div>
-              </div>
+              <OfficialPrintHeader
+                title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
+                docRef={`PRT-AUDIT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`}
+                period={getDateFilterDescription(dateFilter)}
+                settings={businessSettings}
+                showInPreview={true}
+                className="pb-4"
+              />
 
               {/* Capital & Profit Table */}
               <div className="space-y-2">

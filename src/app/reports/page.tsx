@@ -26,6 +26,7 @@ import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type { Product, InventoryBatch, Invoice, Customer } from "@/types";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 
 export type DatePreset = "all" | "today" | "week" | "month" | "custom";
 
@@ -1007,83 +1008,32 @@ export default function ReportsExportPage() {
       {/* DEDICATED OFFICIAL PRINTABLE REPORT (Clean A4 Document Layout)             */}
       {/* ========================================================================= */}
       <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-6 space-y-4">
-        {/* Document Header with Branding & Icons */}
-        <div className="flex justify-between items-start pb-4 border-b-2 border-black gap-4">
-          <div className="flex items-start gap-3.5">
-            {businessSettings?.invoiceLogoUrl || businessSettings?.appLogoUrl ? (
-              <img
-                src={businessSettings.invoiceLogoUrl || businessSettings.appLogoUrl}
-                alt="Logo"
-                className="h-14 w-auto max-w-[150px] object-contain shrink-0"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-base shrink-0">
-                ND
-              </div>
-            )}
-            <div>
-              <h1 className="text-xl font-black tracking-tight text-black leading-tight uppercase">
-                {companyName}
-              </h1>
-              <p className="text-[10px] font-bold text-slate-700">
-                {companyTagline}
-              </p>
-              <div className="mt-1 space-y-0.5 text-[10px] font-semibold text-slate-800">
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3 h-3 text-black shrink-0" />
-                  <span>{companyAddress}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Phone className="w-3 h-3 text-black shrink-0" />
-                  <span>{companyPhone}</span>
-                  {companyNtn && (
-                    <>
-                      <span className="text-slate-400">•</span>
-                      <span>{companyNtn}</span>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Mail className="w-3 h-3 text-black shrink-0" />
-                  <span>{companyEmail}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-right shrink-0">
-            <span className="inline-block px-3 py-1 rounded text-[11px] font-black border border-black text-black bg-slate-100 tracking-wider uppercase mb-1">
-              {activeReport === "stock" && "Stock Valuation Report"}
-              {activeReport === "sales" && "Sales & Dispatch Summary"}
-              {activeReport === "aging" && "Customer Udhaar & Aging Report"}
-              {activeReport === "tax" && "Tax & Bills Register"}
-            </span>
-            <p className="text-[10px] text-slate-700 mt-1">
-              <strong>Printed:</strong> {formatKarachiDate(new Date(), true)}
-            </p>
-            <p className="text-[10px] text-slate-700">
-              <strong>Period:</strong> {datePresetLabel}
-            </p>
-            {searchQuery && (
-              <p className="text-[10px] text-slate-700">
-                <strong>Search Filter:</strong> &ldquo;{searchQuery}&rdquo;
-              </p>
-            )}
-            <p className="text-[10px] text-slate-700">
-              <strong>Scope:</strong> {activeCategoryObj?.name ? `Category: ${activeCategoryObj.name}` : "All Medicine Categories"}
-            </p>
-            <div className="mt-1 pt-1 border-t border-slate-300">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-600 block">
-                Prepared by:
-              </span>
-              <span className="text-[11px] font-black text-black block">
-                {preparerName.trim().toLowerCase() === preparerRole.trim().toLowerCase()
+        {/* Document Header with Official Branding */}
+        <OfficialPrintHeader
+          title={
+            activeReport === "stock"
+              ? "Stock Valuation Report"
+              : activeReport === "sales"
+              ? "Sales & Dispatch Summary"
+              : activeReport === "aging"
+              ? "Customer Udhaar & Aging Report"
+              : "Tax & Bills Register"
+          }
+          period={datePresetLabel}
+          settings={businessSettings}
+          metaItems={[
+            ...(searchQuery ? [{ label: "Search Filter", value: `"${searchQuery}"` }] : []),
+            { label: "Scope", value: activeCategoryObj?.name ? `Category: ${activeCategoryObj.name}` : "All Medicine Categories" },
+            {
+              label: "Prepared by",
+              value:
+                preparerName.trim().toLowerCase() === preparerRole.trim().toLowerCase()
                   ? preparerName
-                  : `${preparerName} (${preparerRole})`}
-              </span>
-            </div>
-          </div>
-        </div>
+                  : `${preparerName} (${preparerRole})`,
+            },
+          ]}
+          className="pb-4"
+        />
 
         {/* 1. PRINT LAYOUT: Stock Valuation */}
         {activeReport === "stock" && (

@@ -14,6 +14,7 @@ export interface BusinessSettings {
   contactPhone: string;
   whatsappNumber: string;
   email: string;
+  ntnNumber?: string;
   currency: string; // Initially "PKR"
   currencySymbol: string; // "₨"
   timezone: string; // Initially "Asia/Karachi"

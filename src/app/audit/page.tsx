@@ -41,6 +41,7 @@ import {
   isRoleRedundantForName,
   normalizeUserDisplayName,
 } from "@/types";
+import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 
 interface FieldDiffRow {
   field: string;
@@ -649,35 +650,18 @@ export default function AuditLogsPage() {
   return (
     <div className="space-y-5 sm:space-y-6 w-full max-w-7xl mx-auto pb-20 overflow-x-hidden">
       {/* ========================================================================= */}
-      {/* OFFICIAL PRINT-ONLY HEADER (CLEAN A4 AUDIT SHEET)                        */}
-      {/* ========================================================================= */}
-      <div className="hidden print:block border-b-2 border-black pb-4 mb-6">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-2xl font-black uppercase tracking-tight text-black">
-              NOXDERMA PHARMACEUTICALS
-            </h1>
-            <p className="text-xs text-black font-semibold">
-              Master Activity History &amp; Audit Tracking Report
-            </p>
-            <p className="text-[11px] text-slate-700 mt-0.5">
-              CONFIDENTIAL: Strictly Restricted to Business Owner
-            </p>
-          </div>
-          <div className="text-right text-xs text-black">
-            <span className="inline-block px-2.5 py-1 rounded border border-black font-black uppercase mb-1">
-              Owner Audit Ledger
-            </span>
-            <p>
-              <strong>Printed On:</strong> {formatKarachiDate(new Date(), true)}
-            </p>
-            <p>
-              <strong>Audited By:</strong>{" "}
-              {formatNameWithRole(currentUser?.displayName, currentUser?.role || "Owner")}
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* OFFICIAL PRINT-ONLY HEADER (CLEAN A4 AUDIT SHEET) */}
+      <OfficialPrintHeader
+        title="Owner Audit Ledger"
+        subtitle="Master Activity History & Audit Tracking Report • CONFIDENTIAL"
+        metaItems={[
+          {
+            label: "Audited By",
+            value: formatNameWithRole(currentUser?.displayName, currentUser?.role || "Owner"),
+          },
+        ]}
+        className="mb-6"
+      />
 
       {/* Screen Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 no-print border-b border-slate-200/80 dark:border-slate-800 pb-4">
