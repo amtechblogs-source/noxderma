@@ -83,6 +83,7 @@ export default function PurchasesPage() {
 
   // New PO Modal
   const [isCreatingPO, setIsCreatingPO] = useState(false);
+  const [manufacturers, setManufacturers] = useState<{ id: string; name: string; phone?: string }[]>([]);
   const [mfrMode, setMfrMode] = useState<"saved" | "manual">("saved");
   const [newMfrName, setNewMfrName] = useState("");
   const [prodMode, setProdMode] = useState<"saved" | "manual">("saved");
@@ -94,8 +95,12 @@ export default function PurchasesPage() {
 
   const loadData = async () => {
     try {
-      const [prodList] = await Promise.all([offlineDb.products.toArray()]);
+      const [prodList, mfrList] = await Promise.all([
+        offlineDb.products.toArray(),
+        offlineDb.manufacturers.toArray(),
+      ]);
       setProducts(prodList);
+      setManufacturers(mfrList || []);
 
       try {
         const dbPOs = await (offlineDb as any).purchaseOrders?.toArray();
@@ -129,6 +134,18 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     loadData();
+    let syncTimer: any = null;
+    const handleSync = () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        loadData();
+      }, 300);
+    };
+    window.addEventListener("noxderma-cloud-synced", handleSync);
+    return () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      window.removeEventListener("noxderma-cloud-synced", handleSync);
+    };
   }, []);
 
   const savePOsToStorage = async (updatedList: PurchaseOrder[]) => {
@@ -271,7 +288,13 @@ export default function PurchasesPage() {
       }
     }
 
-    const finalMfrName = newMfrName.trim() || "Pharmaceutical Manufacturer";
+    const finalMfrName = newMfrName.trim() || (manufacturers[0]?.name ?? "Pharmaceutical Manufacturer");
+    const matchedMfr = manufacturers.find(
+      (m) => m.name.trim().toLowerCase() === finalMfrName.toLowerCase()
+    );
+    if (matchedMfr) {
+      mfrId = matchedMfr.id;
+    }
 
     const poNum = `PO-2026-${(purchases.length + 90).toString().padStart(3, "0")}`;
     const newPO: PurchaseOrder = {
@@ -328,7 +351,16 @@ export default function PurchasesPage() {
         </div>
 
         <button
-          onClick={() => setIsCreatingPO(true)}
+          onClick={() => {
+            if (manufacturers.length > 0) {
+              setNewMfrName(manufacturers[0].name);
+              setMfrMode("saved");
+            } else {
+              setNewMfrName("");
+              setMfrMode("manual");
+            }
+            setIsCreatingPO(true);
+          }}
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" /> Order Stock from Company
@@ -765,16 +797,28 @@ export default function PurchasesPage() {
                 </div>
 
                 {mfrMode === "saved" ? (
-                  <select
-                    value={newMfrName}
-                    onChange={(e) => setNewMfrName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                  >
-                    <option value="Bayer Healthcare PK">Bayer Healthcare PK</option>
-                    <option value="GlaxoSmithKline PK">GlaxoSmithKline PK</option>
-                    <option value="Nox Laboratories PK">Nox Laboratories PK</option>
-                    <option value="Getz Pharma Pakistan">Getz Pharma Pakistan</option>
-                  </select>
+                  <div className="space-y-1">
+                    <select
+                      value={newMfrName}
+                      onChange={(e) => setNewMfrName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                    >
+                      {manufacturers.length === 0 ? (
+                        <option value="">-- No Saved Companies Found --</option>
+                      ) : (
+                        manufacturers.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name} {m.phone ? `(${m.phone})` : ""}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    {manufacturers.length === 0 && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                        Koi saved company mojood nahi hai. Upar &ldquo;Type Custom&rdquo; choose karein ya Medicine Companies module me add karein.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <input
                     type="text"
