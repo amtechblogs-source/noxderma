@@ -44,6 +44,19 @@ import {
 } from "@/lib/dateFilter";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
+import { db as firestoreDb } from "@/lib/firebase/config";
+import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import { scheduleCloudUpsert, scheduleCloudDelete, sanitizeForFirestore } from "@/lib/offline/cloudSync";
+import { recordActivity } from "@/lib/audit/auditTracker";
+import {
+  computeDateScopeCounts,
+  getItemsInScope,
+} from "@/lib/dateFilter";
+import {
+  BulkDeleteModal,
+  SingleDeleteModal,
+  type DeleteScopeType,
+} from "@/components/common/BulkDeleteModal";
 import type { PartnerTransaction, PartnerTransactionType, BusinessSettings } from "@/types";
 
 // Helper: Extract timestamp for granular sorting (createdAt ISO or ID timestamp)
@@ -116,6 +129,28 @@ export default function PartnersKhataPage() {
   // Print Preview Modal State
   const [showPrintPreview, setShowPrintPreview] = useState(false);
 
+  // Selection state
+  const [selectedTxIds, setSelectedTxIds] = useState<string[]>([]);
+
+  // Bulk Delete Modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Single Delete Modal state
+  const [deletingTx, setDeletingTx] = useState<PartnerTransaction | null>(null);
+
+  // Edit Modal State
+  const [editingTx, setEditingTx] = useState<PartnerTransaction | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editPartnerId, setEditPartnerId] = useState<"partner_1" | "partner_2">("partner_1");
+  const [editType, setEditType] = useState<PartnerTransactionType>("investment");
+  const [editAmount, setEditAmount] = useState<string>("");
+  const [editDate, setEditDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<"cash" | "bank_transfer" | "cheque" | "online">("bank_transfer");
+  const [editDescription, setEditDescription] = useState<string>("");
+  const [editReference, setEditReference] = useState<string>("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   // Load transactions and settings from IndexedDB
   const loadData = async () => {
     try {
@@ -144,6 +179,18 @@ export default function PartnersKhataPage() {
 
   useEffect(() => {
     loadData();
+    let syncTimer: any = null;
+    const handleSync = () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        loadData();
+      }, 300);
+    };
+    window.addEventListener("noxderma-cloud-synced", handleSync);
+    return () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      window.removeEventListener("noxderma-cloud-synced", handleSync);
+    };
   }, []);
 
   const handleSaveNames = () => {
@@ -276,6 +323,30 @@ export default function PartnersKhataPage() {
     }).sort(comparePartnerTxNewestFirst);
   }, [transactions, selectedPartnerFilter, selectedTypeFilter, dateFilter, searchQuery, partner1Name, partner2Name]);
 
+  // Compute date scope counts for Bulk Delete modal
+  const scopeCounts = useMemo(() => {
+    return computeDateScopeCounts(
+      transactions,
+      (t) => t.date || t.createdAt,
+      selectedTxIds.length
+    );
+  }, [transactions, selectedTxIds.length]);
+
+  // Selection handlers
+  const handleToggleSelectAll = () => {
+    if (selectedTxIds.length === filteredTransactions.length && filteredTransactions.length > 0) {
+      setSelectedTxIds([]);
+    } else {
+      setSelectedTxIds(filteredTransactions.map((t) => t.id));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedTxIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   // Handle Add Transaction Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,7 +378,27 @@ export default function PartnersKhataPage() {
       };
 
       await offlineDb.partnerTransactions.add(newTx);
-      await loadData();
+
+      try {
+        await setDoc(doc(firestoreDb, "partnerTransactions", newTx.id), sanitizeForFirestore(newTx), { merge: true });
+      } catch {
+        scheduleCloudUpsert("partnerTransactions", newTx.id, newTx);
+      }
+
+      setTransactions((prev) => [newTx, ...prev].sort(comparePartnerTxNewestFirst));
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "create",
+        entityType: "transaction",
+        entityId: newTx.id,
+        entityTitle: `Added Partner ${newTx.type} - ${newTx.partnerName}`,
+        details: `Recorded ${newTx.type} of PKR ${newTx.amount.toLocaleString()} for ${newTx.partnerName}`,
+        snapshotAfter: newTx,
+      });
+
       setIsModalOpen(false);
       setAmount("");
       setDescription("");
@@ -370,7 +461,30 @@ export default function PartnersKhataPage() {
       };
 
       await offlineDb.partnerTransactions.bulkAdd([txP1, txP2]);
-      await loadData();
+
+      try {
+        await Promise.all([
+          setDoc(doc(firestoreDb, "partnerTransactions", txP1.id), sanitizeForFirestore(txP1), { merge: true }),
+          setDoc(doc(firestoreDb, "partnerTransactions", txP2.id), sanitizeForFirestore(txP2), { merge: true }),
+        ]);
+      } catch {
+        scheduleCloudUpsert("partnerTransactions", txP1.id, txP1);
+        scheduleCloudUpsert("partnerTransactions", txP2.id, txP2);
+      }
+
+      setTransactions((prev) => [txP1, txP2, ...prev].sort(comparePartnerTxNewestFirst));
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "create",
+        entityType: "transaction",
+        entityId: `${txP1.id}, ${txP2.id}`,
+        entityTitle: `Distributed Profit - ${partner1Name} & ${partner2Name}`,
+        details: `Distributed total PKR ${distributableProfit.toLocaleString()} profit: ${partner1Name} received PKR ${txP1.amount.toLocaleString()} (${p1RatioPercent}%), ${partner2Name} received PKR ${txP2.amount.toLocaleString()} (${p2RatioPercent}%)`,
+      });
+
       setShowProfitDistributorModal(false);
       alert("Dono partners ka profit share kamyabi se khate mein darj ho gaya hai!");
     } catch (err) {
@@ -381,13 +495,181 @@ export default function PartnersKhataPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Kya aap waqai is entry ko delete karna chahte hain?")) return;
+  // Open Edit Modal
+  const handleOpenEditModal = (tx: PartnerTransaction) => {
+    setEditingTx(tx);
+    setEditPartnerId(tx.partnerId === "partner_2" ? "partner_2" : "partner_1");
+    setEditType(tx.type);
+    setEditAmount(String(tx.amount));
+    setEditDate(tx.date || new Date().toISOString().split("T")[0]);
+    setEditPaymentMethod(tx.paymentMethod || "bank_transfer");
+    setEditDescription(tx.description || "");
+    setEditReference(tx.reference || "");
+    setIsEditModalOpen(true);
+  };
+
+  // Save Edited Transaction
+  const handleSaveEditTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+
+    const numAmount = parseFloat(editAmount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      alert("Barah-e-karam durust raqam (amount) darj karein.");
+      return;
+    }
+    if (!editDescription.trim()) {
+      alert("Tafseel ya maqsad (description) likhna zaroori hai.");
+      return;
+    }
+
+    setIsSavingEdit(true);
     try {
-      await offlineDb.partnerTransactions.delete(id);
-      await loadData();
-    } catch (err) {
-      console.error("Error deleting transaction:", err);
+      const updatedTx: PartnerTransaction = {
+        ...editingTx,
+        partnerId: editPartnerId,
+        partnerName: editPartnerId === "partner_1" ? partner1Name : partner2Name,
+        type: editType,
+        amount: numAmount,
+        date: editDate,
+        paymentMethod: editPaymentMethod,
+        description: editDescription.trim(),
+        reference: editReference.trim() || undefined,
+      };
+
+      await offlineDb.partnerTransactions.put(updatedTx);
+
+      try {
+        await setDoc(doc(firestoreDb, "partnerTransactions", updatedTx.id), sanitizeForFirestore(updatedTx), { merge: true });
+      } catch {
+        scheduleCloudUpsert("partnerTransactions", updatedTx.id, updatedTx);
+      }
+
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)).sort(comparePartnerTxNewestFirst)
+      );
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "update",
+        entityType: "transaction",
+        entityId: updatedTx.id,
+        entityTitle: `Updated Partner Transaction - ${updatedTx.partnerName}`,
+        details: `Updated ${updatedTx.type} of PKR ${updatedTx.amount.toLocaleString()} for ${updatedTx.partnerName}`,
+        snapshotAfter: updatedTx,
+      });
+
+      setIsEditModalOpen(false);
+      setEditingTx(null);
+    } catch (err: any) {
+      console.error("Error updating partner transaction:", err);
+      alert("Transaction update karne mein masla aaya: " + (err?.message || ""));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Execute Bulk Delete (Scope: Selected, Today, Weekly, Monthly, Custom, All)
+  const handleExecuteBulkDelete = async (
+    scope: DeleteScopeType,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    try {
+      setIsDeleting(true);
+      const toDelete = getItemsInScope(
+        transactions,
+        scope,
+        (t) => t.date || t.createdAt,
+        (t) => t.id,
+        selectedTxIds,
+        customStart,
+        customEnd
+      );
+
+      if (toDelete.length === 0) {
+        alert("No matching transactions found to delete.");
+        setDeleteModalOpen(false);
+        return;
+      }
+
+      const idsToDelete = toDelete.map((t) => t.id);
+      await offlineDb.partnerTransactions.bulkDelete(idsToDelete);
+
+      await Promise.allSettled(
+        idsToDelete.map(async (id) => {
+          try {
+            await deleteDoc(doc(firestoreDb, "partnerTransactions", id));
+          } catch {
+            scheduleCloudDelete("partnerTransactions", id);
+          }
+        })
+      );
+
+      setTransactions((prev) => prev.filter((t) => !idsToDelete.includes(t.id)));
+      setSelectedTxIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "delete",
+        entityType: "transaction",
+        entityId: idsToDelete.slice(0, 5).join(", "),
+        entityTitle: `Bulk deleted ${toDelete.length} partner transaction(s)`,
+        details: `Purged ${toDelete.length} partner transactions under scope: ${scope}.`,
+        snapshotBefore: toDelete,
+        canUndo: false,
+      });
+
+      setDeleteModalOpen(false);
+    } catch (err: any) {
+      console.error("Bulk delete partner transactions failed:", err);
+      alert("Transactions delete karne mein masla aaya: " + (err?.message || ""));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Execute Single Delete
+  const handleExecuteSingleDelete = async () => {
+    if (!deletingTx) return;
+    const targetId = deletingTx.id;
+    const targetTx = deletingTx;
+    try {
+      setIsDeleting(true);
+      await offlineDb.partnerTransactions.delete(targetId);
+
+      try {
+        await deleteDoc(doc(firestoreDb, "partnerTransactions", targetId));
+      } catch {
+        scheduleCloudDelete("partnerTransactions", targetId);
+      }
+
+      setTransactions((prev) => prev.filter((t) => t.id !== targetId));
+      setSelectedTxIds((prev) => prev.filter((id) => id !== targetId));
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "delete",
+        entityType: "transaction",
+        entityId: targetId,
+        entityTitle: `Deleted Partner Transaction - ${targetTx.partnerName}`,
+        details: `Deleted ${targetTx.type} of PKR ${targetTx.amount.toLocaleString()} for ${targetTx.partnerName}`,
+        snapshotBefore: targetTx,
+        canUndo: false,
+      });
+
+      setDeletingTx(null);
+    } catch (err: any) {
+      console.error("Delete partner transaction error:", err);
+      alert("Transaction delete karne mein masla aaya: " + (err?.message || ""));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -605,6 +887,13 @@ export default function PartnersKhataPage() {
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold hover:bg-slate-50 transition-all btn-interactive shadow-sm"
             >
               <Printer className="w-4 h-4 text-teal-600" /> Print Statement
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-100 transition-all btn-interactive shadow-sm"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600" /> Delete / Purge
             </button>
             <button
               type="button"
@@ -1032,14 +1321,40 @@ export default function PartnersKhataPage() {
         {/* TRANSACTION HISTORY (Desktop Table + Mobile Cards Layout)      */}
         {/* ============================================================== */}
         <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-soft space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100">
-                Transaction History ({filteredTransactions.length} records)
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <span>Transaction History ({filteredTransactions.length} records)</span>
+                {selectedTxIds.length > 0 && (
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                    {selectedTxIds.length} selected
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Period: {getDateFilterDescription(dateFilter)}
               </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+              {selectedTxIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected ({selectedTxIds.length})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-all shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete / Purge
+              </button>
             </div>
           </div>
 
@@ -1048,25 +1363,51 @@ export default function PartnersKhataPage() {
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200 dark:border-slate-700">
                 <tr>
+                  <th className="py-3 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredTransactions.length > 0 &&
+                        selectedTxIds.length === filteredTransactions.length
+                      }
+                      onChange={handleToggleSelectAll}
+                      aria-label="Select all transactions"
+                      className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
+                    />
+                  </th>
                   <th className="py-3 px-3">Date</th>
                   <th className="py-3 px-3">Partner</th>
                   <th className="py-3 px-3">Type</th>
                   <th className="py-3 px-3">Purpose / Description</th>
                   <th className="py-3 px-3">Method</th>
                   <th className="py-3 px-3 text-right">Amount (PKR)</th>
-                  <th className="py-3 px-3 text-center">Action</th>
+                  <th className="py-3 px-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-400">
+                    <td colSpan={8} className="py-8 text-center text-slate-400">
                       Koi transaction mojood nahi hai.
                     </td>
                   </tr>
                 ) : (
                   filteredTransactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                    <tr
+                      key={tx.id}
+                      className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors ${
+                        selectedTxIds.includes(tx.id) ? "bg-teal-50/40 dark:bg-teal-950/30" : ""
+                      }`}
+                    >
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedTxIds.includes(tx.id)}
+                          onChange={() => handleToggleSelect(tx.id)}
+                          aria-label={`Select transaction ${tx.id}`}
+                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3 px-3 font-mono font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                         {tx.date}
                       </td>
@@ -1112,14 +1453,24 @@ export default function PartnersKhataPage() {
                         </span>
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(tx.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                          title="Delete Entry"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="inline-flex items-center gap-1 justify-center">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(tx)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
+                            title="Edit Transaction"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingTx(tx)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            title="Delete Transaction"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1128,7 +1479,7 @@ export default function PartnersKhataPage() {
             </table>
           </div>
 
-          {/* Mobile Card Layout for Phones (Touch Friendly) */}
+          {/* Mobile Card Layout for Phones (Touch Friendly with Selection & Action Buttons) */}
           <div className="block md:hidden space-y-3">
             {filteredTransactions.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs">
@@ -1138,12 +1489,22 @@ export default function PartnersKhataPage() {
               filteredTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2 text-xs"
+                  className={`p-3.5 rounded-xl border transition-colors space-y-2 text-xs ${
+                    selectedTxIds.includes(tx.id)
+                      ? "border-teal-400 bg-teal-50/40 dark:bg-teal-950/30 dark:border-teal-700"
+                      : "border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40"
+                  }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 dark:text-slate-100">
-                      👤 {tx.partnerId === "partner_1" ? partner1Name : partner2Name}
-                    </span>
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-900 dark:text-slate-100">
+                      <input
+                        type="checkbox"
+                        checked={selectedTxIds.includes(tx.id)}
+                        onChange={() => handleToggleSelect(tx.id)}
+                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
+                      />
+                      <span>👤 {tx.partnerId === "partner_1" ? partner1Name : partner2Name}</span>
+                    </label>
                     <span className="font-mono text-[11px] text-slate-500">{tx.date}</span>
                   </div>
 
@@ -1179,16 +1540,28 @@ export default function PartnersKhataPage() {
                   <p className="text-slate-600 dark:text-slate-400 font-medium">
                     {tx.description}
                   </p>
+                  {tx.reference && (
+                    <span className="text-[10px] text-slate-400 block font-mono">Ref: {tx.reference}</span>
+                  )}
 
-                  <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-700/60">
                     <span className="capitalize">{tx.paymentMethod.replace("_", " ")}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(tx.id)}
-                      className="text-rose-500 font-bold hover:text-rose-700"
-                    >
-                      Delete Entry
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(tx)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors"
+                      >
+                        <Edit2 className="w-3 h-3" /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeletingTx(tx)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -1565,6 +1938,248 @@ export default function PartnersKhataPage() {
           </div>
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* 5. EDIT TRANSACTION MODAL                                      */}
+      {/* ============================================================== */}
+      {isEditModalOpen && editingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-teal-600" />
+                Edit Partner Transaction
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingTx(null);
+                }}
+                className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditTx} className="space-y-4">
+              {/* Partner Select */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Select Partner *
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditPartnerId("partner_1")}
+                    className={`p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
+                      editPartnerId === "partner_1"
+                        ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 ring-2 ring-teal-500/20"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
+                    }`}
+                  >
+                    👤 {partner1Name}
+                    <span className="block text-[10px] text-teal-600 font-medium mt-0.5">
+                      Share: {p1RatioPercent}%
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditPartnerId("partner_2")}
+                    className={`p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
+                      editPartnerId === "partner_2"
+                        ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
+                    }`}
+                  >
+                    👤 {partner2Name}
+                    <span className="block text-[10px] text-indigo-600 font-medium mt-0.5">
+                      Share: {p2RatioPercent}%
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Transaction Type */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Transaction Type *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditType("investment")}
+                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                      editType === "investment" || editType === "in"
+                        ? "border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
+                    }`}
+                  >
+                    <ArrowDownRight className="w-4 h-4 text-emerald-600" />
+                    <span>💰 Investment</span>
+                    <span className="text-[9px] font-medium text-emerald-600">(Adds to Capital)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditType("withdrawal")}
+                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                      editType === "withdrawal" || editType === "out"
+                        ? "border-rose-500 bg-rose-50/80 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 ring-2 ring-rose-500/20"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
+                    }`}
+                  >
+                    <ArrowUpRight className="w-4 h-4 text-rose-600" />
+                    <span>🔻 Drawings</span>
+                    <span className="text-[9px] font-medium text-rose-600">(Money Taken)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditType("profit_payout")}
+                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                      editType === "profit_payout"
+                        ? "border-teal-500 bg-teal-50/80 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
+                    }`}
+                  >
+                    <Coins className="w-4 h-4 text-teal-600" />
+                    <span>📈 Profit</span>
+                    <span className="text-[9px] font-medium text-teal-600">(Munafa Share)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount and Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Amount (PKR) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    placeholder="e.g. 100000"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-base focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-sm focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-sm focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="bank_transfer">Bank Transfer (Meezan / HBL / etc.)</option>
+                  <option value="cash">Cash (Naqad)</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="online">Online / EasyPaisa / Raast</option>
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Purpose / Description *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Additional stock purchase capital injection / Personal drawings"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              {/* Reference */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Bank Reference / Slip No. (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Cheque # 10492 / IBAN Deposit Slip"
+                  value={editReference}
+                  onChange={(e) => setEditReference(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingTx(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 disabled:opacity-50"
+                >
+                  {isSavingEdit ? "Saving Changes..." : "Save Changes (تبدیلیاں محفوظ کریں)"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 6. BULK DELETE MODAL                                           */}
+      {/* ============================================================== */}
+      <BulkDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        entityName="Partner Transactions"
+        selectedCount={selectedTxIds.length}
+        totalCount={transactions.length}
+        countsByScope={scopeCounts}
+        onConfirmDelete={handleExecuteBulkDelete}
+        isDeleting={isDeleting}
+      />
+
+      {/* ============================================================== */}
+      {/* 7. SINGLE DELETE CONFIRMATION MODAL                            */}
+      {/* ============================================================== */}
+      <SingleDeleteModal
+        isOpen={!!deletingTx}
+        onClose={() => setDeletingTx(null)}
+        title="Delete Partner Transaction"
+        itemName={
+          deletingTx
+            ? `${deletingTx.partnerName} - ${deletingTx.type.toUpperCase()}: PKR ${deletingTx.amount.toLocaleString()} (${deletingTx.date})`
+            : ""
+        }
+        onConfirm={handleExecuteSingleDelete}
+        isDeleting={isDeleting}
+      />
     </>
   );
 }

@@ -45,6 +45,7 @@ export const SYNCED_TABLES: SyncedTableConfig[] = [
   { tableName: "auditLogs", primaryKey: "id" },
   { tableName: "operatingExpenses", primaryKey: "id", localStorageMirrorKey: "noxderma_operating_expenses" },
   { tableName: "staffSalaries", primaryKey: "id", localStorageMirrorKey: "noxderma_staff_salaries" },
+  { tableName: "partnerTransactions", primaryKey: "id", localStorageMirrorKey: "noxderma_partner_transactions" },
 ];
 
 const IGNORED_DEMO_IDS = new Set([
