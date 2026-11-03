@@ -550,9 +550,6 @@ export function DashboardView() {
                     {currentMonthShort} {currentYear}
                   </span>
                 </h2>
-                <p className="text-[10px] sm:text-xs text-slate-500 truncate">
-                  Dono partners ke is mahine ke hisab ka khulaasa
-                </p>
               </div>
             </div>
             <Link

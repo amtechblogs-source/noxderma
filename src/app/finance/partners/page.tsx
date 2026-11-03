@@ -1087,48 +1087,51 @@ export default function PartnersKhataPage() {
       {/* ============================================================== */}
       {/* 2. INTERACTIVE WEB / MOBILE APPLICATION VIEW (Hidden on Print) */}
       {/* ============================================================== */}
-      <div className={`space-y-6 pb-16 no-print ${slipTx ? "print:hidden" : ""}`}>
+      <div className={`space-y-4 sm:space-y-6 pb-32 sm:pb-16 no-print ${slipTx ? "print:hidden" : ""}`}>
         {/* Top Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
-          <div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full sm:w-auto">
             <div className="flex items-center gap-2">
               <Link
                 href="/"
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-all"
+                className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-all shrink-0"
               >
                 <ArrowLeft className="w-4 h-4" />
               </Link>
-              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Users2 className="w-6 h-6 text-teal-600" />
-                Partners Investment &amp; Profit Sharing (شراکت دار کھاتہ)
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2 truncate">
+                <Users2 className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600 shrink-0" />
+                <span className="truncate">Partners Investment &amp; Profit Sharing</span>
               </h1>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            <p className="text-[11px] sm:text-sm text-slate-500 mt-1 pl-7 sm:pl-9">
               Dono partners ki separate investment, automatic ratio recalculation, aur advance cut karke profit distribution.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={shareWhatsApp}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs sm:text-sm font-bold hover:bg-emerald-100 transition-all btn-interactive"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs sm:text-sm font-bold hover:bg-emerald-100 transition-all btn-interactive"
             >
-              <Share2 className="w-4 h-4" /> WhatsApp Statement
+              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+              <span className="truncate">WhatsApp</span>
             </button>
             <button
               type="button"
               onClick={() => setShowPrintPreview(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold hover:bg-slate-50 transition-all btn-interactive shadow-sm"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold hover:bg-slate-50 transition-all btn-interactive shadow-sm"
             >
-              <Printer className="w-4 h-4 text-teal-600" /> Print Statement
+              <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600 shrink-0" />
+              <span className="truncate">Print Sheet</span>
             </button>
             <button
               type="button"
               onClick={() => setDeleteModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-100 transition-all btn-interactive shadow-sm"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-100 transition-all btn-interactive shadow-sm"
             >
-              <Trash2 className="w-4 h-4 text-rose-600" /> Delete / Purge
+              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
+              <span className="truncate">Delete / Purge</span>
             </button>
             <button
               type="button"
@@ -1136,9 +1139,10 @@ export default function PartnersKhataPage() {
                 setType("investment");
                 setIsModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-extrabold shadow-md shadow-teal-600/20 transition-all btn-interactive"
+              className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-extrabold shadow-md shadow-teal-600/20 transition-all btn-interactive col-span-2 sm:col-span-1"
             >
-              <Plus className="w-4 h-4 stroke-[2.5]" /> Nai Investment / Entry
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5] shrink-0" />
+              <span className="truncate">Nai Entry / Sarmaya</span>
             </button>
           </div>
         </div>
@@ -1146,40 +1150,40 @@ export default function PartnersKhataPage() {
         {/* ============================================================== */}
         {/* AUTOMATIC PROFIT SHARING & INVESTMENT RATIO CALCULATOR CARD    */}
         {/* ============================================================== */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-teal-500/10 via-white to-indigo-500/10 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 border-2 border-teal-500/30 shadow-soft space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3.5 sm:p-6 rounded-2xl bg-gradient-to-br from-teal-500/10 via-white to-indigo-500/10 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 border-2 border-teal-500/30 shadow-soft space-y-4 sm:space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
-                <PieChart className="w-5 h-5" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20 shrink-0">
+                <PieChart className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div>
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  Automatic Profit Sharing Ratio
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
-                    Live Calculation
+                <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
+                  <span>Automatic Profit Sharing Ratio</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                    Live
                   </span>
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Profit investment ratio se divide hota hai aur pehle se liya gaya advance us se deduct ho jata hai.
+                <p className="text-[11px] sm:text-xs text-slate-500">
+                  Profit sirf dono partners ki total investment ke ratio se distribute hota hai.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-start sm:self-auto">
               <button
                 type="button"
                 onClick={() => setEditingNames(!editingNames)}
-                className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-teal-600 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-teal-600 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm"
               >
-                <Edit2 className="w-3.5 h-3.5" />
-                {editingNames ? "Close Name Edit" : "Edit Partner Names"}
+                <Edit2 className="w-3.5 h-3.5 text-teal-600" />
+                {editingNames ? "Close Edit" : "Edit Partner Names"}
               </button>
             </div>
           </div>
 
           {/* Partner Names Edit Bar (if toggled) */}
           {editingNames && (
-            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700/60 flex flex-col sm:flex-row items-center gap-3 animate-fade-in">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700/60 flex flex-col sm:flex-row items-center gap-2.5 animate-fade-in shadow-sm">
               <div className="w-full sm:w-1/2">
                 <label className="block text-[11px] font-bold text-slate-500 mb-1">Partner 1 Name:</label>
                 <input
@@ -1201,7 +1205,7 @@ export default function PartnersKhataPage() {
               <button
                 type="button"
                 onClick={handleSaveNames}
-                className="w-full sm:w-auto px-4 py-2 mt-2 sm:mt-5 rounded-lg bg-teal-600 text-white font-bold text-xs flex items-center justify-center gap-1 shrink-0"
+                className="w-full sm:w-auto px-4 py-2 mt-1 sm:mt-5 rounded-lg bg-teal-600 text-white font-bold text-xs flex items-center justify-center gap-1 shrink-0"
               >
                 <Check className="w-4 h-4" /> Save
               </button>
@@ -1210,18 +1214,22 @@ export default function PartnersKhataPage() {
 
           {/* Visual Ratio Progress Split Bar */}
           <div className="space-y-1.5">
-            <div className="flex justify-between text-xs font-bold">
-              <span className="text-teal-700 dark:text-teal-300 flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />
-                {partner1Name}: <strong className="font-mono text-sm">{p1RatioPercent}%</strong> ({formatPKR(p1TotalInvestment)})
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:justify-between text-xs font-bold gap-1">
+              <span className="text-teal-700 dark:text-teal-300 flex items-center gap-1.5 bg-teal-50 dark:bg-teal-950/40 px-2 py-1 rounded-lg border border-teal-200/50 dark:border-teal-800/40">
+                <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block shrink-0" />
+                <span className="truncate">{partner1Name}:</span>
+                <strong className="font-mono text-xs sm:text-sm">{p1RatioPercent}%</strong>
+                <span className="text-[10px] text-teal-600 font-medium font-mono">({formatPKR(p1TotalInvestment)})</span>
               </span>
-              <span className="text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block" />
-                {partner2Name}: <strong className="font-mono text-sm">{p2RatioPercent}%</strong> ({formatPKR(p2TotalInvestment)})
+              <span className="text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-lg border border-indigo-200/50 dark:border-indigo-800/40">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block shrink-0" />
+                <span className="truncate">{partner2Name}:</span>
+                <strong className="font-mono text-xs sm:text-sm">{p2RatioPercent}%</strong>
+                <span className="text-[10px] text-indigo-600 font-medium font-mono">({formatPKR(p2TotalInvestment)})</span>
               </span>
             </div>
 
-            <div className="w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
+            <div className="w-full h-3.5 sm:h-4 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
               <div
                 style={{ width: `${p1RatioPercent}%` }}
                 className="h-full bg-teal-600 transition-all duration-500 relative group"
@@ -1234,20 +1242,20 @@ export default function PartnersKhataPage() {
               />
             </div>
 
-            <div className="flex justify-between text-[11px] text-slate-500 font-medium pt-0.5">
+            <div className="flex flex-col xs:flex-row justify-between text-[11px] text-slate-500 font-medium pt-0.5 gap-0.5">
               <span>Combined Total Investment: <strong className="font-mono text-slate-900 dark:text-slate-100 font-bold">{formatPKR(combinedTotalInvestment)}</strong></span>
               <span>Total Ownership: 100%</span>
             </div>
           </div>
 
           {/* Interactive Profit Simulator */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+          <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div className="w-full sm:max-w-xs">
+                <label className="block text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Enter Distributable Profit (کل قابل تقسیم منافع - PKR):
                 </label>
-                <div className="relative max-w-xs">
+                <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Rs</span>
                   <input
                     type="number"
@@ -1255,7 +1263,7 @@ export default function PartnersKhataPage() {
                     step={1000}
                     value={distributableProfit}
                     onChange={(e) => setDistributableProfit(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-teal-500/50 bg-teal-50/20 dark:bg-teal-950/20 text-slate-900 dark:text-slate-100 font-mono font-extrabold text-sm focus:ring-2 focus:ring-teal-500"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-teal-500/50 bg-teal-50/20 dark:bg-teal-950/20 text-slate-900 dark:text-slate-100 font-mono font-extrabold text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
               </div>
@@ -1263,18 +1271,18 @@ export default function PartnersKhataPage() {
               <button
                 type="button"
                 onClick={handleRecordDistributedProfit}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all self-start sm:self-end"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all shrink-0"
               >
                 <Coins className="w-4 h-4" /> Distribute Profit
               </button>
             </div>
 
             {/* Live Profit Split Preview with Advance Deduction */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div className="p-3.5 rounded-xl bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 space-y-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <div className="p-3 rounded-xl bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 space-y-1.5">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-teal-800 dark:text-teal-200">👤 {partner1Name} Profit Share</span>
-                  <span className="font-mono font-bold text-teal-700 dark:text-teal-300">{p1RatioPercent}%</span>
+                  <span className="font-bold text-teal-800 dark:text-teal-200 truncate">👤 {partner1Name} Profit Share</span>
+                  <span className="font-mono font-bold text-teal-700 dark:text-teal-300 shrink-0">{p1RatioPercent}%</span>
                 </div>
                 <div className="flex items-baseline justify-between text-xs">
                   <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
@@ -1288,17 +1296,17 @@ export default function PartnersKhataPage() {
                 )}
                 <div className="pt-1.5 border-t border-teal-200 dark:border-teal-800 flex items-baseline justify-between">
                   <span className="text-xs font-black text-teal-950 dark:text-teal-100">Net Profit Payable:</span>
-                  <span className="text-base sm:text-lg font-black font-mono text-teal-700 dark:text-teal-300">{formatPKR(p1NetPayable)}</span>
+                  <span className="text-sm sm:text-lg font-black font-mono text-teal-700 dark:text-teal-300">{formatPKR(p1NetPayable)}</span>
                 </div>
-                <span className="text-[10px] text-teal-600 dark:text-teal-400 block">
-                  Advance deducted automatically from {p1RatioPercent}% share
+                <span className="text-[10px] text-teal-600 dark:text-teal-400 block truncate">
+                  Calculated automatically from {p1RatioPercent}% investment ratio
                 </span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
+              <div className="p-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-1.5">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-indigo-800 dark:text-indigo-200">👤 {partner2Name} Profit Share</span>
-                  <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300">{p2RatioPercent}%</span>
+                  <span className="font-bold text-indigo-800 dark:text-indigo-200 truncate">👤 {partner2Name} Profit Share</span>
+                  <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300 shrink-0">{p2RatioPercent}%</span>
                 </div>
                 <div className="flex items-baseline justify-between text-xs">
                   <span className="text-slate-600 dark:text-slate-400">Gross Share:</span>
@@ -1312,10 +1320,10 @@ export default function PartnersKhataPage() {
                 )}
                 <div className="pt-1.5 border-t border-indigo-200 dark:border-indigo-800 flex items-baseline justify-between">
                   <span className="text-xs font-black text-indigo-950 dark:text-indigo-100">Net Profit Payable:</span>
-                  <span className="text-base sm:text-lg font-black font-mono text-indigo-700 dark:text-indigo-300">{formatPKR(p2NetPayable)}</span>
+                  <span className="text-sm sm:text-lg font-black font-mono text-indigo-700 dark:text-indigo-300">{formatPKR(p2NetPayable)}</span>
                 </div>
-                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block">
-                  Advance deducted automatically from {p2RatioPercent}% share
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block truncate">
+                  Calculated automatically from {p2RatioPercent}% investment ratio
                 </span>
               </div>
             </div>
@@ -1325,135 +1333,139 @@ export default function PartnersKhataPage() {
         {/* ============================================================== */}
         {/* SIDE-BY-SIDE PARTNER INVESTMENT CARDS                          */}
         {/* ============================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {/* Partner 1 Card */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-teal-500/30 shadow-soft space-y-4 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-black text-base shadow-sm">
+          <div className="p-3.5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-teal-500/30 shadow-soft space-y-3.5 sm:space-y-4 relative overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-black text-sm sm:text-base shadow-sm shrink-0">
                   P1
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                <div className="min-w-0">
+                  <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 truncate">
                     {partner1Name}
                   </h2>
-                  <span className="text-[11px] font-bold text-teal-600 uppercase tracking-wider">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-teal-600 uppercase tracking-wider block">
                     Investment Share: {p1RatioPercent}%
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPartnerId("partner_1");
-                  setType("investment");
-                  setIsModalOpen(true);
-                }}
-                className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-teal-300 dark:border-teal-700"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Investment
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPartnerId("partner_1");
+                    setType("investment");
+                    setIsModalOpen(true);
+                  }}
+                  className="text-[11px] sm:text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg border border-teal-300 dark:border-teal-700"
+                >
+                  <Plus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Add</span> Investment
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2.5 pt-1">
-              <div className="p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/70 dark:border-teal-800/50">
-                <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-400 block">Total Investment</span>
-                <span className="text-base sm:text-lg font-black font-mono text-teal-900 dark:text-teal-100 mt-0.5 block">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-1">
+              <div className="p-2 sm:p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/70 dark:border-teal-800/50">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-teal-700 dark:text-teal-400 block truncate">Total Investment</span>
+                <span className="text-xs sm:text-base font-black font-mono text-teal-900 dark:text-teal-100 mt-0.5 block truncate">
                   {formatPKR(p1TotalInvestment)}
                 </span>
-                <span className="text-[10px] text-teal-600 font-bold block">{p1RatioPercent}% Ratio</span>
+                <span className="text-[9px] sm:text-[10px] text-teal-600 font-bold block truncate">{p1RatioPercent}% Ratio</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
-                <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Total Advance</span>
-                <span className="text-base sm:text-lg font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block">
+              <div className="p-2 sm:p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block truncate">Total Advance</span>
+                <span className="text-xs sm:text-base font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block truncate">
                   {formatPKR(p1TotalAdvance)}
                 </span>
-                <span className="text-[10px] text-rose-600 font-medium block">پیشگی رقم (Taken)</span>
+                <span className="text-[9px] sm:text-[10px] text-rose-600 font-medium block truncate">پیشگی رقم (Taken)</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
-                <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">Profit Received</span>
-                <span className="text-base sm:text-lg font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block">
+              <div className="p-2 sm:p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block truncate">Profit Received</span>
+                <span className="text-xs sm:text-base font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block truncate">
                   {formatPKR(p1TotalProfitReceived)}
                 </span>
-                <span className="text-[10px] text-emerald-600 font-medium block">Total Payouts</span>
+                <span className="text-[9px] sm:text-[10px] text-emerald-600 font-medium block truncate">Total Payouts</span>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Net Capital Standing:</span>
+            <div className="pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-bold text-slate-500">Net Capital Standing:</span>
               <div className="text-right">
-                <span className="text-base sm:text-lg font-black font-mono text-teal-600 dark:text-teal-400">
+                <span className="text-sm sm:text-lg font-black font-mono text-teal-600 dark:text-teal-400">
                   {formatPKR(p1NetCapital)}
                 </span>
-                <span className="block text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
+                <span className="block text-[9px] sm:text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
               </div>
             </div>
           </div>
 
           {/* Partner 2 Card */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-indigo-500/30 shadow-soft space-y-4 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-black text-base shadow-sm">
+          <div className="p-3.5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-indigo-500/30 shadow-soft space-y-3.5 sm:space-y-4 relative overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-black text-sm sm:text-base shadow-sm shrink-0">
                   P2
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
+                <div className="min-w-0">
+                  <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 truncate">
                     {partner2Name}
                   </h2>
-                  <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-indigo-600 uppercase tracking-wider block">
                     Investment Share: {p2RatioPercent}%
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPartnerId("partner_2");
-                  setType("investment");
-                  setIsModalOpen(true);
-                }}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Investment
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPartnerId("partner_2");
+                    setType("investment");
+                    setIsModalOpen(true);
+                  }}
+                  className="text-[11px] sm:text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700"
+                >
+                  <Plus className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Add</span> Investment
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2.5 pt-1">
-              <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
-                <span className="text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-400 block">Total Investment</span>
-                <span className="text-base sm:text-lg font-black font-mono text-indigo-900 dark:text-indigo-100 mt-0.5 block">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-1">
+              <div className="p-2 sm:p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-400 block truncate">Total Investment</span>
+                <span className="text-xs sm:text-base font-black font-mono text-indigo-900 dark:text-indigo-100 mt-0.5 block truncate">
                   {formatPKR(p2TotalInvestment)}
                 </span>
-                <span className="text-[10px] text-indigo-600 font-bold block">{p2RatioPercent}% Ratio</span>
+                <span className="text-[9px] sm:text-[10px] text-indigo-600 font-bold block truncate">{p2RatioPercent}% Ratio</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
-                <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Total Advance</span>
-                <span className="text-base sm:text-lg font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block">
+              <div className="p-2 sm:p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-800/50">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block truncate">Total Advance</span>
+                <span className="text-xs sm:text-base font-black font-mono text-rose-900 dark:text-rose-100 mt-0.5 block truncate">
                   {formatPKR(p2TotalAdvance)}
                 </span>
-                <span className="text-[10px] text-rose-600 font-medium block">پیشگی رقم (Taken)</span>
+                <span className="text-[9px] sm:text-[10px] text-rose-600 font-medium block truncate">پیشگی رقم (Taken)</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
-                <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">Profit Received</span>
-                <span className="text-base sm:text-lg font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block">
+              <div className="p-2 sm:p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block truncate">Profit Received</span>
+                <span className="text-xs sm:text-base font-black font-mono text-emerald-900 dark:text-emerald-100 mt-0.5 block truncate">
                   {formatPKR(p2TotalProfitReceived)}
                 </span>
-                <span className="text-[10px] text-emerald-600 font-medium block">Total Payouts</span>
+                <span className="text-[9px] sm:text-[10px] text-emerald-600 font-medium block truncate">Total Payouts</span>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Net Capital Standing:</span>
+            <div className="pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-bold text-slate-500">Net Capital Standing:</span>
               <div className="text-right">
-                <span className="text-base sm:text-lg font-black font-mono text-indigo-600 dark:text-indigo-400">
+                <span className="text-sm sm:text-lg font-black font-mono text-indigo-600 dark:text-indigo-400">
                   {formatPKR(p2NetCapital)}
                 </span>
-                <span className="block text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
+                <span className="block text-[9px] sm:text-[10px] text-slate-400 font-medium">سرمایہ مائنس پیشگی</span>
               </div>
             </div>
           </div>
@@ -1472,14 +1484,14 @@ export default function PartnersKhataPage() {
           />
 
           {/* Secondary Filter Pills: Partner, Type & Search */}
-          <div className="p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
+          <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               {/* Partner Filter */}
-              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold max-w-full">
+              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold overflow-x-auto no-scrollbar max-w-full">
                 <button
                   type="button"
                   onClick={() => setSelectedPartnerFilter("all")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedPartnerFilter === "all"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1490,7 +1502,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedPartnerFilter("partner_1")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedPartnerFilter === "partner_1"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1501,7 +1513,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedPartnerFilter("partner_2")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedPartnerFilter === "partner_2"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1512,11 +1524,11 @@ export default function PartnersKhataPage() {
               </div>
 
               {/* Type Filter */}
-              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold max-w-full">
+              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold overflow-x-auto no-scrollbar max-w-full">
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("all")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedTypeFilter === "all"
                       ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1527,7 +1539,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("investment")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedTypeFilter === "investment"
                       ? "bg-emerald-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1538,7 +1550,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("withdrawal")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedTypeFilter === "withdrawal"
                       ? "bg-rose-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1549,7 +1561,7 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedTypeFilter("profit_payout")}
-                  className={`px-2.5 py-1 rounded-lg transition-all text-xs ${
+                  className={`px-2.5 py-1 rounded-lg transition-all text-xs shrink-0 ${
                     selectedTypeFilter === "profit_payout"
                       ? "bg-teal-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400"
@@ -1577,23 +1589,23 @@ export default function PartnersKhataPage() {
         {/* ============================================================== */}
         {/* TRANSACTION HISTORY (Desktop Table + Mobile Cards Layout)      */}
         {/* ============================================================== */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-soft space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="p-3.5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-soft space-y-3.5 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2 flex-wrap">
                 <span>Transaction History ({filteredTransactions.length} records)</span>
                 {selectedTxIds.length > 0 && (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                  <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
                     {selectedTxIds.length} selected
                   </span>
                 )}
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
                 Period: {getDateFilterDescription(dateFilter)}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
               {selectedTxIds.length > 0 && (
                 <button
                   type="button"
@@ -1747,7 +1759,7 @@ export default function PartnersKhataPage() {
           </div>
 
           {/* Mobile Card Layout for Phones (Touch Friendly with Selection & Action Buttons) */}
-          <div className="block md:hidden space-y-3">
+          <div className="block md:hidden space-y-2.5">
             {filteredTransactions.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs">
                 Koi transaction mojood nahi hai.
@@ -1756,42 +1768,42 @@ export default function PartnersKhataPage() {
               filteredTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className={`p-3.5 rounded-xl border transition-colors space-y-2 text-xs ${
+                  className={`p-3 rounded-xl border transition-colors space-y-2 text-xs shadow-sm ${
                     selectedTxIds.includes(tx.id)
-                      ? "border-teal-400 bg-teal-50/40 dark:bg-teal-950/30 dark:border-teal-700"
-                      : "border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40"
+                      ? "border-teal-400 bg-teal-50/50 dark:bg-teal-950/40 dark:border-teal-700"
+                      : "border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-900 dark:text-slate-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-900 dark:text-slate-100 truncate">
                       <input
                         type="checkbox"
                         checked={selectedTxIds.includes(tx.id)}
                         onChange={() => handleToggleSelect(tx.id)}
-                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
+                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer shrink-0"
                       />
-                      <span>👤 {tx.partnerId === "partner_1" ? partner1Name : partner2Name}</span>
+                      <span className="truncate">👤 {tx.partnerId === "partner_1" ? partner1Name : partner2Name}</span>
                     </label>
-                    <span className="font-mono text-[11px] text-slate-500">{tx.date}</span>
+                    <span className="font-mono text-[10px] text-slate-500 shrink-0">{tx.date}</span>
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
                     {tx.type === "investment" || tx.type === "in" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 shrink-0">
                         💰 Investment
                       </span>
                     ) : tx.type === "profit_payout" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 shrink-0">
                         📈 Profit Payout
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 shrink-0">
                         🔻 Advance
                       </span>
                     )}
 
                     <span
-                      className={`font-mono text-sm font-extrabold ${
+                      className={`font-mono text-sm sm:text-base font-black shrink-0 ${
                         tx.type === "investment" || tx.type === "in"
                           ? "text-emerald-600"
                           : tx.type === "profit_payout"
@@ -1804,7 +1816,7 @@ export default function PartnersKhataPage() {
                     </span>
                   </div>
 
-                  <p className="text-slate-600 dark:text-slate-400 font-medium">
+                  <p className="text-slate-700 dark:text-slate-300 font-medium text-xs break-words">
                     {tx.description}
                   </p>
                   {tx.reference && (
@@ -1812,12 +1824,12 @@ export default function PartnersKhataPage() {
                   )}
 
                   <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500 border-t border-slate-200/60 dark:border-slate-700/60">
-                    <span className="capitalize">{tx.paymentMethod.replace("_", " ")}</span>
+                    <span className="capitalize text-[10px]">{tx.paymentMethod.replace("_", " ")}</span>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => setSlipTx(tx)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 transition-colors text-[11px]"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 transition-colors text-[11px]"
                         title="Print Slip"
                       >
                         <Printer className="w-3 h-3 text-teal-600" /> Slip
@@ -1826,7 +1838,7 @@ export default function PartnersKhataPage() {
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(tx)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors text-[11px]"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold hover:bg-teal-100 transition-colors text-[11px]"
                         >
                           <Edit2 className="w-3 h-3" /> Edit
                         </button>
@@ -1834,7 +1846,7 @@ export default function PartnersKhataPage() {
                       <button
                         type="button"
                         onClick={() => setDeletingTx(tx)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors text-[11px]"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 transition-colors text-[11px]"
                       >
                         <Trash2 className="w-3 h-3" /> Delete
                       </button>
@@ -2011,17 +2023,17 @@ export default function PartnersKhataPage() {
       {/* 4. ADD TRANSACTION MODAL                                       */}
       {/* ============================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Plus className="w-5 h-5 text-teal-600" />
-                Add Partner Investment / Drawing
+                Add Partner Investment / Advance
               </h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+                className="text-slate-400 hover:text-slate-700 text-lg font-bold p-1 rounded-lg"
               >
                 ✕
               </button>
@@ -2033,33 +2045,33 @@ export default function PartnersKhataPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Select Partner *
                 </label>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                   <button
                     type="button"
                     onClick={() => setPartnerId("partner_1")}
-                    className={`p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
                       partnerId === "partner_1"
                         ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 ring-2 ring-teal-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
                     }`}
                   >
-                    👤 {partner1Name}
+                    👤 <span className="truncate">{partner1Name}</span>
                     <span className="block text-[10px] text-teal-600 font-medium mt-0.5">
-                      Current Share: {p1RatioPercent}%
+                      Share: {p1RatioPercent}%
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setPartnerId("partner_2")}
-                    className={`p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
                       partnerId === "partner_2"
                         ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
                     }`}
                   >
-                    👤 {partner2Name}
+                    👤 <span className="truncate">{partner2Name}</span>
                     <span className="block text-[10px] text-indigo-600 font-medium mt-0.5">
-                      Current Share: {p2RatioPercent}%
+                      Share: {p2RatioPercent}%
                     </span>
                   </button>
                 </div>
@@ -2074,7 +2086,7 @@ export default function PartnersKhataPage() {
                   <button
                     type="button"
                     onClick={() => setType("investment")}
-                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2 sm:p-2.5 rounded-xl border text-[10px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       type === "investment" || type === "in"
                         ? "border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2082,13 +2094,13 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowDownRight className="w-4 h-4 text-emerald-600" />
                     <span>💰 Investment</span>
-                    <span className="text-[9px] font-medium text-emerald-600">(Adds to Capital)</span>
+                    <span className="text-[8px] sm:text-[9px] font-medium text-emerald-600">(Adds Capital)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setType("withdrawal")}
-                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2 sm:p-2.5 rounded-xl border text-[10px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       type === "withdrawal" || type === "out"
                         ? "border-rose-500 bg-rose-50/80 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 ring-2 ring-rose-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2096,13 +2108,13 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowUpRight className="w-4 h-4 text-rose-600" />
                     <span>🔻 Advance</span>
-                    <span className="text-[9px] font-medium text-rose-600">(پیشگی رقم)</span>
+                    <span className="text-[8px] sm:text-[9px] font-medium text-rose-600">(پیشگی رقم)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setType("profit_payout")}
-                    className={`p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2 sm:p-2.5 rounded-xl border text-[10px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       type === "profit_payout"
                         ? "border-teal-500 bg-teal-50/80 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2110,7 +2122,7 @@ export default function PartnersKhataPage() {
                   >
                     <Coins className="w-4 h-4 text-teal-600" />
                     <span>📈 Profit</span>
-                    <span className="text-[9px] font-medium text-teal-600">(Munafa Share)</span>
+                    <span className="text-[8px] sm:text-[9px] font-medium text-teal-600">(Munafa)</span>
                   </button>
                 </div>
               </div>
@@ -2128,7 +2140,7 @@ export default function PartnersKhataPage() {
                     placeholder="e.g. 100000"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-base focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
                 <div>
@@ -2140,7 +2152,7 @@ export default function PartnersKhataPage() {
                     required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-sm focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">
                     (Date record keeping k liye hai, profit ratio par asar nahi karti)
@@ -2156,7 +2168,7 @@ export default function PartnersKhataPage() {
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-sm focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
                 >
                   <option value="bank_transfer">Bank Transfer (Meezan / HBL / etc.)</option>
                   <option value="cash">Cash (Naqad)</option>
@@ -2173,10 +2185,10 @@ export default function PartnersKhataPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Additional stock purchase capital injection / Personal advance"
+                  placeholder="e.g. Additional capital injection / Personal advance"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
@@ -2190,7 +2202,7 @@ export default function PartnersKhataPage() {
                   placeholder="e.g. Cheque # 10492 / IBAN Deposit Slip"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm"
                 />
               </div>
 
@@ -2199,14 +2211,14 @@ export default function PartnersKhataPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 text-xs font-bold"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 disabled:opacity-50"
+                  className="px-5 sm:px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 disabled:opacity-50"
                 >
                   {isSubmitting ? "Saving..." : "Save Record (محفوظ کریں)"}
                 </button>
@@ -2220,10 +2232,10 @@ export default function PartnersKhataPage() {
       {/* 5. EDIT TRANSACTION MODAL                                      */}
       {/* ============================================================== */}
       {isEditModalOpen && editingTx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in no-print">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-teal-600" />
                 Edit Partner Transaction
               </h3>
@@ -2233,7 +2245,7 @@ export default function PartnersKhataPage() {
                   setIsEditModalOpen(false);
                   setEditingTx(null);
                 }}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+                className="text-slate-400 hover:text-slate-700 text-lg font-bold p-1 rounded-lg"
               >
                 ✕
               </button>
@@ -2245,17 +2257,17 @@ export default function PartnersKhataPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Select Partner *
                 </label>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                   <button
                     type="button"
                     onClick={() => setEditPartnerId("partner_1")}
-                    className={`p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
                       editPartnerId === "partner_1"
                         ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 ring-2 ring-teal-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
                     }`}
                   >
-                    👤 {partner1Name}
+                    👤 <span className="truncate">{partner1Name}</span>
                     <span className="block text-[10px] text-teal-600 font-medium mt-0.5">
                       Share: {p1RatioPercent}%
                     </span>
@@ -2263,13 +2275,13 @@ export default function PartnersKhataPage() {
                   <button
                     type="button"
                     onClick={() => setEditPartnerId("partner_2")}
-                    className={`p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold text-left transition-all ${
                       editPartnerId === "partner_2"
                         ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
                     }`}
                   >
-                    👤 {partner2Name}
+                    👤 <span className="truncate">{partner2Name}</span>
                     <span className="block text-[10px] text-indigo-600 font-medium mt-0.5">
                       Share: {p2RatioPercent}%
                     </span>
@@ -2282,11 +2294,11 @@ export default function PartnersKhataPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Transaction Type *
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => setEditType("investment")}
-                    className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       editType === "investment" || editType === "in"
                         ? "border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2294,13 +2306,13 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowDownRight className="w-4 h-4 text-emerald-600" />
                     <span>💰 Investment</span>
-                    <span className="text-[10px] font-medium text-emerald-600">(Adds to Capital)</span>
+                    <span className="text-[9px] sm:text-[10px] font-medium text-emerald-600">(Adds to Capital)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setEditType("withdrawal")}
-                    className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
                       editType === "withdrawal" || editType === "out"
                         ? "border-rose-500 bg-rose-50/80 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 ring-2 ring-rose-500/20"
                         : "border-slate-200 dark:border-slate-700 text-slate-600 hover:border-slate-400"
@@ -2308,7 +2320,7 @@ export default function PartnersKhataPage() {
                   >
                     <ArrowUpRight className="w-4 h-4 text-rose-600" />
                     <span>🔻 Advance</span>
-                    <span className="text-[10px] font-medium text-rose-600">(پیشگی رقم)</span>
+                    <span className="text-[9px] sm:text-[10px] font-medium text-rose-600">(پیشگی رقم)</span>
                   </button>
                 </div>
               </div>
@@ -2326,7 +2338,7 @@ export default function PartnersKhataPage() {
                     placeholder="e.g. 100000"
                     value={editAmount}
                     onChange={(e) => setEditAmount(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-base focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
                 <div>
@@ -2338,7 +2350,7 @@ export default function PartnersKhataPage() {
                     required
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-sm focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
               </div>
@@ -2351,7 +2363,7 @@ export default function PartnersKhataPage() {
                 <select
                   value={editPaymentMethod}
                   onChange={(e) => setEditPaymentMethod(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-sm focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
                 >
                   <option value="bank_transfer">Bank Transfer (Meezan / HBL / etc.)</option>
                   <option value="cash">Cash (Naqad)</option>
@@ -2368,10 +2380,10 @@ export default function PartnersKhataPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Additional stock purchase capital injection / Personal advance"
+                  placeholder="e.g. Additional capital injection / Personal advance"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
@@ -2385,7 +2397,7 @@ export default function PartnersKhataPage() {
                   placeholder="e.g. Cheque # 10492 / IBAN Deposit Slip"
                   value={editReference}
                   onChange={(e) => setEditReference(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm"
                 />
               </div>
 
@@ -2397,14 +2409,14 @@ export default function PartnersKhataPage() {
                     setIsEditModalOpen(false);
                     setEditingTx(null);
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 text-xs font-bold"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingEdit}
-                  className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 disabled:opacity-50"
+                  className="px-5 sm:px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 disabled:opacity-50"
                 >
                   {isSavingEdit ? "Saving Changes..." : "Save Changes (تبدیلیاں محفوظ کریں)"}
                 </button>
