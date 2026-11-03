@@ -50,6 +50,12 @@ export function BulkDeleteModal({
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setScope(selectedCount > 0 ? "selected" : "all");
+    }
+  }, [isOpen, selectedCount]);
+
   if (!isOpen) return null;
 
   const currentCount =
