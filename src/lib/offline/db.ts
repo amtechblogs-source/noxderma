@@ -21,6 +21,7 @@ import type {
   GeoVerifiedPhoto,
   OperatingExpense,
   StaffSalary,
+  PartnerTransaction,
 } from "@/types";
 
 export interface PendingImageRecord {
@@ -90,6 +91,7 @@ export class NoxdermaDexieDB extends Dexie {
   geoVerifiedPhotos!: Table<GeoVerifiedPhoto, string>;
   operatingExpenses!: Table<OperatingExpense, string>;
   staffSalaries!: Table<StaffSalary, string>;
+  partnerTransactions!: Table<PartnerTransaction, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -154,6 +156,10 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(9).stores({
       staffSalaries: "id, staffId, month, status, disbursedAt, createdAt",
+    });
+
+    this.version(10).stores({
+      partnerTransactions: "id, partnerId, type, date, paymentMethod, createdAt",
     });
   }
 }

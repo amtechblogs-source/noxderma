@@ -107,6 +107,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { name: "Market Udhaar", href: "/finance/credit", icon: CreditCard, requiredPermission: "finance:aging" },
       { name: "Company Khata", href: "/finance/ledgers/manufacturers", icon: BookOpen, requiredPermission: "finance:ledgers" },
       { name: "Customer Khata", href: "/finance/ledgers/customers", icon: Scale, requiredPermission: "finance:ledgers" },
+      { name: "Partners Khata", href: "/finance/partners", icon: Users2, requiredPermission: "finance:pnl" },
       { name: "Staff Salaries", href: "/finance/salaries", icon: Banknote, requiredPermission: "finance:pnl" },
       { name: "Profit & Loss", href: "/finance/pnl", icon: TrendingUp, requiredPermission: "finance:pnl" },
       { name: "Reports", href: "/reports", icon: FileSpreadsheet, requiredPermission: "finance:pnl" },

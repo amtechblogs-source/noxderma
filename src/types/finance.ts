@@ -124,3 +124,31 @@ export interface StaffSalary {
   createdAt: string;
   updatedAt: string;
 }
+
+export type PartnerTransactionType = "in" | "out";
+
+export interface PartnerTransaction {
+  id: string; // e.g. "part_tx_1793256789"
+  partnerId: "partner_1" | "partner_2" | string;
+  partnerName: string; // e.g. "Partner 1" | "Partner 2"
+  type: PartnerTransactionType; // "in" = Paise Aaye (Capital/Deposit), "out" = Paise Gaye (Drawings/Withdrawal)
+  amount: number;
+  date: string; // "YYYY-MM-DD"
+  paymentMethod: "cash" | "bank_transfer" | "cheque" | "online";
+  description: string; // reason/notes
+  reference?: string;
+  createdById?: string;
+  createdByName?: string;
+  createdAt: string;
+}
+
+export interface PartnerAccountSummary {
+  partnerId: string;
+  partnerName: string;
+  totalIn: number;
+  totalOut: number;
+  netBalance: number;
+  monthIn: number;
+  monthOut: number;
+  monthNet: number;
+}

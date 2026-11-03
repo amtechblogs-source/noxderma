@@ -1175,7 +1175,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               {createdInvoice.invoiceDiscountAmount > 0 && (
                 <div className="flex justify-between text-rose-600 dark:text-rose-400 print:text-rose-700 font-black">
                   <span>
-                    Discount
+                    Extra Discount
                     {createdInvoice.invoiceDiscountPercentage
                       ? ` (${createdInvoice.invoiceDiscountPercentage}%):`
                       : ":"}
@@ -1718,7 +1718,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
             {totalDiscount > 0 && (
               <div className="flex justify-between text-rose-500 font-semibold">
                 <span>
-                  Total Discount
+                  Extra Discount
                   {discountType === "percentage" && discountPercent > 0 ? ` (${discountPercent}%):` : ":"}
                 </span>
                 <span className="font-mono">-{formatPKR(totalDiscount)}</span>

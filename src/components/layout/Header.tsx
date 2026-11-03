@@ -171,6 +171,12 @@ const APP_NAVIGATION_SEARCH_ITEMS = [
     keywords: "khata ledger customer statement receivable account balance payment receipt slip",
   },
   {
+    name: "Partners Khata (Capital & Drawings)",
+    path: "/finance/partners",
+    module: "Finance",
+    keywords: "partners khata partner hisab sharakat capital drawings profit withdrawal investment share partner 1 partner 2",
+  },
+  {
     name: "Company Khata (Payables / Vendors)",
     path: "/finance/ledgers/manufacturers",
     module: "Finance",

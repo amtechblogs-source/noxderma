@@ -1074,7 +1074,7 @@ export default function SalesInvoicesListPage() {
               {selectedInvoice.invoiceDiscountAmount > 0 && (
                 <div className="flex justify-between text-rose-800 font-black">
                   <span>
-                    Discount
+                    Extra Discount
                     {selectedInvoice.invoiceDiscountPercentage
                       ? ` (${selectedInvoice.invoiceDiscountPercentage}%):`
                       : ":"}
