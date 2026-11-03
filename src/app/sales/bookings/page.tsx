@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
 import { useCategory } from "@/context/CategoryContext";
 import type { Customer, Product, InventoryBatch, StockMovement } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
@@ -37,6 +38,7 @@ interface SalesBooking {
   customerName: string;
   customerCity: string;
   customerPhone?: string;
+  salesRepId?: string;
   salesRepName: string;
   bookingDate: string;
   deliveryDate: string;
@@ -56,6 +58,7 @@ interface SalesBooking {
 }
 
 export default function SalesBookingsPage() {
+  const { currentUser } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [bookings, setBookings] = useState<SalesBooking[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -289,7 +292,8 @@ export default function SalesBookingsPage() {
       customerName: finalCustName,
       customerCity: finalCustCity,
       customerPhone: manualCustomerPhone,
-      salesRepName: "Zubair Ahmed (Med Rep)",
+      salesRepId: currentUser?.id || "usr_admin",
+      salesRepName: currentUser?.displayName || "Owner",
       bookingDate: new Date().toISOString().slice(0, 10),
       deliveryDate: deliveryDate || new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
       status: bookingStatus,
