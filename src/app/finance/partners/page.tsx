@@ -741,7 +741,7 @@ export default function PartnersKhataPage() {
                 onClick={handleRecordDistributedProfit}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all self-start sm:self-end"
               >
-                <Coins className="w-4 h-4" /> Distribute &amp; Record in Khata
+                <Coins className="w-4 h-4" /> Distribute Profit
               </button>
             </div>
 
