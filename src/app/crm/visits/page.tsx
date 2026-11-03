@@ -100,8 +100,9 @@ export default function CustomerVisitsPage() {
   const [organizationType, setOrganizationType] = useState<PlaceType>("clinic");
   const [contactPerson, setContactPerson] = useState("");
   const [visitNotes, setVisitNotes] = useState("");
-  const [productsDiscussed, setProductsDiscussed] = useState("");
-  const [selectedProdToAdd, setSelectedProdToAdd] = useState("");
+  const [selectedMeds, setSelectedMeds] = useState<string[]>([]);
+  const [customMedInput, setCustomMedInput] = useState("");
+  const [showAllCatalogPills, setShowAllCatalogPills] = useState(false);
   const [interestLevel, setInterestLevel] = useState<InterestType>("high");
   const [competitorIntel, setCompetitorIntel] = useState("");
   const [followUpDate, setFollowUpDate] = useState("");
@@ -113,8 +114,9 @@ export default function CustomerVisitsPage() {
   const [editContactPerson, setEditContactPerson] = useState("");
   const [editVisitDateTime, setEditVisitDateTime] = useState("");
   const [editVisitNotes, setEditVisitNotes] = useState("");
-  const [editProductsDiscussed, setEditProductsDiscussed] = useState("");
-  const [editProdToAdd, setEditProdToAdd] = useState("");
+  const [editSelectedMeds, setEditSelectedMeds] = useState<string[]>([]);
+  const [editCustomMedInput, setEditCustomMedInput] = useState("");
+  const [showAllEditCatalogPills, setShowAllEditCatalogPills] = useState(false);
   const [editInterestLevel, setEditInterestLevel] = useState<InterestType>("high");
   const [editCompetitorIntel, setEditCompetitorIntel] = useState("");
   const [editFollowUpDate, setEditFollowUpDate] = useState("");
@@ -200,6 +202,77 @@ export default function CustomerVisitsPage() {
   }, [visits, searchQuery, dateFilter]);
 
   // =========================================================================
+  // MULTI-MEDICINE SELECTION HELPERS (NEW & EDIT VISITS)
+  // =========================================================================
+  const addMed = (medicineName: string) => {
+    const clean = medicineName.trim();
+    if (!clean) return;
+    setSelectedMeds((prev) => {
+      if (prev.includes(clean)) return prev;
+      return [...prev, clean];
+    });
+  };
+
+  const removeMed = (indexToRemove: number) => {
+    setSelectedMeds((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const toggleMed = (medicineName: string) => {
+    const clean = medicineName.trim();
+    if (!clean) return;
+    setSelectedMeds((prev) =>
+      prev.includes(clean) ? prev.filter((m) => m !== clean) : [...prev, clean]
+    );
+  };
+
+  const handleAddCustomMed = (text: string) => {
+    const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) return;
+    setSelectedMeds((prev) => {
+      const next = [...prev];
+      for (const p of parts) {
+        if (!next.includes(p)) next.push(p);
+      }
+      return next;
+    });
+    setCustomMedInput("");
+  };
+
+  const addEditMed = (medicineName: string) => {
+    const clean = medicineName.trim();
+    if (!clean) return;
+    setEditSelectedMeds((prev) => {
+      if (prev.includes(clean)) return prev;
+      return [...prev, clean];
+    });
+  };
+
+  const removeEditMed = (indexToRemove: number) => {
+    setEditSelectedMeds((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const toggleEditMed = (medicineName: string) => {
+    const clean = medicineName.trim();
+    if (!clean) return;
+    setEditSelectedMeds((prev) =>
+      prev.includes(clean) ? prev.filter((m) => m !== clean) : [...prev, clean]
+    );
+  };
+
+  const handleAddEditCustomMed = (text: string) => {
+    const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) return;
+    setEditSelectedMeds((prev) => {
+      const next = [...prev];
+      for (const p of parts) {
+        if (!next.includes(p)) next.push(p);
+      }
+      return next;
+    });
+    setEditCustomMedInput("");
+  };
+
+  // =========================================================================
   // CREATE VISIT (+ DETAILED AUDIT LOG WITH UNDO)
   // =========================================================================
   const handleCreateVisit = async (e: React.FormEvent) => {
@@ -212,10 +285,13 @@ export default function CustomerVisitsPage() {
     }
 
     const nowIso = new Date().toISOString();
-    const parsedMeds = productsDiscussed
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    let finalMeds = [...selectedMeds];
+    if (customMedInput.trim()) {
+      const extra = customMedInput.split(",").map((s) => s.trim()).filter(Boolean);
+      for (const ex of extra) {
+        if (!finalMeds.includes(ex)) finalMeds.push(ex);
+      }
+    }
 
     const newVisit: CustomerVisit = {
       id: `visit_${Date.now()}`,
@@ -227,7 +303,7 @@ export default function CustomerVisitsPage() {
       employeeName: actorName,
       visitDate: nowIso,
       visitNotes: visitNotes.trim(),
-      productsDiscussed: parsedMeds,
+      productsDiscussed: finalMeds,
       productInterestLevel: interestLevel,
       competitorProducts: competitorIntel.trim() || undefined,
       followUpDate: followUpDate ? new Date(followUpDate).toISOString() : undefined,
@@ -238,7 +314,7 @@ export default function CustomerVisitsPage() {
 
     await offlineDb.customerVisits.put(newVisit);
 
-    const medsLabel = parsedMeds.length > 0 ? parsedMeds.join(", ") : "None listed";
+    const medsLabel = finalMeds.length > 0 ? finalMeds.join(", ") : "None listed";
     const followUpLabel = newVisit.followUpDate
       ? ` | Next Follow-Up: ${formatKarachiDate(newVisit.followUpDate)}`
       : "";
@@ -276,8 +352,8 @@ export default function CustomerVisitsPage() {
     setCustomerName("");
     setContactPerson("");
     setVisitNotes("");
-    setProductsDiscussed("");
-    setSelectedProdToAdd("");
+    setSelectedMeds([]);
+    setCustomMedInput("");
     setCompetitorIntel("");
     setFollowUpDate("");
     showToast(`Visit to "${newVisit.customerName}" saved and recorded in Audit Logs.`);
@@ -295,8 +371,12 @@ export default function CustomerVisitsPage() {
     setEditContactPerson(visit.contactPerson);
     setEditVisitDateTime(toDateTimeLocalValue(visit.visitDate));
     setEditVisitNotes(visit.visitNotes || "");
-    setEditProductsDiscussed((visit.productsDiscussed || []).filter(Boolean).join(", "));
-    setEditProdToAdd("");
+    setEditSelectedMeds(
+      Array.isArray(visit.productsDiscussed)
+        ? [...visit.productsDiscussed].filter(Boolean)
+        : []
+    );
+    setEditCustomMedInput("");
     setEditInterestLevel(visit.productInterestLevel || "high");
     setEditCompetitorIntel(visit.competitorProducts || "");
     setEditFollowUpDate(toDateInputValue(visit.followUpDate));
@@ -322,10 +402,13 @@ export default function CustomerVisitsPage() {
       const parsedNewVisitDate = editVisitDateTime
         ? new Date(editVisitDateTime).toISOString()
         : editingVisit.visitDate;
-      const newMeds = editProductsDiscussed
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      let finalEditMeds = [...editSelectedMeds];
+      if (editCustomMedInput.trim()) {
+        const extra = editCustomMedInput.split(",").map((s) => s.trim()).filter(Boolean);
+        for (const ex of extra) {
+          if (!finalEditMeds.includes(ex)) finalEditMeds.push(ex);
+        }
+      }
       const newNotes = editVisitNotes.trim();
       const newComp = editCompetitorIntel.trim();
       const newFollowUpIso = editFollowUpDate
@@ -375,7 +458,7 @@ export default function CustomerVisitsPage() {
       }
 
       const oldMedsJoined = (editingVisit.productsDiscussed || []).filter(Boolean).join(", ");
-      const newMedsJoined = newMeds.join(", ");
+      const newMedsJoined = finalEditMeds.join(", ");
       if (oldMedsJoined !== newMedsJoined) {
         diffs.push({
           field: "productsDiscussed",
@@ -457,7 +540,7 @@ export default function CustomerVisitsPage() {
         contactPerson: cleanContact,
         visitDate: parsedNewVisitDate,
         visitNotes: newNotes,
-        productsDiscussed: newMeds,
+        productsDiscussed: finalEditMeds,
         productInterestLevel: editInterestLevel,
         competitorProducts: newComp || undefined,
         followUpDate: newFollowUpIso,
@@ -710,39 +793,168 @@ export default function CustomerVisitsPage() {
               </select>
             </div>
 
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="block font-semibold">
-                Medicines Shown / Discussed (Select from catalog OR type comma-separated)
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <select
-                  value={selectedProdToAdd}
-                  onChange={(e) => {
-                    const prodId = e.target.value;
-                    setSelectedProdToAdd(prodId);
-                    const prod = products.find((p) => p.id === prodId);
-                    if (prod) {
-                      const addition = `${prod.name} (${prod.packSize})`;
-                      setProductsDiscussed((prev) => (prev ? `${prev}, ${addition}` : addition));
-                    }
-                  }}
-                  className="sm:w-1/2 px-2.5 py-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-xs"
-                >
-                  <option value="">+ Pick Medicine to Add...</option>
-                  {availableProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.packSize})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={productsDiscussed}
-                  onChange={(e) => setProductsDiscussed(e.target.value)}
-                  placeholder="e.g. NoxDerm Cream, NoxAmox 500mg"
-                  className="sm:w-1/2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                />
+            {/* Multi-Product Selection from Catalogue */}
+            <div className="md:col-span-3 space-y-2.5 p-3.5 sm:p-4 rounded-xl border border-teal-200 dark:border-teal-800/60 bg-teal-50/40 dark:bg-teal-950/20">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <div>
+                  <label className="block font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Pill className="w-4 h-4 text-teal-600" />
+                    <span>Medicines Shown / Discussed from Catalogue</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-teal-600 text-white">
+                      {selectedMeds.length} Selected
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Catalogue se ek ya ek se zayda medicines select karein ya quick-chips tap karein:
+                  </p>
+                </div>
+                {selectedMeds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMeds([])}
+                    className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-bold self-start sm:self-auto"
+                  >
+                    Clear All ({selectedMeds.length})
+                  </button>
+                )}
               </div>
+
+              {/* Badges of currently selected medicines */}
+              {selectedMeds.length > 0 ? (
+                <div className="flex flex-wrap gap-2 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 shadow-xs">
+                  {selectedMeds.map((med, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/50 border border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200 text-xs font-bold transition-all shadow-2xs"
+                    >
+                      <Pill className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                      <span>{med}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMed(idx)}
+                        title="Remove product"
+                        className="w-4 h-4 rounded-full hover:bg-rose-100 dark:hover:bg-rose-900/50 text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 flex items-center justify-center transition-colors ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-lg border border-dashed border-teal-200 dark:border-teal-800 bg-white/70 dark:bg-slate-900/50 text-center text-xs text-slate-500 italic">
+                  Abhi koi medicine add nahi hui. Niche catalogue se medicines choose karein ya pick dropdown use karein.
+                </div>
+              )}
+
+              {/* Selection Controls: Dropdown + Custom Input */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {/* 1. Dropdown Picker that auto-resets so multiple can be picked */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Select from Catalogue Dropdown:
+                  </label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const prod = products.find((p) => p.id === val);
+                      if (prod) {
+                        const formatted = `${prod.name} (${prod.packSize})`;
+                        addMed(formatted);
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-xs focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">+ Choose Medicine to Add...</option>
+                    {availableProducts.map((p) => {
+                      const label = `${p.name} (${p.packSize})`;
+                      const isAlready = selectedMeds.includes(label);
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {isAlready ? "✓ " : "+ "}
+                          {p.name} ({p.packSize})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* 2. Custom Medicine Input */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Or Type Custom / Doctor Sample Name:
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={customMedInput}
+                      onChange={(e) => setCustomMedInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomMed(customMedInput);
+                        }
+                      }}
+                      placeholder="e.g. NoxDerm Serum 30ml (Press Enter)"
+                      className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomMed(customMedInput)}
+                      className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shrink-0 flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Quick-Click Catalogue Chips / Pills */}
+              {availableProducts.length > 0 && (
+                <div className="pt-2 border-t border-teal-100 dark:border-teal-900/60">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      ⚡ Quick Catalogue Tap ({availableProducts.length} medicines in catalogue):
+                    </span>
+                    {availableProducts.length > 8 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllCatalogPills((prev) => !prev)}
+                        className="text-[11px] text-teal-600 dark:text-teal-400 font-bold hover:underline"
+                      >
+                        {showAllCatalogPills ? "Show Less" : "Show All"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    {(showAllCatalogPills ? availableProducts : availableProducts.slice(0, 10)).map((p) => {
+                      const label = `${p.name} (${p.packSize})`;
+                      const isSelected = selectedMeds.includes(label);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => toggleMed(label)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all border ${
+                            isSelected
+                              ? "bg-teal-600 text-white border-teal-700 shadow-2xs font-bold"
+                              : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400 hover:bg-teal-50/50"
+                          }`}
+                        >
+                          {isSelected ? (
+                            <CheckCircle2 className="w-3 h-3 text-white" />
+                          ) : (
+                            <Plus className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                          )}
+                          <span>{p.name}</span>
+                          <span className="text-[10px] opacity-75">({p.packSize})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -1428,41 +1640,168 @@ export default function CustomerVisitsPage() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block font-bold text-slate-700 dark:text-slate-300">
-                  Medicines Shown / Discussed
-                </label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <select
-                    value={editProdToAdd}
-                    onChange={(e) => {
-                      const prodId = e.target.value;
-                      setEditProdToAdd(prodId);
-                      const prod = products.find((p) => p.id === prodId);
-                      if (prod) {
-                        const addition = `${prod.name} (${prod.packSize})`;
-                        setEditProductsDiscussed((prev) =>
-                          prev ? `${prev}, ${addition}` : addition
-                        );
-                      }
-                    }}
-                    className="sm:w-1/2 px-2.5 py-2 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 font-semibold"
-                  >
-                    <option value="">+ Add Medicine from Catalog...</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.packSize})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={editProductsDiscussed}
-                    onChange={(e) => setEditProductsDiscussed(e.target.value)}
-                    placeholder="Comma-separated medicine names"
-                    className="sm:w-1/2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                  />
+              {/* Multi-Product Selection from Catalogue (Edit Modal) */}
+              <div className="space-y-2.5 p-3.5 sm:p-4 rounded-xl border border-teal-200 dark:border-teal-800/60 bg-teal-50/40 dark:bg-teal-950/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div>
+                    <label className="block font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Pill className="w-4 h-4 text-teal-600" />
+                      <span>Medicines Shown / Discussed from Catalogue</span>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-teal-600 text-white">
+                        {editSelectedMeds.length} Selected
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Catalogue se ek ya ek se zayda medicines add karein ya quick-chips tap karein:
+                    </p>
+                  </div>
+                  {editSelectedMeds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setEditSelectedMeds([])}
+                      className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-bold self-start sm:self-auto"
+                    >
+                      Clear All ({editSelectedMeds.length})
+                    </button>
+                  )}
                 </div>
+
+                {/* Badges of currently selected medicines */}
+                {editSelectedMeds.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 shadow-xs">
+                    {editSelectedMeds.map((med, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/50 border border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200 text-xs font-bold transition-all shadow-2xs"
+                      >
+                        <Pill className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                        <span>{med}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeEditMed(idx)}
+                          title="Remove product"
+                          className="w-4 h-4 rounded-full hover:bg-rose-100 dark:hover:bg-rose-900/50 text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 flex items-center justify-center transition-colors ml-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-lg border border-dashed border-teal-200 dark:border-teal-800 bg-white/70 dark:bg-slate-900/50 text-center text-xs text-slate-500 italic">
+                    Abhi koi medicine add nahi hui. Niche catalogue se medicines choose karein ya pick dropdown use karein.
+                  </div>
+                )}
+
+                {/* Selection Controls: Dropdown + Custom Input */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {/* 1. Dropdown Picker that auto-resets so multiple can be picked */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Select from Catalogue Dropdown:
+                    </label>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        const prod = products.find((p) => p.id === val);
+                        if (prod) {
+                          const formatted = `${prod.name} (${prod.packSize})`;
+                          addEditMed(formatted);
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-teal-300 dark:border-teal-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-xs focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="">+ Choose Medicine to Add...</option>
+                      {products.map((p) => {
+                        const label = `${p.name} (${p.packSize})`;
+                        const isAlready = editSelectedMeds.includes(label);
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {isAlready ? "✓ " : "+ "}
+                            {p.name} ({p.packSize})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* 2. Custom Medicine Input */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Or Type Custom / Doctor Sample Name:
+                    </label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={editCustomMedInput}
+                        onChange={(e) => setEditCustomMedInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddEditCustomMed(editCustomMedInput);
+                          }
+                        }}
+                        placeholder="e.g. NoxDerm Serum 30ml (Press Enter)"
+                        className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddEditCustomMed(editCustomMedInput)}
+                        className="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shrink-0 flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Quick-Click Catalogue Chips / Pills */}
+                {products.length > 0 && (
+                  <div className="pt-2 border-t border-teal-100 dark:border-teal-900/60">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        ⚡ Quick Catalogue Tap ({products.length} medicines in catalogue):
+                      </span>
+                      {products.length > 8 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllEditCatalogPills((prev) => !prev)}
+                          className="text-[11px] text-teal-600 dark:text-teal-400 font-bold hover:underline"
+                        >
+                          {showAllEditCatalogPills ? "Show Less" : "Show All"}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                      {(showAllEditCatalogPills ? products : products.slice(0, 10)).map((p) => {
+                        const label = `${p.name} (${p.packSize})`;
+                        const isSelected = editSelectedMeds.includes(label);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => toggleEditMed(label)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all border ${
+                              isSelected
+                                ? "bg-teal-600 text-white border-teal-700 shadow-2xs font-bold"
+                                : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400 hover:bg-teal-50/50"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <CheckCircle2 className="w-3 h-3 text-white" />
+                            ) : (
+                              <Plus className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                            )}
+                            <span>{p.name}</span>
+                            <span className="text-[10px] opacity-75">({p.packSize})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

@@ -341,12 +341,12 @@ export default function PurchasesPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-              Buy Stock from Companies
+              Add Stock
             </span>
-            <span className="text-xs text-slate-400">Purchase Price + Delivery/Freight</span>
+            <span className="text-xs text-slate-400">Purchase Orders + Delivery &amp; Received Stock</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Buy Stock (Purchases & Received Stock)
+            Add Stock (Purchases &amp; Received Stock)
           </h1>
         </div>
 

@@ -514,8 +514,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     if (hasPermission("inventory:receive")) {
       return {
         href: "/purchases",
-        label: "GRN",
-        ariaLabel: "Buy Stock (Purchases / GRN)",
+        label: "Add Stock",
+        ariaLabel: "Add Stock (Purchases / GRN)",
         Icon: ShoppingBag,
         isActive: isPrefixActive("/purchases"),
       };
