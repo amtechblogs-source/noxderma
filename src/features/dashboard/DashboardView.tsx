@@ -15,7 +15,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ShieldAlert,
-  CheckCircle,
   Compass,
   Calendar,
   Users2,
@@ -274,184 +273,56 @@ export function DashboardView() {
     "inventory:adjust",
   ]);
 
-  const allQuickModules: {
-    title: string;
-    desc: string;
-    href: string;
-    perm: Permission;
-    badge: string;
-  }[] = [
-    {
-      title: "Make New Bill (Invoice)",
-      desc: "Create customer invoice & cash memo",
-      href: "/sales/invoices/new",
-      perm: "invoices:create",
-      badge: "Sales",
-    },
-    {
-      title: "Invoices (Bills) List",
-      desc: "View and print customer bills",
-      href: "/sales/invoices",
-      perm: "invoices:view",
-      badge: "Sales",
-    },
-    {
-      title: "Staff Bookings",
-      desc: "Field order bookings",
-      href: "/sales/bookings",
-      perm: "invoices:create",
-      badge: "Orders",
-    },
-    {
-      title: "Medicines Catalog",
-      desc: "View medicines, pack sizes & rates",
-      href: "/products",
-      perm: "products:view",
-      badge: "Catalog",
-    },
-    {
-      title: "Price Estimator",
-      desc: "Calculate landed cost, TP & MRP",
-      href: "/products/price-estimator",
-      perm: "pricing:view",
-      badge: "Pricing",
-    },
-    {
-      title: "Batches & Expiry",
-      desc: "Warehouse stock & expiry dates",
-      href: "/inventory/batches",
-      perm: "inventory:view",
-      badge: "Stock",
-    },
-    {
-      title: "Stock Alerts",
-      desc: "Current medicine stock & low stock",
-      href: "/inventory",
-      perm: "inventory:view",
-      badge: "Stock",
-    },
-    {
-      title: "Purchases (GRN)",
-      desc: "Receive stock from manufacturers",
-      href: "/purchases",
-      perm: "inventory:receive",
-      badge: "GRN",
-    },
-    {
-      title: "Pharmacies & Clients",
-      desc: "Medical stores & distributors",
-      href: "/customers",
-      perm: "crm:customers",
-      badge: "CRM",
-    },
-    {
-      title: "Doctor Visits",
-      desc: "Record doctor & field visits",
-      href: "/crm/visits",
-      perm: "crm:visits",
-      badge: "Field",
-    },
-    {
-      title: "Client Leads",
-      desc: "New enquiries & sales prospects",
-      href: "/crm/leads",
-      perm: "crm:leads",
-      badge: "CRM",
-    },
-    {
-      title: "Staff Live Location",
-      desc: "Live GPS & mobile battery monitor",
-      href: "/employees/monitoring",
-      perm: "staff:monitoring",
-      badge: "GPS",
-    },
-    {
-      title: "Market Udhaar",
-      desc: "Customer credit & aging balances",
-      href: "/finance/credit",
-      perm: "finance:aging",
-      badge: "Khata",
-    },
-    {
-      title: "Company & Customer Khata",
-      desc: "Detailed account ledgers",
-      href: "/finance/ledgers/customers",
-      perm: "finance:ledgers",
-      badge: "Khata",
-    },
-    {
-      title: "Profit & Loss",
-      desc: "Net profit, margins & reports",
-      href: "/finance/pnl",
-      perm: "finance:pnl",
-      badge: "Accounts",
-    },
-    {
-      title: "Offers & Schemes",
-      desc: "Bonus schemes, coupons & WhatsApp",
-      href: "/marketing",
-      perm: "marketing:manage",
-      badge: "Marketing",
-    },
-    {
-      title: "Partners Khata",
-      desc: "Partners capital, drawings & monthly ledger",
-      href: "/finance/partners",
-      perm: "finance:pnl",
-      badge: "Partners",
-    },
-  ];
-
-  const permittedQuickModules = allQuickModules.filter((m) => hasPermission(m.perm));
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner: Greeting, Month, and Quick Actions */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-              {viewPeriod === "month" ? "Monthly Business Overview" : "Daily Business Overview"}
-            </h1>
-            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-              <Calendar className="w-3.5 h-3.5 text-teal-600" />
-              {viewPeriod === "month" ? `${currentMonthName} ${currentYear}` : "Today"}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {viewPeriod === "month" ? (
-              <>Showing monthly performance for <strong>{currentMonthName} {currentYear}</strong> &bull; </>
-            ) : (
-              <>Showing today&apos;s daily records &bull; </>
-            )}
-            Logged in as{" "}
-            <strong>
-              {normalizeUserDisplayName(
-                currentUser?.displayName,
-                currentUser?.role === "owner" || currentUser?.role === "admin"
-                  ? "Owner"
-                  : "Staff"
+      <div className="flex flex-col gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">
+                {viewPeriod === "month" ? "Monthly Business Overview" : "Daily Business Overview"}
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                {viewPeriod === "month" ? `${currentMonthName} ${currentYear}` : "Today"}
+              </span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+              {viewPeriod === "month" ? (
+                <>Showing monthly records for <strong>{currentMonthName} {currentYear}</strong> &bull; </>
+              ) : (
+                <>Showing today&apos;s daily records &bull; </>
               )}
-            </strong>
-            {!isRoleRedundantForName(
-              currentUser?.displayName,
-              currentUser?.role
-            ) && (
-              <>
-                {" "}
-                &bull;{" "}
-                <span className="uppercase font-bold text-teal-600 dark:text-teal-400">
-                  {getUserRoleLabel(currentUser?.role)}
-                </span>
-              </>
-            )}
-          </p>
+              Logged in as{" "}
+              <strong className="text-slate-800 dark:text-slate-200">
+                {normalizeUserDisplayName(
+                  currentUser?.displayName,
+                  currentUser?.role === "owner" || currentUser?.role === "admin"
+                    ? "Owner"
+                    : "Staff"
+                )}
+              </strong>
+              {!isRoleRedundantForName(
+                currentUser?.displayName,
+                currentUser?.role
+              ) && (
+                <>
+                  {" "}
+                  &bull;{" "}
+                  <span className="uppercase font-bold text-teal-600 dark:text-teal-400">
+                    {getUserRoleLabel(currentUser?.role)}
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
         </div>
 
         {/* View Switcher: This Month vs Today + Quick Action Toolbar */}
-        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {/* Period Toggle */}
-          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
+          <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-xs font-bold shrink-0">
             <button
               type="button"
               onClick={() => setViewPeriod("month")}
@@ -476,42 +347,46 @@ export function DashboardView() {
             </button>
           </div>
 
+          {/* Primary Action: Make New Bill */}
           {hasPermission("invoices:create") && (
             <Link
               href="/sales/invoices/new"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 min-h-[38px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs sm:text-sm font-bold shadow-md shadow-teal-600/20 transition-all btn-interactive"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs font-bold shadow-sm shadow-teal-600/20 transition-all btn-interactive shrink-0"
             >
               <PlusCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
               <span>Make New Bill</span>
             </Link>
           )}
 
+          {/* Partners Khata */}
           {isOwnerOrAccountant && (
             <Link
               href="/finance/partners"
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[38px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs sm:text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive shrink-0"
             >
-              <Users2 className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+              <Users2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
               <span>Partners Khata</span>
             </Link>
           )}
 
+          {/* Staff Location */}
           {hasPermission("staff:monitoring") && (
             <Link
               href="/employees/monitoring"
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs sm:text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive text-center"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive shrink-0"
             >
-              <Compass className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-              <span className="truncate">Staff Location</span>
+              <Compass className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+              <span>Staff Location</span>
             </Link>
           )}
 
+          {/* Add Doctor Visit */}
           {hasPermission("crm:visits") && (
             <Link
               href="/crm/visits"
-              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive text-center"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive shrink-0"
             >
-              <span className="truncate">Add Doctor Visit</span>
+              <span>Add Doctor Visit</span>
             </Link>
           )}
         </div>
@@ -537,22 +412,22 @@ export function DashboardView() {
 
       {/* KPI Cards Grid (Only renders cards permitted for this role/user) */}
       {(canViewSalesSummary || canViewFinanceSummary || canViewInventory) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Monthly / Today Sales (Owner / Accountant / dashboard:sales only) */}
           {canViewSalesSummary && (
-            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
+            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
                   {viewPeriod === "month"
                     ? `${currentMonthName}'s Total Sales`
                     : "Today's Total Sales"}
                 </span>
-                <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shadow-sm">
-                  <TrendingUp className="w-5 h-5" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shadow-sm shrink-0">
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+              <div className="mt-2 sm:mt-3 flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-900 dark:text-slate-100">
                   {formatPKR(viewPeriod === "month" ? monthSalesTotal : todaySalesTotal)}
                 </span>
                 <span className="text-xs font-bold text-emerald-600 flex items-center">
@@ -562,7 +437,7 @@ export function DashboardView() {
                     : `${todayInvoices.length} bill${todayInvoices.length !== 1 ? "s" : ""}`}
                 </span>
               </div>
-              <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+              <div className="text-[11px] sm:text-xs text-slate-500 mt-1.5 space-y-0.5">
                 <p>
                   Cash Received:{" "}
                   <strong className="text-slate-700 dark:text-slate-300">
@@ -584,21 +459,21 @@ export function DashboardView() {
 
           {/* Card 2: 3-Way Receivables (Owner / Accountant / dashboard:finance only) */}
           {canViewFinanceSummary && (
-            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
+            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
                   Money to Receive (Udhaar)
                 </span>
-                <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center shadow-sm">
-                  <CreditCard className="w-5 h-5" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center shadow-sm shrink-0">
+                  <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+              <div className="mt-2 sm:mt-3 flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-900 dark:text-slate-100">
                   {formatPKR(totalReceivables)}
                 </span>
               </div>
-              <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+              <div className="text-[11px] sm:text-xs text-slate-500 mt-1.5 space-y-0.5">
                 <p>
                   Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(storeReceivables)}</strong> &bull; Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(distributorReceivables)}</strong>
                 </p>
@@ -611,21 +486,21 @@ export function DashboardView() {
 
           {/* Card 3: Manufacturer Payables (Owner / Accountant / dashboard:finance only) */}
           {canViewFinanceSummary && (
-            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/50">
+            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/50">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
                   Money We Owe Companies
                 </span>
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-sm">
-                  <Receipt className="w-5 h-5" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-sm shrink-0">
+                  <Receipt className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+              <div className="mt-2 sm:mt-3 flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-900 dark:text-slate-100">
                   {formatPKR(totalManufacturerPayables)}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1.5">
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-1.5">
                 Open POs: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(pendingPoPayables)}</strong>
               </p>
             </div>
@@ -633,22 +508,22 @@ export function DashboardView() {
 
           {/* Card 4: FEFO Expiry / Low Stock Alerts (Only if inventory access permitted) */}
           {canViewInventory && (
-            <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/50">
+            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/50">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
                   Medicines Expiring Soon
                 </span>
-                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shadow-sm">
-                  <Clock className="w-5 h-5" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shadow-sm shrink-0">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">
+              <div className="mt-2 sm:mt-3 flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-amber-600 dark:text-amber-400">
                   {nearExpiryBatches.length}
                 </span>
                 <span className="text-xs font-medium text-slate-500">batches within 90 days</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-1.5 flex items-center gap-1">
                 {expiredBatches.length > 0 ? (
                   <span className="text-red-600 font-bold">{expiredBatches.length} Expired (Blocked from sale)</span>
                 ) : (
@@ -662,45 +537,45 @@ export function DashboardView() {
 
       {/* Partners Monthly Khata Widget (Owner / Admin / Accountant only) */}
       {isOwnerOrAccountant && (
-        <div className="p-5 sm:p-6 rounded-2xl border-2 border-teal-500/20 bg-gradient-to-br from-teal-500/5 via-transparent to-indigo-500/5 dark:bg-slate-900/60 shadow-soft">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-bold">
-                <Users2 className="w-5 h-5" />
+        <div className="p-3.5 sm:p-5 rounded-2xl border-2 border-teal-500/20 bg-gradient-to-br from-teal-500/5 via-transparent to-indigo-500/5 dark:bg-slate-900/60 shadow-soft">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-bold shrink-0">
+                <Users2 className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div>
-                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  Partners Monthly Khata (شراکت داروں کا ماہانہ حساب)
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300">
-                    {currentMonthName} {currentYear}
+              <div className="min-w-0">
+                <h2 className="text-xs sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
+                  <span>Partners Monthly Khata</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-mono">
+                    {currentMonthShort} {currentYear}
                   </span>
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Dono partners ke is mahine ke aane wale aur nikalne wale paison ka khulaasa
+                <p className="text-[10px] sm:text-xs text-slate-500 truncate">
+                  Dono partners ke is mahine ke hisab ka khulaasa
                 </p>
               </div>
             </div>
             <Link
               href="/finance/partners"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-teal-500/40 bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-50 dark:hover:bg-slate-700 transition-all self-start sm:self-auto shadow-sm"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-teal-500/40 bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-50 dark:hover:bg-slate-700 transition-all shrink-0 shadow-sm"
             >
-              Open Full Khata <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>Full Khata</span> <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
           {/* Partnership Capital & Dynamic Profit Ratio Bar */}
-          <div className="mb-4 p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-teal-500/20 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between text-xs font-bold gap-2 mb-2">
+          <div className="mb-3 p-3 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-teal-500/20 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between text-[11px] sm:text-xs font-bold gap-2 mb-2">
               <span className="text-teal-700 dark:text-teal-300 flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />
-                {partner1Name}: <strong className="font-mono text-sm">{p1RatioPercent}%</strong> ({formatPKR(p1TotalInvestment)})
+                {partner1Name}: <strong className="font-mono">{p1RatioPercent}%</strong> ({formatPKR(p1TotalInvestment)})
               </span>
               <span className="text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block" />
-                {partner2Name}: <strong className="font-mono text-sm">{p2RatioPercent}%</strong> ({formatPKR(p2TotalInvestment)})
+                {partner2Name}: <strong className="font-mono">{p2RatioPercent}%</strong> ({formatPKR(p2TotalInvestment)})
               </span>
             </div>
-            <div className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
+            <div className="w-full h-2.5 sm:h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
               <div
                 className="bg-teal-600 h-full transition-all duration-500"
                 style={{ width: `${p1RatioPercent}%` }}
@@ -712,72 +587,74 @@ export function DashboardView() {
                 title={`${partner2Name}: ${p2RatioPercent}%`}
               />
             </div>
-            <div className="flex justify-between items-center text-[11px] text-slate-500 pt-1.5 font-medium">
-              <span>Combined Total Capital: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatPKR(combinedTotalInvestment)}</strong></span>
-              <span>Profit Share: <strong className="text-teal-700 dark:text-teal-300">{p1RatioPercent}%</strong> : <strong className="text-indigo-700 dark:text-indigo-300">{p2RatioPercent}%</strong></span>
+            <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-slate-500 pt-1.5 font-medium">
+              <span>Capital: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatPKR(combinedTotalInvestment)}</strong></span>
+              <span>Ratio: <strong className="text-teal-700 dark:text-teal-300">{p1RatioPercent}%</strong> : <strong className="text-indigo-700 dark:text-indigo-300">{p2RatioPercent}%</strong></span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             {/* Partner 1 Box */}
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                  👤 {partner1Name}
+                <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-teal-500" />
+                  {partner1Name}
                 </span>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-mono">
+                <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-mono">
                   {p1RatioPercent}% Share
                 </span>
               </div>
-              <div className="text-[11px] text-slate-500 font-medium my-2 flex justify-between items-center">
+              <div className="text-[11px] text-slate-500 font-medium my-1.5 flex justify-between items-center">
                 <span>Total Invested Capital:</span>
                 <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">{formatPKR(p1TotalInvestment)}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 my-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
+              <div className="grid grid-cols-2 gap-2 my-1.5 text-xs">
+                <div className="p-2 sm:p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
                   <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">{currentMonthShort} IN</span>
-                  <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-sm mt-0.5 block">{formatPKR(p1MonthIn)}</span>
+                  <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm mt-0.5 block">{formatPKR(p1MonthIn)}</span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
+                <div className="p-2 sm:p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
                   <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">{currentMonthShort} OUT</span>
-                  <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-sm mt-0.5 block">{formatPKR(p1MonthOut)}</span>
+                  <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-xs sm:text-sm mt-0.5 block">{formatPKR(p1MonthOut)}</span>
                 </div>
               </div>
-              <div className="flex items-center justify-between pt-1 text-xs font-bold">
-                <span className="text-slate-500">Net Standing ({currentMonthShort}):</span>
-                <span className={`font-mono text-sm ${p1MonthNet >= 0 ? "text-teal-600 dark:text-teal-400" : "text-rose-600"}`}>
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800 text-xs font-bold">
+                <span className="text-slate-500 text-[11px]">Net Standing ({currentMonthShort}):</span>
+                <span className={`font-mono text-xs sm:text-sm ${p1MonthNet >= 0 ? "text-teal-600 dark:text-teal-400" : "text-rose-600"}`}>
                   {formatPKR(p1MonthNet)}
                 </span>
               </div>
             </div>
 
             {/* Partner 2 Box */}
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                  👤 {partner2Name}
+                <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                  {partner2Name}
                 </span>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 font-mono">
+                <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 font-mono">
                   {p2RatioPercent}% Share
                 </span>
               </div>
-              <div className="text-[11px] text-slate-500 font-medium my-2 flex justify-between items-center">
+              <div className="text-[11px] text-slate-500 font-medium my-1.5 flex justify-between items-center">
                 <span>Total Invested Capital:</span>
                 <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">{formatPKR(p2TotalInvestment)}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 my-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
+              <div className="grid grid-cols-2 gap-2 my-1.5 text-xs">
+                <div className="p-2 sm:p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
                   <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">{currentMonthShort} IN</span>
-                  <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-sm mt-0.5 block">{formatPKR(p2MonthIn)}</span>
+                  <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm mt-0.5 block">{formatPKR(p2MonthIn)}</span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
+                <div className="p-2 sm:p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
                   <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">{currentMonthShort} OUT</span>
-                  <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-sm mt-0.5 block">{formatPKR(p2MonthOut)}</span>
+                  <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-xs sm:text-sm mt-0.5 block">{formatPKR(p2MonthOut)}</span>
                 </div>
               </div>
-              <div className="flex items-center justify-between pt-1 text-xs font-bold">
-                <span className="text-slate-500">Net Standing ({currentMonthShort}):</span>
-                <span className={`font-mono text-sm ${p2MonthNet >= 0 ? "text-indigo-600 dark:text-indigo-400" : "text-rose-600"}`}>
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800 text-xs font-bold">
+                <span className="text-slate-500 text-[11px]">Net Standing ({currentMonthShort}):</span>
+                <span className={`font-mono text-xs sm:text-sm ${p2MonthNet >= 0 ? "text-indigo-600 dark:text-indigo-400" : "text-rose-600"}`}>
                   {formatPKR(p2MonthNet)}
                 </span>
               </div>
@@ -788,30 +665,30 @@ export function DashboardView() {
 
       {/* Analytics & Charts Section (Owner / Accountant / dashboard:sales ONLY) */}
       {canViewSalesSummary && (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Sales Performance Trend */}
-        <div className="lg:col-span-2 p-5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div className="lg:col-span-2 p-3.5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-5">
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                 Sales & Cash Collected Trend
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
                 Day-by-day sales & cash received for {currentMonthName} {currentYear} (PKR)
               </p>
             </div>
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto text-xs sm:text-sm font-bold">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto text-xs font-bold">
               <button
                 onClick={() => setSelectedRange("month")}
-                className={`px-3 py-1.5 min-h-[34px] rounded-lg transition-all btn-interactive ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all btn-interactive ${
                   selectedRange === "month" ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
-                📅 This Month
+                📅 Month
               </button>
               <button
                 onClick={() => setSelectedRange("7d")}
-                className={`px-3 py-1.5 min-h-[34px] rounded-lg transition-all btn-interactive ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all btn-interactive ${
                   selectedRange === "7d" ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
@@ -819,7 +696,7 @@ export function DashboardView() {
               </button>
               <button
                 onClick={() => setSelectedRange("30d")}
-                className={`px-3 py-1.5 min-h-[34px] rounded-lg transition-all btn-interactive ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all btn-interactive ${
                   selectedRange === "30d" ? "bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
@@ -828,7 +705,7 @@ export function DashboardView() {
             </div>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-56 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
@@ -882,15 +759,15 @@ export function DashboardView() {
         </div>
 
         {/* Sector Breakdown */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between">
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft flex flex-col justify-between">
           <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Layers className="w-4 h-4 text-teal-600" />
               Sales by Category
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Sales share across medicine categories</p>
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">Sales share across medicine categories</p>
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-3.5 space-y-2.5">
               {categoryShareData.map((cat) => (
                 <div key={cat.name} className="space-y-1">
                   <div className="flex justify-between text-xs font-semibold">
@@ -908,7 +785,7 @@ export function DashboardView() {
             </div>
           </div>
 
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg text-xs text-slate-600 dark:text-slate-400 mt-6 border border-slate-100 dark:border-slate-700/50">
+          <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl text-[11px] text-slate-600 dark:text-slate-400 mt-4 border border-slate-100 dark:border-slate-700/50">
             <span className="font-bold text-teal-600">Quick Tip:</span> You can add or rename medicine categories anytime in Settings.
           </div>
         </div>
@@ -917,22 +794,22 @@ export function DashboardView() {
 
       {/* Critical Lists Grid: Near Expiry Batches & Recent Movements (Only if inventory access permitted) */}
       {canViewInventory && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Table 1: Near-Expiry Batches (Sell First) */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-500" />
                 Medicines Expiring Soon (Sell First)
               </h2>
-              <p className="text-xs text-slate-500">Stock expiring within the next 90 days</p>
+              <p className="text-[11px] sm:text-xs text-slate-500">Stock expiring within the next 90 days</p>
             </div>
             <Link
               href="/inventory/batches"
-              className="text-xs font-semibold text-teal-600 hover:underline"
+              className="text-xs font-semibold text-teal-600 hover:underline shrink-0"
             >
-              View All Stock &rarr;
+              View Stock &rarr;
             </Link>
           </div>
 
@@ -984,7 +861,7 @@ export function DashboardView() {
         </div>
 
         {/* Table 2: Recent Stock Movements & Auditable History */}
-        <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
@@ -1073,48 +950,6 @@ export function DashboardView() {
         </div>
       </div>
       )}
-
-      {/* Your Assigned Modules (Shows ONLY modules permitted for this user) */}
-      <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-teal-600" />
-              Your Assigned Modules ({permittedQuickModules.length})
-            </h2>
-            <p className="text-xs text-slate-500">
-              Modules enabled for your account based on your role &amp; access permissions
-            </p>
-          </div>
-        </div>
-
-        {permittedQuickModules.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {permittedQuickModules.map((mod) => (
-              <Link
-                key={mod.href}
-                href={mod.href}
-                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-teal-500/50 hover:bg-teal-50/30 dark:hover:bg-teal-950/20 transition-all flex items-start justify-between gap-2 group"
-              >
-                <div className="min-w-0">
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 mb-1">
-                    {mod.badge}
-                  </span>
-                  <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 truncate">
-                    {mod.title}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{mod.desc}</p>
-                </div>
-                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-teal-600 shrink-0 mt-1" />
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="p-6 text-center text-xs text-slate-400 rounded-xl bg-slate-50 dark:bg-slate-800/40">
-            No additional modules assigned yet. Please ask the Owner to enable modules for your account in Staff Accounts.
-          </div>
-        )}
-      </div>
     </div>
   );
 }
