@@ -145,16 +145,26 @@ export function DashboardView() {
   const todaySalesTotal = todayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
   const todayPaymentsCollected = todayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
 
-  // Partner Monthly Calculations
+  // Partner Calculations (Total Investment, Ownership Ratio, and Monthly IN/OUT)
   const partner1Name = typeof window !== "undefined" ? localStorage.getItem("nox_partner_1_name") || "Partner 1" : "Partner 1";
   const partner2Name = typeof window !== "undefined" ? localStorage.getItem("nox_partner_2_name") || "Partner 2" : "Partner 2";
 
-  const p1MonthIn = partnerTransactions.filter((t) => t.partnerId === "partner_1" && t.type === "in" && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
-  const p1MonthOut = partnerTransactions.filter((t) => t.partnerId === "partner_1" && t.type === "out" && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
+  const p1TotalInvestment = partnerTransactions
+    .filter((t) => t.partnerId === "partner_1" && (t.type === "investment" || t.type === "in"))
+    .reduce((s, t) => s + t.amount, 0);
+  const p2TotalInvestment = partnerTransactions
+    .filter((t) => t.partnerId === "partner_2" && (t.type === "investment" || t.type === "in"))
+    .reduce((s, t) => s + t.amount, 0);
+  const combinedTotalInvestment = p1TotalInvestment + p2TotalInvestment;
+  const p1RatioPercent = combinedTotalInvestment > 0 ? parseFloat(((p1TotalInvestment / combinedTotalInvestment) * 100).toFixed(1)) : 50;
+  const p2RatioPercent = combinedTotalInvestment > 0 ? parseFloat(((p2TotalInvestment / combinedTotalInvestment) * 100).toFixed(1)) : 50;
+
+  const p1MonthIn = partnerTransactions.filter((t) => t.partnerId === "partner_1" && (t.type === "investment" || t.type === "in") && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
+  const p1MonthOut = partnerTransactions.filter((t) => t.partnerId === "partner_1" && (t.type === "withdrawal" || t.type === "profit_payout" || t.type === "out") && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
   const p1MonthNet = p1MonthIn - p1MonthOut;
 
-  const p2MonthIn = partnerTransactions.filter((t) => t.partnerId === "partner_2" && t.type === "in" && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
-  const p2MonthOut = partnerTransactions.filter((t) => t.partnerId === "partner_2" && t.type === "out" && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
+  const p2MonthIn = partnerTransactions.filter((t) => t.partnerId === "partner_2" && (t.type === "investment" || t.type === "in") && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
+  const p2MonthOut = partnerTransactions.filter((t) => t.partnerId === "partner_2" && (t.type === "withdrawal" || t.type === "profit_payout" || t.type === "out") && t.date?.startsWith(currentMonthPrefix)).reduce((s, t) => s + t.amount, 0);
   const p2MonthNet = p2MonthIn - p2MonthOut;
 
   const totalReceivables = displayInvoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
@@ -678,6 +688,36 @@ export function DashboardView() {
             </Link>
           </div>
 
+          {/* Partnership Capital & Dynamic Profit Ratio Bar */}
+          <div className="mb-4 p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-teal-500/20 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between text-xs font-bold gap-2 mb-2">
+              <span className="text-teal-700 dark:text-teal-300 flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />
+                {partner1Name}: <strong className="font-mono text-sm">{p1RatioPercent}%</strong> ({formatPKR(p1TotalInvestment)})
+              </span>
+              <span className="text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block" />
+                {partner2Name}: <strong className="font-mono text-sm">{p2RatioPercent}%</strong> ({formatPKR(p2TotalInvestment)})
+              </span>
+            </div>
+            <div className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
+              <div
+                className="bg-teal-600 h-full transition-all duration-500"
+                style={{ width: `${p1RatioPercent}%` }}
+                title={`${partner1Name}: ${p1RatioPercent}%`}
+              />
+              <div
+                className="bg-indigo-600 h-full transition-all duration-500"
+                style={{ width: `${p2RatioPercent}%` }}
+                title={`${partner2Name}: ${p2RatioPercent}%`}
+              />
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-slate-500 pt-1.5 font-medium">
+              <span>Combined Total Capital: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatPKR(combinedTotalInvestment)}</strong></span>
+              <span>Profit Share: <strong className="text-teal-700 dark:text-teal-300">{p1RatioPercent}%</strong> : <strong className="text-indigo-700 dark:text-indigo-300">{p2RatioPercent}%</strong></span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Partner 1 Box */}
             <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
@@ -685,17 +725,21 @@ export function DashboardView() {
                 <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
                   👤 {partner1Name}
                 </span>
-                <span className="text-[11px] font-semibold text-slate-400">
-                  {currentMonthShort} Summary
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-mono">
+                  {p1RatioPercent}% Share
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 my-3 text-xs">
+              <div className="text-[11px] text-slate-500 font-medium my-2 flex justify-between items-center">
+                <span>Total Invested Capital:</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">{formatPKR(p1TotalInvestment)}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 my-2 text-xs">
                 <div className="p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
-                  <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">Paise Aaye (IN)</span>
+                  <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">{currentMonthShort} IN</span>
                   <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-sm mt-0.5 block">{formatPKR(p1MonthIn)}</span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
-                  <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Paise Gaye (OUT)</span>
+                  <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">{currentMonthShort} OUT</span>
                   <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-sm mt-0.5 block">{formatPKR(p1MonthOut)}</span>
                 </div>
               </div>
@@ -713,17 +757,21 @@ export function DashboardView() {
                 <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
                   👤 {partner2Name}
                 </span>
-                <span className="text-[11px] font-semibold text-slate-400">
-                  {currentMonthShort} Summary
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 font-mono">
+                  {p2RatioPercent}% Share
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 my-3 text-xs">
+              <div className="text-[11px] text-slate-500 font-medium my-2 flex justify-between items-center">
+                <span>Total Invested Capital:</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">{formatPKR(p2TotalInvestment)}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 my-2 text-xs">
                 <div className="p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
-                  <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">Paise Aaye (IN)</span>
+                  <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">{currentMonthShort} IN</span>
                   <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-sm mt-0.5 block">{formatPKR(p2MonthIn)}</span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
-                  <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Paise Gaye (OUT)</span>
+                  <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">{currentMonthShort} OUT</span>
                   <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-sm mt-0.5 block">{formatPKR(p2MonthOut)}</span>
                 </div>
               </div>
