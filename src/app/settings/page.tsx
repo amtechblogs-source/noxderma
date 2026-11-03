@@ -39,6 +39,7 @@ export default function BusinessSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
 
   const [logoNotice, setLogoNotice] = useState<string | null>(null);
 
@@ -96,13 +97,13 @@ export default function BusinessSettingsPage() {
 
   const handleSettingsAvatarRemove = async () => {
     if (confirm("Kya aap profile picture hatana chahte hain?")) {
-      setIsUploadingAvatar(true);
+      setIsRemovingAvatar(true);
       try {
         await updateCurrentUser({ avatarUrl: "" });
       } catch (err: any) {
         console.error("Failed to remove avatar:", err);
       } finally {
-        setIsUploadingAvatar(false);
+        setIsRemovingAvatar(false);
       }
     }
   };
@@ -387,7 +388,7 @@ export default function BusinessSettingsPage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 pt-1">
             <div className="relative group shrink-0">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-black text-2xl shadow-md overflow-hidden ring-4 ring-teal-500/20">
-                {isUploadingAvatar ? (
+                {isUploadingAvatar || isRemovingAvatar ? (
                   <Loader2 className="w-7 h-7 animate-spin text-white" />
                 ) : currentUser?.avatarUrl ? (
                   <img
@@ -402,7 +403,9 @@ export default function BusinessSettingsPage() {
 
               <label
                 htmlFor="settings-avatar-upload"
-                className="absolute inset-0 bg-slate-950/60 rounded-2xl flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold"
+                className={`absolute inset-0 bg-slate-950/60 rounded-2xl flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold ${
+                  isUploadingAvatar || isRemovingAvatar ? "pointer-events-none" : ""
+                }`}
                 title="Upload or Change Profile Photo"
               >
                 <Upload className="w-5 h-5 mb-1" />
@@ -412,6 +415,7 @@ export default function BusinessSettingsPage() {
                 id="settings-avatar-upload"
                 type="file"
                 accept="image/*"
+                disabled={isUploadingAvatar || isRemovingAvatar}
                 className="hidden"
                 onChange={handleSettingsAvatarUpload}
               />
@@ -430,19 +434,28 @@ export default function BusinessSettingsPage() {
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
                 <label
                   htmlFor="settings-avatar-upload"
-                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm shadow-teal-600/20 transition-all"
+                  className={`px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm shadow-teal-600/20 transition-all ${
+                    isUploadingAvatar || isRemovingAvatar ? "pointer-events-none opacity-50" : ""
+                  }`}
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>{isUploadingAvatar ? "Uploading..." : currentUser?.avatarUrl ? "Change Profile Picture" : "Upload Profile Picture"}</span>
+                  <span>
+                    {isUploadingAvatar
+                      ? "Uploading..."
+                      : currentUser?.avatarUrl
+                      ? "Change Profile Picture"
+                      : "Upload Profile Picture"}
+                  </span>
                 </label>
                 {currentUser?.avatarUrl && (
                   <button
                     type="button"
                     onClick={handleSettingsAvatarRemove}
-                    disabled={isUploadingAvatar}
-                    className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all"
+                    disabled={isUploadingAvatar || isRemovingAvatar}
+                    className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all disabled:opacity-50 inline-flex items-center gap-1.5"
                   >
-                    Remove Picture
+                    {isRemovingAvatar && <Loader2 className="w-3 h-3 animate-spin" />}
+                    <span>{isRemovingAvatar ? "Removing..." : "Remove Picture"}</span>
                   </button>
                 )}
               </div>

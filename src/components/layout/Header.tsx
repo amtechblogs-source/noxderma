@@ -347,6 +347,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const compressAvatarImage = (file: File): Promise<string> => {
@@ -404,13 +405,13 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   const handleRemoveAvatar = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Kya aap profile picture remove karna chahte hain?")) {
-      setIsUploadingAvatar(true);
+      setIsRemovingAvatar(true);
       try {
         await updateCurrentUser({ avatarUrl: "" });
       } catch (err: any) {
         console.error("Failed to remove avatar:", err);
       } finally {
-        setIsUploadingAvatar(false);
+        setIsRemovingAvatar(false);
       }
     }
   };
@@ -1052,7 +1053,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                   <div className="flex items-center gap-3">
                     <div className="relative group shrink-0">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 flex items-center justify-center text-white font-extrabold text-base shadow-md overflow-hidden ring-2 ring-teal-500/30">
-                        {isUploadingAvatar ? (
+                        {isUploadingAvatar || isRemovingAvatar ? (
                           <Loader2 className="w-5 h-5 animate-spin text-white" />
                         ) : currentUser?.avatarUrl ? (
                           <img
@@ -1068,7 +1069,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                       <button
                         type="button"
                         onClick={() => avatarInputRef.current?.click()}
-                        disabled={isUploadingAvatar}
+                        disabled={isUploadingAvatar || isRemovingAvatar}
                         className="absolute inset-0 bg-slate-950/60 rounded-full flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[9px] font-bold"
                         title="Upload or Change Profile Photo"
                       >
@@ -1096,7 +1097,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                     <button
                       type="button"
                       onClick={() => avatarInputRef.current?.click()}
-                      disabled={isUploadingAvatar}
+                      disabled={isUploadingAvatar || isRemovingAvatar}
                       className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400 hover:text-teal-700 font-bold transition-colors disabled:opacity-50"
                     >
                       <Camera className="w-3.5 h-3.5" />
@@ -1107,11 +1108,12 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                       <button
                         type="button"
                         onClick={handleRemoveAvatar}
-                        disabled={isUploadingAvatar}
-                        className="text-slate-400 hover:text-rose-500 font-semibold transition-colors text-xs"
+                        disabled={isUploadingAvatar || isRemovingAvatar}
+                        className="text-slate-400 hover:text-rose-500 font-semibold transition-colors text-xs disabled:opacity-50 inline-flex items-center gap-1"
                         title="Remove profile picture"
                       >
-                        Remove
+                        {isRemovingAvatar && <Loader2 className="w-3 h-3 animate-spin" />}
+                        <span>{isRemovingAvatar ? "Removing..." : "Remove"}</span>
                       </button>
                     )}
                   </div>
