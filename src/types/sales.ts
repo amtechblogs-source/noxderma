@@ -36,7 +36,10 @@ export interface InvoiceLine {
   productName: string;
   packSize: string;
   imageUrl?: string;
-  quantity: number;
+  quantity: number; // Paid units
+  bonusQuantity?: number; // Free promotional bonus units (e.g. 5+1)
+  totalUnitsDelivered?: number; // Paid + Bonus units
+  extraDiscountPercent?: number; // Optional extra percentage discount
   unitPrice: number; // in PKR
   lineDiscountPercentage: number;
   lineDiscountAmount: number;

@@ -176,7 +176,9 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
       batchNumber: string;
       expiryDate: string;
       availableQuantity: number;
-      quantity: number;
+      quantity: number; // Paid Qty
+      bonusQuantity: number; // Free promotional bonus units (e.g. 5+1)
+      extraDiscountPercent: number; // Line extra discount percentage
       unitPrice: number;
       discountPercent: number;
     }>
@@ -276,6 +278,8 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               expiryDate: alloc?.expiryDate || "",
               availableQuantity: effectiveAvail > 0 ? effectiveAvail : 999,
               quantity: l.quantity,
+              bonusQuantity: l.bonusQuantity || 0,
+              extraDiscountPercent: l.extraDiscountPercent || l.lineDiscountPercentage || 0,
               unitPrice: l.unitPrice,
               discountPercent: l.lineDiscountPercentage || 0,
             };
@@ -415,6 +419,8 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         expiryDate,
         availableQuantity: availableQty,
         quantity: 1,
+        bonusQuantity: 0,
+        extraDiscountPercent: 0,
         unitPrice: defaultPrice,
         discountPercent: 0,
       },
@@ -448,15 +454,21 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
     } else if (field === "quantity") {
       const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
       const qty = raw === "" ? 0 : Number(raw);
-      current.quantity = isNaN(qty) ? 0 : current.availableQuantity > 0 ? Math.min(qty, current.availableQuantity) : qty;
+      current.quantity = isNaN(qty) ? 0 : Math.max(0, qty);
+    } else if (field === "bonusQuantity") {
+      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+      const bQty = raw === "" ? 0 : Number(raw);
+      current.bonusQuantity = isNaN(bQty) ? 0 : Math.max(0, bQty);
+    } else if (field === "extraDiscountPercent" || field === "discountPercent") {
+      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+      const pct = raw === "" ? 0 : Number(raw);
+      const cleanPct = isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
+      current.extraDiscountPercent = cleanPct;
+      current.discountPercent = cleanPct;
     } else if (field === "unitPrice") {
       const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
       const price = raw === "" ? 0 : Number(raw);
       current.unitPrice = isNaN(price) ? 0 : Math.max(0, price);
-    } else if (field === "discountPercent") {
-      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
-      const pct = raw === "" ? 0 : Number(raw);
-      current.discountPercent = isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
     }
 
     updated[index] = current;
@@ -466,9 +478,13 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
   // Calculations
   const subtotal = lines.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const totalLineDiscount = lines.reduce(
-    (sum, item) => sum + (item.quantity * item.unitPrice * (item.discountPercent || 0)) / 100,
+    (sum, item) => sum + (item.quantity * item.unitPrice * (item.extraDiscountPercent || item.discountPercent || 0)) / 100,
     0
   );
+  const totalBonusUnits = lines.reduce((sum, item) => sum + Number(item.bonusQuantity || 0), 0);
+  const totalPaidUnits = lines.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const totalDeliveredUnits = totalPaidUnits + totalBonusUnits;
+
   const eligibleBaseForDiscount = Math.max(0, subtotal - totalLineDiscount);
   const effectiveInvoiceDiscount =
     discountType === "percentage"
@@ -511,7 +527,12 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
       const dueDate = new Date(now.getTime() + creditDays * 24 * 3600 * 1000).toISOString();
 
       const invoiceLines: InvoiceLine[] = lines.map((l, idx) => {
-        const lineTotal = l.quantity * l.unitPrice * (1 - l.discountPercent / 100);
+        const bonusQty = Number(l.bonusQuantity || 0);
+        const totalDelivered = Number(l.quantity || 0) + bonusQty;
+        const lineDiscountPct = Number(l.extraDiscountPercent || l.discountPercent || 0);
+        const lineDiscountAmt = (l.quantity * l.unitPrice * lineDiscountPct) / 100;
+        const lineTotal = Math.max(0, l.quantity * l.unitPrice - lineDiscountAmt);
+
         const matchingPricing = pricings.find((p) => p.productId === l.productId);
         const matchingBatch = batches.find((b) => b.id === l.batchId);
         const matchingProd = products.find((p) => p.id === l.productId);
@@ -530,16 +551,19 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           packSize: l.packSize,
           imageUrl: l.imageUrl,
           quantity: l.quantity,
+          bonusQuantity: bonusQty,
+          totalUnitsDelivered: totalDelivered,
+          extraDiscountPercent: lineDiscountPct,
           unitPrice: l.unitPrice,
-          lineDiscountPercentage: l.discountPercent,
-          lineDiscountAmount: (l.quantity * l.unitPrice * l.discountPercent) / 100,
+          lineDiscountPercentage: lineDiscountPct,
+          lineDiscountAmount: lineDiscountAmt,
           lineTotal,
           batchAllocations: [
             {
               batchId: l.batchId,
               batchNumber: l.batchNumber,
               expiryDate: l.expiryDate,
-              quantity: l.quantity,
+              quantity: totalDelivered,
               unitCostAtAllocation: Number(unitCost) || 0,
             },
           ],
@@ -638,7 +662,8 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
             for (const newLine of lines) {
               const b = await offlineDb.inventoryBatches.get(newLine.batchId);
               if (b) {
-                const newRemaining = Math.max(0, Number(b.remainingQuantity || 0) - newLine.quantity);
+                const totalUnits = Number(newLine.quantity || 0) + Number(newLine.bonusQuantity || 0);
+                const newRemaining = Math.max(0, Number(b.remainingQuantity || 0) - totalUnits);
                 await offlineDb.inventoryBatches.update(newLine.batchId, {
                   remainingQuantity: newRemaining,
                   updatedAt: now.toISOString(),
@@ -651,13 +676,13 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                   batchId: newLine.batchId,
                   batchNumber: newLine.batchNumber || b.batchNumber,
                   type: "sales_deduction",
-                  quantityChange: -newLine.quantity,
+                  quantityChange: -totalUnits,
                   balanceAfter: newRemaining,
                   referenceId: originalInvoice.id,
                   referenceType: "invoice",
                   userId: currentUserId,
                   userName: currentUserName,
-                  reason: `Deducted for updated invoice: ${originalInvoice.provisionalReference}`,
+                  reason: `Deducted for updated invoice: ${originalInvoice.provisionalReference} (${newLine.quantity} paid + ${newLine.bonusQuantity || 0} bonus)`,
                   timestamp: now.toISOString(),
                 });
               }
@@ -813,7 +838,8 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           for (const line of lines) {
             const batch = await offlineDb.inventoryBatches.get(line.batchId);
             if (batch) {
-              const newRemaining = Math.max(0, Number(batch.remainingQuantity || 0) - line.quantity);
+              const totalUnits = Number(line.quantity || 0) + Number(line.bonusQuantity || 0);
+              const newRemaining = Math.max(0, Number(batch.remainingQuantity || 0) - totalUnits);
               await offlineDb.inventoryBatches.update(line.batchId, {
                 remainingQuantity: newRemaining,
                 updatedAt: now.toISOString(),
@@ -826,12 +852,13 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                 batchId: line.batchId,
                 batchNumber: line.batchNumber,
                 type: "sales_deduction",
-                quantityChange: -line.quantity,
+                quantityChange: -totalUnits,
                 balanceAfter: newRemaining,
                 referenceId: invoiceId,
                 referenceType: "invoice",
                 userId: currentUserId,
                 userName: currentUserName,
+                reason: `Sold via invoice ${provisionalRef} (${line.quantity} paid + ${line.bonusQuantity || 0} bonus units)`,
                 timestamp: now.toISOString(),
               });
             }
@@ -1117,11 +1144,21 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                           </div>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-center font-black text-sm sm:text-base text-slate-900 print:text-black">
-                        {line.quantity}
+                      <td className="py-2.5 px-3 text-center text-slate-900 print:text-black">
+                        <span className="font-black text-sm sm:text-base block">{line.quantity}</span>
+                        {Boolean(line.bonusQuantity && line.bonusQuantity > 0) && (
+                          <span className="text-[10px] font-bold text-teal-700 dark:text-teal-400 print:text-black bg-teal-50 dark:bg-teal-950/60 print:bg-slate-100 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800 print:border-slate-300 block mt-0.5">
+                            +{line.bonusQuantity} Bonus ({line.quantity + (line.bonusQuantity || 0)} Total)
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-sm sm:text-base text-slate-900 print:text-black">
                         {formatPKR(line.unitPrice)}
+                        {Boolean(line.extraDiscountPercent && line.extraDiscountPercent > 0) && (
+                          <span className="text-[10px] font-bold text-rose-600 block">
+                            (-{line.extraDiscountPercent}%)
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-black text-sm sm:text-base text-slate-900 print:text-black">
                         {formatPKR(line.lineTotal)}
@@ -1390,111 +1427,213 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                 const itemBatches = batches.filter((b) => b.productId === line.productId && Number(b.remainingQuantity || 0) > 0);
                 const isHighlighted = idx === highlightedLineIndex;
 
+                const paidQty = Number(line.quantity || 0);
+                const bonusQty = Number(line.bonusQuantity || 0);
+                const totalDelivered = paidQty + bonusQty;
+                const unitPrice = Number(line.unitPrice || 0);
+                const billedSubtotal = paidQty * unitPrice;
+                const extraPct = Number(line.extraDiscountPercent || line.discountPercent || 0);
+                const lineDiscountAmt = (billedSubtotal * extraPct) / 100;
+                const netLineTotal = Math.max(0, billedSubtotal - lineDiscountAmt);
+
+                // Pharmacy Effective Cost & Benefit Calculation
+                const effectiveCostPerUnit = totalDelivered > 0 ? netLineTotal / totalDelivered : unitPrice;
+                const nominalDeliveredValue = totalDelivered * unitPrice;
+                const pharmacyBenefitPercent =
+                  nominalDeliveredValue > 0
+                    ? ((nominalDeliveredValue - netLineTotal) / nominalDeliveredValue) * 100
+                    : 0;
+
                 return (
                   <div
                     key={idx}
-                    className={`p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-center text-xs sm:text-sm card-interactive transition-all ${
+                    className={`p-4 rounded-2xl border space-y-3.5 text-xs sm:text-sm card-interactive transition-all ${
                       isHighlighted
                         ? "border-amber-500 ring-4 ring-amber-500/30 bg-amber-50/80 dark:bg-amber-950/60"
                         : "border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40"
                     }`}
                   >
-                    {/* Medicine & Batch Selection with Product Image */}
-                    <div className="sm:col-span-5 flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
-                        {(() => {
-                          const itemImg =
-                            line.imageUrl ||
-                            getProductImageUrl(products.find((p) => p.id === line.productId));
-                          return itemImg ? (
-                            <img
-                              src={itemImg}
-                              alt={line.productName}
-                              className="w-full h-full object-contain p-0.5"
-                            />
-                          ) : (
-                            <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
-                          );
-                        })()}
-                      </div>
+                    {/* Top Row: Medicine Info & Delete */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
+                          {(() => {
+                            const itemImg =
+                              line.imageUrl ||
+                              getProductImageUrl(products.find((p) => p.id === line.productId));
+                            return itemImg ? (
+                              <img
+                                src={itemImg}
+                                alt={line.productName}
+                                className="w-full h-full object-contain p-0.5"
+                              />
+                            ) : (
+                              <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                            );
+                          })()}
+                        </div>
 
-                      <div className="min-w-0 flex-1">
-                        <label className="block text-xs font-bold uppercase text-slate-400 mb-1">
-                          Medicine & Batch ({line.productName})
-                        </label>
-                        {itemBatches.length > 1 ? (
-                          <select
-                            value={line.batchId}
-                            onChange={(e) => handleUpdateLine(idx, "batchId", e.target.value)}
-                            className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-sm"
-                          >
-                            {itemBatches.map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.batchNumber} &bull; Exp: {formatKarachiDate(b.expiryDate)} &bull; Left: {b.remainingQuantity}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div className="px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                            <span className="font-bold text-sm truncate">{line.productName}</span>
-                            <span className="text-xs text-teal-600 font-mono font-bold shrink-0 ml-2">
-                              Batch: {line.batchNumber} (Stock: {line.availableQuantity})
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 truncate">
+                              {line.productName}
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-400">
+                              ({line.packSize})
                             </span>
                           </div>
-                        )}
+
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            {itemBatches.length > 1 ? (
+                              <select
+                                value={line.batchId}
+                                onChange={(e) => handleUpdateLine(idx, "batchId", e.target.value)}
+                                className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
+                              >
+                                {itemBatches.map((b) => (
+                                  <option key={b.id} value={b.id}>
+                                    Batch: {b.batchNumber} &bull; Exp: {formatKarachiDate(b.expiryDate)} &bull; Stock: {b.remainingQuantity}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[11px] text-teal-600 font-mono font-bold bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-md border border-teal-200 dark:border-teal-800">
+                                Batch: {line.batchNumber} (Stock: {line.availableQuantity})
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Quantity */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold uppercase text-slate-400 mb-1">
-                        Qty (Stock: {line.availableQuantity})
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={line.availableQuantity}
-                        placeholder="1"
-                        value={line.quantity === 0 ? "" : line.quantity}
-                        onChange={(e) => handleUpdateLine(idx, "quantity", e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-center text-base"
-                      />
-                    </div>
-
-                    {/* Price */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold uppercase text-slate-400 mb-1">
-                        Price (PKR)
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        value={line.unitPrice === 0 ? "" : line.unitPrice}
-                        onChange={(e) => handleUpdateLine(idx, "unitPrice", e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-right font-mono font-bold text-sm sm:text-base"
-                      />
-                    </div>
-
-                    {/* Line Total */}
-                    <div className="sm:col-span-2 text-right">
-                      <span className="block text-xs font-bold uppercase text-slate-400 mb-1">Total (Rs)</span>
-                      <span className="font-extrabold text-base sm:text-lg font-mono text-teal-600">
-                        {formatPKR(line.quantity * line.unitPrice)}
-                      </span>
-                    </div>
-
-                    {/* Delete */}
-                    <div className="sm:col-span-1 text-center">
                       <button
                         type="button"
                         onClick={() => handleRemoveLine(idx)}
                         aria-label="Remove medicine"
-                        className="p-2.5 min-h-[42px] min-w-[42px] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors btn-interactive inline-flex items-center justify-center"
+                        className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors btn-interactive shrink-0"
+                        title="Remove medicine"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
+                    </div>
+
+                    {/* Inputs Row: Paid Qty, Bonus Qty, Extra %, Price */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {/* 1. Paid Qty */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                            Paid Qty (تعداد) *
+                          </label>
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="1"
+                          value={line.quantity === 0 ? "" : line.quantity}
+                          onChange={(e) => handleUpdateLine(idx, "quantity", e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-center text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+
+                      {/* 2. Bonus Qty (Free units) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-teal-700 dark:text-teal-400 uppercase flex items-center gap-1">
+                            <span>Bonus Qty</span>
+                            <span className="text-[10px] bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200 px-1 rounded font-black">
+                              Free
+                            </span>
+                          </label>
+                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={line.bonusQuantity === 0 ? "" : line.bonusQuantity}
+                          onChange={(e) => handleUpdateLine(idx, "bonusQuantity", e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/30 dark:bg-teal-950/30 font-bold text-center text-sm sm:text-base text-teal-700 dark:text-teal-300 focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+
+                      {/* 3. Extra % (Line Discount) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                            Extra % (اضافی)
+                          </label>
+                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          placeholder="0%"
+                          value={line.extraDiscountPercent === 0 ? "" : line.extraDiscountPercent}
+                          onChange={(e) => handleUpdateLine(idx, "extraDiscountPercent", e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-center text-sm sm:text-base font-mono focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+
+                      {/* 4. Price (PKR) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                            Price (PKR)
+                          </label>
+                        </div>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={line.unitPrice === 0 ? "" : line.unitPrice}
+                          onChange={(e) => handleUpdateLine(idx, "unitPrice", e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full px-3 py-2 min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-right font-mono font-bold text-sm sm:text-base focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Promotional Scheme Preview & Pharmacy Margin/Benefit Bar */}
+                    <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 text-xs">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        {/* Scheme Delivered Badge */}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/80 border border-teal-200 dark:border-teal-800 font-bold text-teal-800 dark:text-teal-200">
+                          <Boxes className="w-3.5 h-3.5 text-teal-600" />
+                          <span>Delivered: {totalDelivered} units ({paidQty} Paid + {bonusQty} Free)</span>
+                        </span>
+
+                        {bonusQty > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold text-[11px] border border-emerald-300 dark:border-emerald-700">
+                            🎁 {paidQty} + {bonusQty} Scheme
+                          </span>
+                        )}
+
+                        {totalDelivered > 0 && (bonusQty > 0 || extraPct > 0) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                            Effective Cost: <strong className="font-mono text-slate-900 dark:text-slate-100">{formatPKR(Math.round(effectiveCostPerUnit))}</strong>/unit
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">({pharmacyBenefitPercent.toFixed(1)}% benefit)</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Net Line Total */}
+                      <div className="text-right sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between sm:justify-center">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase sm:mb-0.5">
+                          Billed Total (Bill sirf {paidQty} units ka)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {extraPct > 0 && (
+                            <span className="text-[10px] text-rose-500 font-bold line-through">
+                              {formatPKR(billedSubtotal)}
+                            </span>
+                          )}
+                          <span className="font-black text-base sm:text-lg font-mono text-teal-600 dark:text-teal-400">
+                            {formatPKR(netLineTotal)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1683,6 +1822,15 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               <span>Gross Total:</span>
               <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{formatPKR(subtotal)}</span>
             </div>
+            {totalBonusUnits > 0 && (
+              <div className="flex justify-between text-teal-700 dark:text-teal-300 font-bold text-xs bg-teal-50 dark:bg-teal-950/60 p-2 rounded-lg border border-teal-200 dark:border-teal-800">
+                <span className="flex items-center gap-1.5">
+                  <Boxes className="w-3.5 h-3.5 text-teal-600" />
+                  Free Bonus Delivered:
+                </span>
+                <span className="font-mono">+{totalBonusUnits} units free ({totalDeliveredUnits} total units)</span>
+              </div>
+            )}
             {totalDiscount > 0 && (
               <div className="flex justify-between text-rose-500 font-semibold">
                 <span>

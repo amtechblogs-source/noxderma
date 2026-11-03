@@ -1016,11 +1016,21 @@ export default function SalesInvoicesListPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="py-2.5 px-3 text-center font-black text-sm sm:text-base text-black">
-                      {line.quantity}
+                    <td className="py-2.5 px-3 text-center text-black">
+                      <span className="font-black text-sm sm:text-base block">{line.quantity}</span>
+                      {Boolean(line.bonusQuantity && line.bonusQuantity > 0) && (
+                        <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 block mt-0.5">
+                          +{line.bonusQuantity} Bonus ({line.quantity + (line.bonusQuantity || 0)} Total)
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold text-sm sm:text-base text-black">
                       {formatPKR(line.unitPrice)}
+                      {Boolean(line.extraDiscountPercent && line.extraDiscountPercent > 0) && (
+                        <span className="text-[10px] font-bold text-rose-600 block">
+                          (-{line.extraDiscountPercent}%)
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-black text-sm sm:text-base text-black">
                       {formatPKR(line.lineTotal)}
