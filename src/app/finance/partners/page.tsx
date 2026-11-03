@@ -217,9 +217,6 @@ export default function PartnersKhataPage() {
   const [reference, setReference] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Print Preview Modal State (Full statement)
-  const [showPrintPreview, setShowPrintPreview] = useState(false);
-
   // Individual Transaction Slip Modal State
   const [slipTx, setSlipTx] = useState<PartnerTransaction | null>(null);
 
@@ -1160,7 +1157,7 @@ export default function PartnersKhataPage() {
       {/* ============================================================== */}
       {/* 1. DEDICATED PRINTABLE INVOICE / STATEMENT (Print Only View)  */}
       {/* ============================================================== */}
-      <div className="hidden print:block text-black bg-white p-4 font-sans text-xs">
+      <div className={`hidden ${!slipTx ? "print:block" : ""} text-black bg-white p-4 font-sans text-xs print-page`}>
         {/* Official Branded Header */}
         <OfficialPrintHeader
           title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
@@ -1321,7 +1318,7 @@ export default function PartnersKhataPage() {
       {/* ============================================================== */}
       {/* 2. INTERACTIVE WEB / MOBILE APPLICATION VIEW (Hidden on Print) */}
       {/* ============================================================== */}
-      <div className={`space-y-4 sm:space-y-6 pb-32 sm:pb-16 no-print ${slipTx ? "print:hidden" : ""}`}>
+      <div className="space-y-4 sm:space-y-6 pb-32 sm:pb-16 no-print print:hidden">
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
           <div className="w-full sm:w-auto">
@@ -1369,11 +1366,11 @@ export default function PartnersKhataPage() {
             </button>
             <button
               type="button"
-              onClick={() => setShowPrintPreview(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 transition-all shadow-sm"
+              onClick={triggerCleanPrint}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95"
               title="Print Audit Statement"
             >
-              <Printer className="w-3.5 h-3.5" />
+              <Printer className="w-3.5 h-3.5 text-teal-600" />
               <span className="hidden xs:inline">Print Statement</span>
             </button>
             <button
@@ -2042,7 +2039,7 @@ export default function PartnersKhataPage() {
       {/* 3. PARTNER MANAGEMENT MODAL (Add, Rename, Delete with Warning)  */}
       {/* ============================================================== */}
       {isPartnerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:hidden">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
@@ -2147,7 +2144,7 @@ export default function PartnersKhataPage() {
       {/* 4. DELETE PARTNER WARNING CONFIRMATION MODAL                   */}
       {/* ============================================================== */}
       {isDeleteWarningModalOpen && partnerToDelete && (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 print:hidden">
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 max-w-md w-full border-2 border-rose-500/30 shadow-2xl space-y-4 animate-scale-in">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center shrink-0">
@@ -2199,7 +2196,7 @@ export default function PartnersKhataPage() {
       {/* 5. ADD TRANSACTION MODAL                                       */}
       {/* ============================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:hidden">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -2389,7 +2386,7 @@ export default function PartnersKhataPage() {
       {/* 6. EDIT TRANSACTION MODAL                                      */}
       {/* ============================================================== */}
       {isEditModalOpen && editingTx && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:hidden">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -2582,148 +2579,44 @@ export default function PartnersKhataPage() {
       )}
 
       {/* ============================================================== */}
-      {/* 7. BULK DELETE MODAL                                           */}
+      {/* 7. BULK DELETE MODAL (Hidden on Print)                         */}
       {/* ============================================================== */}
-      <BulkDeleteModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        entityName="Partner Transactions"
-        selectedCount={selectedTxIds.length}
-        totalCount={filteredTransactions.length}
-        countsByScope={scopeCounts}
-        onConfirmDelete={handleExecuteBulkDelete}
-        isDeleting={isDeleting}
-      />
+      <div className="print:hidden">
+        <BulkDeleteModal
+          isOpen={deleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          entityName="Partner Transactions"
+          selectedCount={selectedTxIds.length}
+          totalCount={filteredTransactions.length}
+          countsByScope={scopeCounts}
+          onConfirmDelete={handleExecuteBulkDelete}
+          isDeleting={isDeleting}
+        />
+
+        {/* ============================================================== */}
+        {/* 8. SINGLE DELETE MODAL (Hidden on Print)                       */}
+        {/* ============================================================== */}
+        <SingleDeleteModal
+          isOpen={!!deletingTx}
+          onClose={() => setDeletingTx(null)}
+          onConfirm={handleExecuteSingleDelete}
+          title="Delete Partner Transaction"
+          itemName={
+            deletingTx
+              ? `${getPartnerName(deletingTx.partnerId, deletingTx.partnerName)} - ${deletingTx.type} (PKR ${deletingTx.amount.toLocaleString()})`
+              : ""
+          }
+          isDeleting={isDeleting}
+        />
+      </div>
 
       {/* ============================================================== */}
-      {/* 8. SINGLE DELETE MODAL                                         */}
-      {/* ============================================================== */}
-      <SingleDeleteModal
-        isOpen={!!deletingTx}
-        onClose={() => setDeletingTx(null)}
-        onConfirm={handleExecuteSingleDelete}
-        title="Delete Partner Transaction"
-        itemName={
-          deletingTx
-            ? `${getPartnerName(deletingTx.partnerId, deletingTx.partnerName)} - ${deletingTx.type} (PKR ${deletingTx.amount.toLocaleString()})`
-            : ""
-        }
-        isDeleting={isDeleting}
-      />
-
-      {/* ============================================================== */}
-      {/* 9. STATEMENT PRINT PREVIEW MODAL                               */}
-      {/* ============================================================== */}
-      {showPrintPreview && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-2">
-                <Printer className="w-5 h-5 text-teal-600" />
-                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
-                  Partnership Statement Print Preview
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={triggerCleanPrint}
-                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print Now</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPrintPreview(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 flex-1 space-y-4 text-xs">
-              <OfficialPrintHeader
-                title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
-                docRef={`PRT-AUDIT-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`}
-                period={getDateFilterDescription(dateFilter)}
-                settings={businessSettings}
-                showInPreview={true}
-                className="pb-3 border-b border-slate-200 dark:border-slate-700"
-              />
-
-              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-                <span className="font-black text-xs uppercase tracking-wider block text-slate-800 dark:text-slate-200">
-                  Partnership Capital &amp; Profit Summary
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-[11px]">
-                  {partners.map((p) => {
-                    const stat = partnerStatsMap[p.id];
-                    return (
-                      <div key={p.id} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <span className="text-slate-500 block truncate">{p.name} ({stat?.ratioPercent || 0}%)</span>
-                        <strong className="font-mono text-teal-700 dark:text-teal-300 block">
-                          Inv: {formatPKR(stat?.totalInvestment || 0)}
-                        </strong>
-                        <span className="text-rose-600 font-mono text-[10px] block">
-                          Adv: -{formatPKR(stat?.totalAdvance || 0)}
-                        </span>
-                        <strong className="text-slate-900 dark:text-slate-100 font-mono text-[10px] block border-t pt-1 mt-1">
-                          Net: {formatPKR(stat?.netCapital || 0)}
-                        </strong>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="font-black text-xs uppercase tracking-wider block text-slate-800 dark:text-slate-200 mb-2">
-                  Transaction Ledger ({filteredTransactions.length} records)
-                </span>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[11px]">
-                    <thead className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200">
-                      <tr>
-                        <th className="p-1.5">Date</th>
-                        <th className="p-1.5">Partner</th>
-                        <th className="p-1.5">Type</th>
-                        <th className="p-1.5">Description</th>
-                        <th className="p-1.5 text-right">Amount (PKR)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                      {filteredTransactions.slice(0, 50).map((t) => (
-                        <tr key={t.id}>
-                          <td className="p-1.5 whitespace-nowrap">{t.date}</td>
-                          <td className="p-1.5 font-bold whitespace-nowrap">{getPartnerName(t.partnerId, t.partnerName)}</td>
-                          <td className="p-1.5 uppercase text-[10px] whitespace-nowrap">{t.type}</td>
-                          <td className="p-1.5 font-sans truncate max-w-xs">{t.description}</td>
-                          <td className="p-1.5 text-right font-bold whitespace-nowrap">{formatPKR(t.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredTransactions.length > 50 && (
-                    <p className="text-center text-[10px] text-slate-400 pt-2">
-                      Showing first 50 transactions. Full print will include all {filteredTransactions.length} records.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================== */}
-      {/* 10. INDIVIDUAL TRANSACTION VOUCHER SLIP MODAL                  */}
+      {/* 9. INDIVIDUAL TRANSACTION VOUCHER SLIP MODAL                   */}
       {/* ============================================================== */}
       {slipTx && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:fixed print:inset-0 print:bg-white print:p-6 print:m-0 print:z-[9999] print:block print:overflow-visible">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in print:shadow-none print:border-none print:p-0 print:m-0 print:max-w-none print:w-full print:bg-white print:text-black">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 print:hidden">
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-teal-600" />
                 <span>Transaction Slip Voucher</span>
@@ -2748,7 +2641,7 @@ export default function PartnersKhataPage() {
             </div>
 
             {/* Printable Slip Container */}
-            <div className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3.5 text-xs text-slate-800 dark:text-slate-200">
+            <div className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3.5 text-xs text-slate-800 dark:text-slate-200 print:bg-white print:border-black print:text-black print:p-0">
               <OfficialPrintHeader
                 title={
                   slipTx.type === "investment" || slipTx.type === "in"
@@ -2761,54 +2654,54 @@ export default function PartnersKhataPage() {
                 period={`Transaction Date: ${slipTx.date}`}
                 settings={businessSettings}
                 showInPreview={true}
-                className="pb-3 border-b border-slate-200 dark:border-slate-700"
+                className="pb-3 border-b border-slate-200 dark:border-slate-700 print:border-black"
               />
 
-              <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+              <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 print:border-black print:bg-white">
                 <div>
-                  <span className="text-[10px] text-slate-500 block">Partner Name:</span>
-                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100">
+                  <span className="text-[10px] text-slate-500 print:text-slate-700 block">Partner Name:</span>
+                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 print:text-black">
                     {getPartnerName(slipTx.partnerId, slipTx.partnerName)}
                   </strong>
-                  <span className="text-[10px] text-teal-600 font-bold block mt-0.5">
+                  <span className="text-[10px] text-teal-600 print:text-black font-bold block mt-0.5">
                     Share: {partnerStatsMap[slipTx.partnerId]?.ratioPercent || 0}%
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-500 block">Transaction Type:</span>
-                  <span className="inline-block font-extrabold uppercase text-[11px]">
+                  <span className="text-[10px] text-slate-500 print:text-slate-700 block">Transaction Type:</span>
+                  <span className="inline-block font-extrabold uppercase text-[11px] print:text-black">
                     {slipTx.type === "investment" || slipTx.type === "in"
                       ? "💰 Capital Investment"
                       : slipTx.type === "profit_payout"
                         ? "📈 Profit Payout"
                         : "🔻 Advance Payment"}
                   </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5 capitalize">
+                  <span className="text-[10px] text-slate-400 print:text-slate-600 block mt-0.5 capitalize">
                     {slipTx.paymentMethod.replace("_", " ")}
                   </span>
                 </div>
               </div>
 
               {/* Amount Box */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-center space-y-1">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-center space-y-1 print:border-black print:bg-white">
+                <span className="text-[10px] font-bold text-slate-500 print:text-slate-700 uppercase tracking-wider block">
                   Voucher Net Amount
                 </span>
-                <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100">
+                <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
                   {formatPKR(slipTx.amount)}
                 </div>
-                <div className="text-[10px] font-medium italic text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="text-[10px] font-medium italic text-slate-500 print:text-slate-700 pt-1 border-t border-slate-100 dark:border-slate-800 print:border-black">
                   {numberToWordsPKR(slipTx.amount)}
                 </div>
               </div>
 
               {/* Description */}
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1">
-                <span className="text-[10px] font-bold text-slate-500 uppercase block">Description / Purpose</span>
-                <p className="font-medium text-slate-800 dark:text-slate-200">{slipTx.description}</p>
+              <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1 print:border-black print:bg-white">
+                <span className="text-[10px] font-bold text-slate-500 print:text-slate-700 uppercase block">Description / Purpose</span>
+                <p className="font-medium text-slate-800 dark:text-slate-200 print:text-black">{slipTx.description}</p>
                 {slipTx.reference && (
-                  <p className="text-[10px] font-mono text-slate-400 pt-1">
-                    Reference #: <strong className="text-slate-700 dark:text-slate-300">{slipTx.reference}</strong>
+                  <p className="text-[10px] font-mono text-slate-400 print:text-slate-600 pt-1">
+                    Reference #: <strong className="text-slate-700 dark:text-slate-300 print:text-black">{slipTx.reference}</strong>
                   </p>
                 )}
               </div>
@@ -2816,14 +2709,14 @@ export default function PartnersKhataPage() {
               {/* Signatures */}
               <div className="pt-6 grid grid-cols-2 gap-4 text-center text-[10px]">
                 <div>
-                  <div className="border-b border-slate-300 dark:border-slate-600 pb-6 mb-1"></div>
-                  <p className="font-bold">{getPartnerName(slipTx.partnerId, slipTx.partnerName)}</p>
-                  <p className="text-slate-400 text-[9px]">Partner Signature</p>
+                  <div className="border-b border-slate-300 dark:border-slate-600 print:border-black pb-6 mb-1"></div>
+                  <p className="font-bold print:text-black">{getPartnerName(slipTx.partnerId, slipTx.partnerName)}</p>
+                  <p className="text-slate-400 print:text-slate-600 text-[9px]">Partner Signature</p>
                 </div>
                 <div>
-                  <div className="border-b border-slate-300 dark:border-slate-600 pb-6 mb-1"></div>
-                  <p className="font-bold">{slipTx.createdByName || "Authorized Admin"}</p>
-                  <p className="text-slate-400 text-[9px]">Auditor / Accountant</p>
+                  <div className="border-b border-slate-300 dark:border-slate-600 print:border-black pb-6 mb-1"></div>
+                  <p className="font-bold print:text-black">{slipTx.createdByName || "Authorized Admin"}</p>
+                  <p className="text-slate-400 print:text-slate-600 text-[9px]">Auditor / Accountant</p>
                 </div>
               </div>
             </div>
