@@ -30,6 +30,7 @@ import { enqueueOperation } from "@/lib/offline/outbox";
 import { imageStorage } from "@/lib/image-storage/service";
 import { useTheme, type ThemeId } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 
 export default function BusinessSettingsPage() {
   const { currentTheme, themeId, setTheme, availableThemes } = useTheme();
@@ -325,14 +326,30 @@ export default function BusinessSettingsPage() {
     e.preventDefault();
     setIsSaving(true);
     try {
+      const prevSettings = (await offlineDb.settings.get("primary")) || { ...settings };
       const updated: BusinessSettings = {
         ...settings,
         colorTheme: themeId,
         updatedAt: new Date().toISOString(),
-        updatedBy: "usr_admin",
+        updatedBy: currentUser?.id || "usr_admin",
       };
 
       await persistBusinessSettings(updated);
+
+      recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "update",
+        entityType: "setting",
+        entityId: "primary",
+        entityTitle: updated.brandName || "Company Settings",
+        details: `Updated company settings (${updated.companyLegalName || updated.brandName}).`,
+        snapshotBefore: prevSettings,
+        snapshotAfter: updated,
+        canUndo: true,
+      }).catch(console.warn);
 
       await new Promise((resolve) => setTimeout(resolve, 150));
       setIsSaved(true);

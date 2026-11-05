@@ -788,6 +788,8 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               ref={searchInputRef}
+              id="universal-search-desktop"
+              name="universal-search-desktop"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -1120,6 +1122,8 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
 
                   <input
                     ref={avatarInputRef}
+                    id="profile-avatar-upload"
+                    name="profile-avatar-upload"
                     type="file"
                     accept="image/*"
                     className="hidden"
@@ -1184,6 +1188,8 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-600 dark:text-teal-400 pointer-events-none" />
                 <input
                   autoFocus
+                  id="universal-search-mobile"
+                  name="universal-search-mobile"
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}

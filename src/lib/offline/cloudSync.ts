@@ -82,6 +82,31 @@ async function withRemoteSyncFlag<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+function withFirestoreTimeout<T>(promise: Promise<T>, timeoutMs = 4000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Firestore operation timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+function extractRecordTimestampMs(item: any): number {
+  if (!item || typeof item !== "object") return 0;
+  const raw = item.updatedAt || item.lastUpdatedIso || item.syncedAt || item.createdAt || item.timestamp;
+  if (!raw) return 0;
+  const ms = new Date(raw).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 /**
  * Recursively strips `undefined` values so Firestore `setDoc` never rejects optional fields,
  * and ensures serialized document size stays safely within Firestore's 1MB limit.
@@ -272,7 +297,7 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
       try {
         const colRef = collection(firestoreDb, cfg.tableName);
         const [remoteSnap, localRecords] = await Promise.all([
-          getDocs(colRef),
+          withFirestoreTimeout(getDocs(colRef), 4500),
           table.toArray(),
         ]);
 
@@ -306,18 +331,27 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
         }
 
         // Push any local records that are not yet in Cloud Firestore
-        for (const localItem of localRecords) {
+        const unpushedLocal = localRecords.filter((localItem: any) => {
           const docId = String(localItem?.[cfg.primaryKey] ?? "");
-          if (!docId) continue;
-          if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
+          if (!docId) return false;
+          if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) return false;
+          return !remoteMap.has(docId);
+        });
 
-          if (!remoteMap.has(docId)) {
-            await setDoc(
-              doc(firestoreDb, cfg.tableName, docId),
-              sanitizeForFirestore(localItem),
-              { merge: true }
-            );
-          }
+        if (unpushedLocal.length > 0) {
+          await Promise.allSettled(
+            unpushedLocal.map((localItem: any) => {
+              const docId = String(localItem[cfg.primaryKey]);
+              return withFirestoreTimeout(
+                setDoc(
+                  doc(firestoreDb, cfg.tableName, docId),
+                  sanitizeForFirestore(localItem),
+                  { merge: true }
+                ),
+                3500
+              );
+            })
+          );
         }
 
         // Update localStorage mirror if configured
@@ -387,19 +421,20 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
 }
 
 /**
- * Force an immediate full push & pull of all tables with Cloud Firestore.
+ * Force an immediate delta push & pull of all tables with Cloud Firestore (bounded with strict timeouts so it never hangs).
  */
 export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Promise<number> {
   let totalSyncedDocs = 0;
+  const BATCH_CONCURRENCY = 6;
 
-  for (const cfg of SYNCED_TABLES) {
+  const syncSingleTable = async (cfg: SyncedTableConfig) => {
     const table = (dexieDb as any)[cfg.tableName];
-    if (!table) continue;
+    if (!table) return;
 
     try {
       const colRef = collection(firestoreDb, cfg.tableName);
       const [remoteSnap, localRecords] = await Promise.all([
-        getDocs(colRef),
+        withFirestoreTimeout(getDocs(colRef), 3500),
         table.toArray(),
       ]);
 
@@ -409,17 +444,35 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
         remoteMap.set(d.id, { ...d.data(), [cfg.primaryKey]: d.id });
       });
 
-      // Push all local records to Cloud Firestore
-      for (const localItem of localRecords) {
+      // Only push local records that are missing remotely or have a newer local timestamp
+      const recordsToPush = localRecords.filter((localItem: any) => {
         const docId = String(localItem?.[cfg.primaryKey] ?? "");
-        if (!docId) continue;
-        if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
-        await setDoc(
-          doc(firestoreDb, cfg.tableName, docId),
-          sanitizeForFirestore(localItem),
-          { merge: true }
+        if (!docId) return false;
+        if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) return false;
+
+        const remoteItem = remoteMap.get(docId);
+        if (!remoteItem) return true;
+
+        const localTs = extractRecordTimestampMs(localItem);
+        const remoteTs = extractRecordTimestampMs(remoteItem);
+        return localTs > 0 && localTs > remoteTs;
+      });
+
+      if (recordsToPush.length > 0) {
+        await Promise.allSettled(
+          recordsToPush.map((localItem: any) => {
+            const docId = String(localItem[cfg.primaryKey]);
+            totalSyncedDocs++;
+            return withFirestoreTimeout(
+              setDoc(
+                doc(firestoreDb, cfg.tableName, docId),
+                sanitizeForFirestore(localItem),
+                { merge: true }
+              ),
+              3000
+            );
+          })
         );
-        totalSyncedDocs++;
       }
 
       // Pull any remote records into local Dexie
@@ -435,8 +488,13 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
         localStorage.setItem(cfg.localStorageMirrorKey, JSON.stringify(latestAll));
       }
     } catch (err) {
-      console.warn(`[CloudSync] Full sync error on ${cfg.tableName}:`, err);
+      console.warn(`[CloudSync] Full sync warning on ${cfg.tableName}:`, err);
     }
+  };
+
+  for (let i = 0; i < SYNCED_TABLES.length; i += BATCH_CONCURRENCY) {
+    const chunk = SYNCED_TABLES.slice(i, i + BATCH_CONCURRENCY);
+    await Promise.allSettled(chunk.map((cfg) => syncSingleTable(cfg)));
   }
 
   dispatchCloudSyncUpdate();

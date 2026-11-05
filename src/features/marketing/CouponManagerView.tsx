@@ -282,6 +282,19 @@ export function CouponManagerView() {
 
     try {
       await offlineDb.coupons.add(newCoupon);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "create",
+        entityType: "coupon",
+        entityId: newCoupon.id,
+        entityTitle: `${newCoupon.code} (${newCoupon.discountPercent}% OFF)`,
+        details: `Created promotional coupon code "${newCoupon.code}" (${newCoupon.discountPercent}% OFF) for ${newCoupon.customerName || "customers"}.`,
+        snapshotAfter: newCoupon,
+        canUndo: true,
+      });
       await refreshData();
       setSuccessToast(`Coupon "${cleanCode}" (${discountPercent}% OFF) kamyabi se ban gaya!`);
       setTimeout(() => setSuccessToast(null), 4000);
@@ -297,10 +310,25 @@ export function CouponManagerView() {
   // Toggle Coupon Active / Disabled
   const handleToggleStatus = async (coupon: CouponCode) => {
     const nextStatus: CouponStatus = coupon.status === "active" ? "disabled" : "active";
+    const nowIso = new Date().toISOString();
     try {
       await offlineDb.coupons.update(coupon.id, {
         status: nextStatus,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
+      });
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "update",
+        entityType: "coupon",
+        entityId: coupon.id,
+        entityTitle: coupon.code,
+        details: `${nextStatus === "active" ? "Enabled" : "Disabled"} coupon code "${coupon.code}".`,
+        snapshotBefore: coupon,
+        snapshotAfter: { ...coupon, status: nextStatus, updatedAt: nowIso },
+        canUndo: true,
       });
       await refreshData();
     } catch (e) {
@@ -407,6 +435,8 @@ export function CouponManagerView() {
         entityId: deletingCoupon.id,
         entityTitle: deletingCoupon.code,
         details: `Deleted coupon code "${deletingCoupon.code}" (${deletingCoupon.discountPercent}% OFF)`,
+        snapshotBefore: deletingCoupon,
+        canUndo: true,
       });
       setSelectedCouponIds((prev) => prev.filter((id) => id !== deletingCoupon.id));
       await refreshData();
@@ -458,6 +488,8 @@ export function CouponManagerView() {
         entityId: idsToDelete.slice(0, 5).join(", "),
         entityTitle: `Bulk deleted ${toDelete.length} coupon(s)`,
         details: `Bulk deleted ${toDelete.length} coupon code(s) (Scope: ${scope})`,
+        snapshotBefore: toDelete,
+        canUndo: true,
       });
       setSelectedCouponIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
       await refreshData();

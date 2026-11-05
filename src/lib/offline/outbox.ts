@@ -55,17 +55,19 @@ export async function enqueueOperation(
 }
 
 export async function getPendingOperations(): Promise<OutboxOperation[]> {
-  return await offlineDb.outboxQueue
+  const ops = await offlineDb.outboxQueue
     .where("status")
     .anyOf(["pending", "failed", "processing"])
     .sortBy("timestamp");
+  return ops.filter((op) => (op.retryCount || 0) < 10);
 }
 
 export async function getPendingOutboxCount(): Promise<number> {
-  return await offlineDb.outboxQueue
+  const ops = await offlineDb.outboxQueue
     .where("status")
-    .anyOf(["pending", "processing", "conflict", "failed"])
-    .count();
+    .anyOf(["pending", "processing", "failed"])
+    .toArray();
+  return ops.filter((op) => op.status !== "failed" || (op.retryCount || 0) < 5).length;
 }
 
 export async function markOperationProcessing(opId: string): Promise<void> {
@@ -79,21 +81,35 @@ export async function markOperationSynced(
   const op = await offlineDb.outboxQueue.get(opId);
   if (!op) return;
 
-  await offlineDb.transaction("rw", [offlineDb.outboxQueue, offlineDb.invoices], async () => {
-    await offlineDb.outboxQueue.update(opId, { status: "synced" });
+  await offlineDb.transaction(
+    "rw",
+    [offlineDb.outboxQueue, offlineDb.invoices, offlineDb.payments],
+    async () => {
+      await offlineDb.outboxQueue.update(opId, { status: "synced", lastError: undefined });
 
-    // If it was an invoice, update syncStatus to 'synced' and link official server reference
-    if (op.entityType === "invoice") {
-      const invoice = await offlineDb.invoices.get(op.entityId);
-      if (invoice) {
-        await offlineDb.invoices.update(op.entityId, {
-          syncStatus: "synced",
-          officialReference: (serverAssignedData?.officialReference as string) || invoice.officialReference,
-          updatedAt: new Date().toISOString(),
-        });
+      // If it was an invoice, update syncStatus to 'synced' and link official server reference
+      if (op.entityType === "invoice" && op.entityId) {
+        const invoice = await offlineDb.invoices.get(op.entityId);
+        if (invoice) {
+          await offlineDb.invoices.update(op.entityId, {
+            syncStatus: "synced",
+            officialReference:
+              (serverAssignedData?.officialReference as string) ||
+              invoice.officialReference ||
+              invoice.provisionalReference,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } else if (op.entityType === "payment" && op.entityId) {
+        const payment = await offlineDb.payments.get(op.entityId);
+        if (payment) {
+          await offlineDb.payments.update(op.entityId, {
+            syncStatus: "synced",
+          });
+        }
       }
     }
-  });
+  );
 }
 
 export async function markOperationConflict(

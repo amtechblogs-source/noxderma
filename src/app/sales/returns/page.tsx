@@ -19,6 +19,7 @@ import {
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import type { Customer, Product, InventoryBatch, StockMovement } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import {
@@ -173,6 +174,7 @@ export default function SalesReturnsPage() {
     await offlineDb.stockMovements.put(movement);
 
     // 2. Adjust Customer Outstanding Balance (Credit Note)
+    const prevBalance = cust.currentOutstandingBalance;
     const newBal = Math.max(0, cust.currentOutstandingBalance - totalCredit);
     await offlineDb.customers.update(cust.id, {
       currentOutstandingBalance: newBal,
@@ -180,6 +182,20 @@ export default function SalesReturnsPage() {
     });
 
     saveReturns([newReturn, ...returns]);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "sales_return",
+      entityId: newReturn.id,
+      entityTitle: `${newReturn.returnNoteNumber} - ${newReturn.customerName}`,
+      details: `Recorded customer return ${newReturn.returnNoteNumber} for ${newReturn.customerName}: ${newReturn.productName} (${newReturn.returnQuantity} packs, Credit: ${formatPKR(newReturn.totalCreditAmount)}).`,
+      snapshotBefore: { customerId: cust.id, prevBalance },
+      snapshotAfter: { returnRecord: newReturn, movementId: movement.id, customerId: cust.id, newBalance: newBal },
+      canUndo: true,
+    }).catch(console.warn);
     setIsProcessing(false);
     alert(
       `Return slip ${cnNumber} for ${formatPKR(

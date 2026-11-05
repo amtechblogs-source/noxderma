@@ -8,7 +8,11 @@ import {
   onOutboxEnqueued,
 } from "./outbox";
 import { offlineDb } from "./db";
-import { forceFullCloudDatabaseSync, startRealtimeCloudSync } from "./cloudSync";
+import {
+  forceFullCloudDatabaseSync,
+  scheduleCloudUpsert,
+  startRealtimeCloudSync,
+} from "./cloudSync";
 
 export interface SyncResult {
   totalProcessed: number;
@@ -20,6 +24,43 @@ export interface SyncResult {
 
 const AUTO_SYNC_INTERVAL_MS = 10_000; // 10 seconds auto-sync delay
 const HEALTH_TIMEOUT_MS = 3_500;
+const SYNC_API_TIMEOUT_MS = 6_000;
+const CLOUD_RECONCILE_MAX_WAIT_MS = 7_500;
+
+function mapEntityTypeToTable(entityType: string): string {
+  switch (entityType) {
+    case "customer":
+      return "customers";
+    case "lead":
+      return "leads";
+    case "customer_visit":
+      return "customerVisits";
+    case "payment":
+      return "payments";
+    case "invoice":
+      return "invoices";
+    case "settings":
+      return "settings";
+    default:
+      return entityType;
+  }
+}
+
+function buildFallbackOfficialReference(payload?: Record<string, unknown>): string {
+  const existing =
+    typeof payload?.officialReference === "string" ? payload.officialReference : "";
+  if (existing && !existing.startsWith("PROV-")) {
+    return existing;
+  }
+  const prov =
+    typeof payload?.provisionalReference === "string" ? payload.provisionalReference : "";
+  if (prov && !prov.startsWith("PROV-")) {
+    return prov;
+  }
+  const year = new Date().getFullYear();
+  const suffix = String(Date.now()).slice(-5);
+  return `NXD-${year}-${suffix}`;
+}
 
 class SynchronizationManager {
   private isSyncing = false;
@@ -226,12 +267,25 @@ class SynchronizationManager {
     let failedCount = 0;
 
     try {
-      await startRealtimeCloudSync(offlineDb);
-      await forceFullCloudDatabaseSync(offlineDb);
+      // 1. Start live listeners (non-blocking)
+      startRealtimeCloudSync(offlineDb).catch((err) => {
+        console.warn("[SyncManager] Realtime sync init notice:", err);
+      });
+
+      // 2. Process Outbox Queue FIRST so waiting bills & operations upload immediately
       const pending = await getPendingOperations();
 
       for (const op of pending) {
         await markOperationProcessing(op.id);
+
+        // Ensure record is also queued directly to Cloud Firestore from the client
+        const targetTable = mapEntityTypeToTable(op.entityType);
+        if (op.entityId && op.payload) {
+          scheduleCloudUpsert(targetTable, op.entityId, op.payload);
+        }
+
+        const controller = new AbortController();
+        const apiTimer = setTimeout(() => controller.abort(), SYNC_API_TIMEOUT_MS);
 
         try {
           const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
@@ -239,10 +293,11 @@ class SynchronizationManager {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(op),
+            signal: controller.signal,
           });
 
           if (response.ok) {
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
             await markOperationSynced(op.id, data);
             syncedCount++;
           } else if (response.status === 409) {
@@ -254,19 +309,71 @@ class SynchronizationManager {
               errorData.serverState
             );
             conflictCount++;
+          } else if (this.reachableOnline && response.status >= 500) {
+            // Direct Cloud Firestore fallback if serverless endpoint returns 5xx while online
+            const fallbackRef =
+              op.entityType === "invoice"
+                ? buildFallbackOfficialReference(op.payload)
+                : undefined;
+            if (op.entityType === "invoice" && op.entityId && op.payload) {
+              scheduleCloudUpsert("invoices", op.entityId, {
+                ...op.payload,
+                officialReference: fallbackRef,
+                syncStatus: "synced",
+                syncedAt: new Date().toISOString(),
+              });
+            }
+            await markOperationSynced(
+              op.id,
+              fallbackRef ? { officialReference: fallbackRef } : undefined
+            );
+            syncedCount++;
           } else {
-            const errBody = await response.text();
+            const errBody = await response.text().catch(() => "");
             await markOperationFailed(op.id, `Server error ${response.status}: ${errBody}`);
             failedCount++;
           }
         } catch (netErr: unknown) {
+          if (this.reachableOnline && navigator.onLine) {
+            // If online (verified by /api/health) and only the serverless POST timed out, complete via direct Firestore sync
+            const stillOnline = await this.checkConnectivity();
+            if (stillOnline) {
+              const fallbackRef =
+                op.entityType === "invoice"
+                  ? buildFallbackOfficialReference(op.payload)
+                  : undefined;
+              if (op.entityType === "invoice" && op.entityId && op.payload) {
+                scheduleCloudUpsert("invoices", op.entityId, {
+                  ...op.payload,
+                  officialReference: fallbackRef,
+                  syncStatus: "synced",
+                  syncedAt: new Date().toISOString(),
+                });
+              }
+              await markOperationSynced(
+                op.id,
+                fallbackRef ? { officialReference: fallbackRef } : undefined
+              );
+              syncedCount++;
+              continue;
+            }
+          }
+
           const message = netErr instanceof Error ? netErr.message : "Network error during sync";
           await markOperationFailed(op.id, message);
           failedCount++;
           this.setReachableOnline(false);
           break;
+        } finally {
+          clearTimeout(apiTimer);
         }
       }
+
+      // 3. Delta table reconciliation with strict timeout cap so syncNow() never hangs
+      await Promise.race([
+        forceFullCloudDatabaseSync(offlineDb),
+        new Promise((resolve) => setTimeout(resolve, CLOUD_RECONCILE_MAX_WAIT_MS)),
+      ]);
     } finally {
       this.isSyncing = false;
       await this.notifyListeners();

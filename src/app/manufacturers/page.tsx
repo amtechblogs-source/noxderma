@@ -286,7 +286,9 @@ export default function ManufacturersPage() {
         entityId: updated.id,
         entityTitle: updated.name,
         details: `Updated company details for: ${updated.name}`,
+        snapshotBefore: { ...editingMfr },
         snapshotAfter: updated,
+        canUndo: true,
       });
 
       setIsEditModalOpen(false);
@@ -327,6 +329,7 @@ export default function ManufacturersPage() {
         entityTitle: targetMfr.name,
         details: `Deleted medicine manufacturer/company: ${targetMfr.name}`,
         snapshotBefore: targetMfr,
+        canUndo: true,
       });
 
       setDeletingMfr(null);
@@ -388,6 +391,7 @@ export default function ManufacturersPage() {
         entityTitle: `Bulk deleted ${toDelete.length} manufacturer(s)`,
         details: `Purged ${toDelete.length} companies under scope: ${scope}.`,
         snapshotBefore: toDelete,
+        canUndo: true,
       });
 
       setDeleteModalOpen(false);

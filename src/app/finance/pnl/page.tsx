@@ -356,6 +356,18 @@ export default function ProfitAndLossPage() {
 
       await offlineDb.operatingExpenses.put(newExp);
       scheduleCloudUpsert("operatingExpenses", newExp.id, newExp);
+      await recordActivity({
+        userId: currentUser?.id || "usr_owner",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "create",
+        entityType: "operating_expense",
+        entityId: newExp.id,
+        entityTitle: `Added Expense: ${newExp.title} (${formatPKR(newExp.amount)})`,
+        details: `Recorded operating expense under ${newExp.category} paid via ${newExp.paymentMethod}.`,
+        snapshotAfter: newExp,
+        canUndo: true,
+      });
       setIsExpenseModalOpen(false);
       setExpenseTitle("");
       setExpenseAmount("");
@@ -433,7 +445,7 @@ export default function ProfitAndLossPage() {
         entityTitle: `Bulk deleted ${toDelete.length} expense(s)`,
         details: `Purged ${toDelete.length} expense record(s) under criteria scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       });
 
       setSelectedExpenseIds([]);

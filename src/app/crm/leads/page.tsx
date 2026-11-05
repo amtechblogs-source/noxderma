@@ -135,14 +135,37 @@ export default function LeadsCrmPage() {
   };
 
   const handleStageChange = async (leadId: string, nextStage: LeadPipelineStage) => {
+    const targetLead = leads.find((l) => l.id === leadId);
+    const nowIso = new Date().toISOString();
     await offlineDb.leads.update(leadId, {
       status: nextStage,
-      lastContactedAt: new Date().toISOString(),
+      lastContactedAt: nowIso,
     });
+
+    if (targetLead) {
+      const updatedLead: ClientLead = {
+        ...targetLead,
+        status: nextStage,
+        lastContactedAt: nowIso,
+      };
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "update",
+        entityType: "crm_lead",
+        entityId: targetLead.id,
+        entityTitle: targetLead.leadName,
+        details: `Updated lead stage for "${targetLead.leadName}" from ${targetLead.status} to ${nextStage}.`,
+        snapshotBefore: targetLead,
+        snapshotAfter: updatedLead,
+        canUndo: true,
+      });
+    }
 
     // If converting to customer, optionally create in customers table
     if (nextStage === "converted") {
-      const targetLead = leads.find((l) => l.id === leadId);
       if (targetLead) {
         const existingCust = await offlineDb.customers.get(`cust_${targetLead.id}`);
         if (!existingCust) {
@@ -161,8 +184,8 @@ export default function LeadsCrmPage() {
             currentOutstandingBalance: 0,
             status: "active",
             notes: `Converted from lead: ${targetLead.notes || ""}`,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: nowIso,
+            updatedAt: nowIso,
           };
           await offlineDb.customers.put(newCust);
         }
@@ -238,7 +261,7 @@ export default function LeadsCrmPage() {
         entityTitle: `Bulk deleted ${toDelete.length} client lead(s)`,
         details: `Purged ${toDelete.length} lead(s) under criteria scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       });
 
       setSelectedIds([]);

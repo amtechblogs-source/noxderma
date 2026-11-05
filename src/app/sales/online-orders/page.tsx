@@ -24,6 +24,8 @@ import {
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
+import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import type { Customer, Product } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import {
@@ -62,6 +64,7 @@ interface OnlineOrder {
 }
 
 export default function OnlineOrdersPage() {
+  const { currentUser } = useAuth();
   const { selectedCategoryId, categories } = useCategory();
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -545,10 +548,25 @@ export default function OnlineOrdersPage() {
       orderDate: editOrderDate,
     };
 
+    const prevOrder = { ...editingOrder };
     const updated = orders.map((o) => (o.id === editingOrder.id ? updatedOrder : o));
     setEditingOrder(null);
     setOrders(updated);
     saveOrders(updated).catch(console.warn);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "update",
+      entityType: "online_order",
+      entityId: updatedOrder.id,
+      entityTitle: `${updatedOrder.orderNumber} - ${updatedOrder.customerName}`,
+      details: `Updated online courier order ${updatedOrder.orderNumber} for ${updatedOrder.customerName} (${formatPKR(updatedOrder.totalAmount)}).`,
+      snapshotBefore: prevOrder,
+      snapshotAfter: updatedOrder,
+      canUndo: true,
+    }).catch(console.warn);
   };
 
   // Delete Handlers
@@ -558,25 +576,68 @@ export default function OnlineOrdersPage() {
     setSelectedOrderIds((prev) => prev.filter((id) => id !== order.id));
     setOrders(updated);
     saveOrders(updated).catch(console.warn);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "delete",
+      entityType: "online_order",
+      entityId: order.id,
+      entityTitle: `${order.orderNumber} - ${order.customerName}`,
+      details: `Deleted online courier order ${order.orderNumber} for ${order.customerName}.`,
+      snapshotBefore: order,
+      canUndo: true,
+    }).catch(console.warn);
   };
 
   const handleDeleteSelected = async () => {
     if (selectedOrderIds.length === 0) return;
     const idsSet = new Set(selectedOrderIds);
+    const toDelete = orders.filter((o) => idsSet.has(o.id));
     const updated = orders.filter((o) => !idsSet.has(o.id));
     setIsBulkDeleting(false);
     setSelectedOrderIds([]);
     setOrders(updated);
     saveOrders(updated).catch(console.warn);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "delete",
+      entityType: "online_order",
+      entityId: toDelete.map((o) => o.id).slice(0, 5).join(", "),
+      entityTitle: `Bulk deleted ${toDelete.length} online order(s)`,
+      details: `Bulk deleted ${toDelete.length} online courier order(s).`,
+      snapshotBefore: toDelete,
+      canUndo: true,
+    }).catch(console.warn);
   };
 
   const handlePurgeFiltered = async () => {
+    const toDelete = [...filtered];
     const idsToRemove = new Set(filtered.map((o) => o.id));
     const updated = orders.filter((o) => !idsToRemove.has(o.id));
     setIsPurgeModalOpen(false);
     setSelectedOrderIds([]);
     setOrders(updated);
     saveOrders(updated).catch(console.warn);
+    if (toDelete.length > 0) {
+      recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "online_order",
+        entityId: toDelete.map((o) => o.id).slice(0, 5).join(", "),
+        entityTitle: `Purged ${toDelete.length} online order(s)`,
+        details: `Purged ${toDelete.length} filtered online courier order(s).`,
+        snapshotBefore: toDelete,
+        canUndo: true,
+      }).catch(console.warn);
+    }
   };
 
   const openBookingModal = () => {
@@ -721,6 +782,19 @@ export default function OnlineOrdersPage() {
 
     const updated = [newOrd, ...orders];
     saveOrders(updated);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "online_order",
+      entityId: newOrd.id,
+      entityTitle: `${newOrd.orderNumber} - ${newOrd.customerName}`,
+      details: `Booked online courier parcel ${newOrd.orderNumber} via ${newOrd.courier} for ${newOrd.customerName} (${formatPKR(newOrd.totalAmount)}).`,
+      snapshotAfter: newOrd,
+      canUndo: true,
+    }).catch(console.warn);
     setIsBooking(false);
 
     // If initial status was "delivered", deduct stock immediately!

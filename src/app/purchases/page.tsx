@@ -23,6 +23,7 @@ import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import type {
   Product,
   InventoryBatch,
@@ -234,17 +235,30 @@ export default function PurchasesPage() {
     await offlineDb.stockMovements.put(movement);
 
     // 3. Mark PO as received
-    const updated = purchases.map((po) =>
-      po.id === selectedPO.id
-        ? {
-            ...po,
-            status: "received" as const,
-            grnReference: grnNumber,
-            receivedDate: now.slice(0, 10),
-          }
-        : po
-    );
+    const prevPO = { ...selectedPO };
+    const updatedPO: PurchaseOrder = {
+      ...selectedPO,
+      status: "received" as const,
+      grnReference: grnNumber,
+      receivedDate: now.slice(0, 10),
+    };
+    const updated = purchases.map((po) => (po.id === selectedPO.id ? updatedPO : po));
     savePOsToStorage(updated);
+
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "update",
+      entityType: "purchase_order",
+      entityId: selectedPO.id,
+      entityTitle: `${selectedPO.poNumber} (${grnNumber})`,
+      details: `Received stock against ${selectedPO.poNumber} from ${selectedPO.manufacturerName} — Batch ${newBatch.batchNumber} (${newBatch.receivedQuantity} packs).`,
+      snapshotBefore: { po: prevPO },
+      snapshotAfter: { po: updatedPO, batch: newBatch, movementId: movement.id },
+      canUndo: true,
+    }).catch(console.warn);
 
     setIsReceivingGRN(false);
     alert(
@@ -319,6 +333,19 @@ export default function PurchasesPage() {
     };
 
     savePOsToStorage([newPO, ...purchases]);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "purchase_order",
+      entityId: newPO.id,
+      entityTitle: `${newPO.poNumber} - ${newPO.manufacturerName}`,
+      details: `Created purchase order ${newPO.poNumber} for ${prodName} (${newPOQty} packs @ ${formatPKR(newPOPrice)}) from ${newPO.manufacturerName}.`,
+      snapshotAfter: newPO,
+      canUndo: true,
+    }).catch(console.warn);
     setIsCreatingPO(false);
   };
 

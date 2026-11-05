@@ -398,7 +398,9 @@ export default function StaffSalariesPage() {
         entityId: salaryRecord.id,
         entityTitle: `${salaryRecord.staffName} (${salaryRecord.monthLabel})`,
         details: `${editingSalary ? "Updated" : "Created"} salary slip for ${salaryRecord.staffName} (${salaryRecord.monthLabel}): Net PKR ${salaryRecord.netSalary.toLocaleString()} [Status: ${salaryRecord.status.toUpperCase()}]`,
+        snapshotBefore: editingSalary ? { ...editingSalary } : undefined,
         snapshotAfter: salaryRecord,
+        canUndo: true,
       });
 
       setIsCreateModalOpen(false);
@@ -459,7 +461,9 @@ export default function StaffSalariesPage() {
         entityId: updated.id,
         entityTitle: `Disbursed Salary - ${updated.staffName}`,
         details: `Disbursed PKR ${updated.netSalary.toLocaleString()} to ${updated.staffName} for ${updated.monthLabel} via ${disbursePaymentMethod.toUpperCase()} on ${disburseDate}`,
+        snapshotBefore: { ...disburseModalSalary },
         snapshotAfter: updated,
+        canUndo: true,
       });
 
       const processedSal = updated;
@@ -485,6 +489,7 @@ export default function StaffSalariesPage() {
       : now.toISOString();
 
     try {
+      const updatedList: StaffSalary[] = [];
       for (const sal of pendingList) {
         const updated: StaffSalary = {
           ...sal,
@@ -495,6 +500,7 @@ export default function StaffSalariesPage() {
           disbursedByUserName: currentUser?.displayName || "Owner",
           updatedAt: now.toISOString(),
         };
+        updatedList.push(updated);
         await offlineDb.staffSalaries.put(updated);
         scheduleCloudUpsert("staffSalaries", updated.id, updated);
       }
@@ -505,9 +511,12 @@ export default function StaffSalariesPage() {
         userRole: currentUser?.role || "owner",
         action: "update",
         entityType: "salary",
-        entityId: `bulk_sal_${Date.now()}`,
+        entityId: pendingList.map((s) => s.id).join(", "),
         entityTitle: `Bulk Salary Disbursement (${selectedMonth})`,
         details: `One-Click Bulk Disbursed ${pendingList.length} staff salaries totaling PKR ${kpis.pendingAmount.toLocaleString()} for ${selectedMonth}`,
+        snapshotBefore: pendingList,
+        snapshotAfter: updatedList,
+        canUndo: true,
       });
 
       setBulkDisburseModalOpen(false);
@@ -554,6 +563,7 @@ export default function StaffSalariesPage() {
       : monthDate.toLocaleString("en-PK", { month: "long", year: "numeric" });
 
     try {
+      const generatedRecords: StaffSalary[] = [];
       for (const staff of missingStaff) {
         const base = staff.role === "booking_user" || staff.role === "sales_rep" ? 40000 : 35000;
         const fuel = staff.role === "booking_user" || staff.role === "sales_rep" ? 6000 : 0;
@@ -579,9 +589,23 @@ export default function StaffSalariesPage() {
           updatedAt: now.toISOString(),
         };
 
+        generatedRecords.push(record);
         await offlineDb.staffSalaries.put(record);
         scheduleCloudUpsert("staffSalaries", record.id, record);
       }
+
+      await recordActivity({
+        userId: currentUser?.id || "usr_admin",
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        action: "create",
+        entityType: "salary",
+        entityId: generatedRecords.map((r) => r.id).join(", "),
+        entityTitle: `Auto-Generated ${generatedRecords.length} Salary Draft(s) (${monthLabel})`,
+        details: `Auto-generated ${generatedRecords.length} monthly payroll drafts for ${monthLabel}.`,
+        snapshotAfter: generatedRecords,
+        canUndo: true,
+      });
 
       setNotice({
         type: "success",
@@ -667,7 +691,7 @@ export default function StaffSalariesPage() {
         entityTitle: `Bulk deleted ${toDelete.length} staff salary record(s)`,
         details: `Purged ${toDelete.length} salary record(s) under criteria scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       });
 
       setDeleteModalOpen(false);
@@ -1904,26 +1928,26 @@ export default function StaffSalariesPage() {
             }
           `}</style>
 
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:backdrop-blur-none print:overflow-visible print:block">
-            <div className="w-full max-w-2xl rounded-3xl bg-white text-slate-900 shadow-2xl p-6 sm:p-8 space-y-6 my-auto print:max-w-none print:w-full print:rounded-none print:shadow-none print:p-0 print:m-0 print:border-none print:space-y-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:backdrop-blur-none print:overflow-visible print:block">
+            <div className="w-full max-w-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden rounded-2xl sm:rounded-3xl bg-white text-slate-900 shadow-2xl p-3.5 sm:p-8 space-y-4 sm:space-y-6 my-auto print:max-w-none print:max-h-none print:w-full print:rounded-none print:shadow-none print:p-0 print:m-0 print:border-none print:space-y-4 print:overflow-visible">
               {/* Modal Controls (No print) */}
-              <div className="flex items-center justify-between no-print border-b pb-3">
-                <span className="text-xs font-black uppercase text-teal-700 tracking-wider">
+              <div className="flex items-center justify-between gap-2 no-print border-b pb-2.5 sm:pb-3">
+                <span className="text-xs font-black uppercase text-teal-700 tracking-wider truncate">
                   Official Salary Slip Preview
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+                    className="px-3 sm:px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 whitespace-nowrap shrink-0"
                   >
-                    <Printer className="w-4 h-4" />
+                    <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                     <span>Print Slip Now</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setSlipSalary(null)}
-                    className="p-1 text-slate-400 hover:text-slate-600"
+                    className="p-1 text-slate-400 hover:text-slate-600 shrink-0"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1933,7 +1957,7 @@ export default function StaffSalariesPage() {
               {/* Printable Slip Content */}
               <div
                 id="printable-salary-slip"
-                className="border border-slate-300 rounded-2xl p-6 sm:p-8 space-y-6 bg-white text-slate-900 print:border print:border-slate-800 print:rounded-xl print:p-6 print:space-y-4 print:m-0 print:w-full"
+                className="border border-slate-300 rounded-2xl p-3.5 sm:p-8 space-y-4 sm:space-y-6 bg-white text-slate-900 overflow-hidden print:border print:border-slate-800 print:rounded-xl print:p-6 print:space-y-4 print:m-0 print:w-full"
               >
                 {/* Slip Header */}
                 <OfficialPrintHeader

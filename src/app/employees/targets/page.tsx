@@ -366,6 +366,7 @@ export default function SalesTargetsPage() {
         entityId: updatedTarget.id,
         entityTitle: `${updatedTarget.repName} - ${updatedTarget.month}`,
         details: `Updated sales target for ${updatedTarget.repName} to ${formatPKR(updatedTarget.monthlyQuotaPkr)} (${updatedTarget.month}).`,
+        snapshotBefore: existing ? { ...existing } : undefined,
         snapshotAfter: updatedTarget,
         canUndo: true,
       });
@@ -396,6 +397,21 @@ export default function SalesTargetsPage() {
         const nextList = [...targets];
         nextList[existingIndex] = updatedTarget;
         await saveTargets(nextList);
+
+        await recordActivity({
+          userId: currentUser?.id,
+          userName: currentUser?.displayName || "Owner",
+          userRole: currentUser?.role || "owner",
+          userEmail: currentUser?.email,
+          action: "update",
+          entityType: "employee_target",
+          entityId: updatedTarget.id,
+          entityTitle: `${updatedTarget.repName} - ${updatedTarget.month}`,
+          details: `Updated sales target for ${updatedTarget.repName} to ${formatPKR(updatedTarget.monthlyQuotaPkr)} (${updatedTarget.month}).`,
+          snapshotBefore: { ...existing },
+          snapshotAfter: updatedTarget,
+          canUndo: true,
+        });
 
         setNotice({
           type: "success",
@@ -635,7 +651,7 @@ export default function SalesTargetsPage() {
         entityTitle: `Bulk deleted ${toDelete.length} sales target(s)`,
         details: `Purged ${toDelete.length} target(s) under criteria scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       });
 
       setSelectedIds([]);

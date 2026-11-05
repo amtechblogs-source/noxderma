@@ -231,20 +231,40 @@ export default function UserManagementPage() {
 
     if (editingUserId) {
       // Update existing
-      const updated = users.map((u) =>
-        u.id === editingUserId
-          ? {
-              ...u,
-              displayName: displayName.trim(),
-              email: email.trim().toLowerCase(),
-              role,
-              password: password.trim() || "admin",
-              phone: phone.trim() || undefined,
-              permissions: selectedPermissions,
-            }
-          : u
-      );
+      const prevUser = users.find((u) => u.id === editingUserId);
+      let updatedUserObj: UserProfile | undefined;
+      const updated = users.map((u) => {
+        if (u.id === editingUserId) {
+          updatedUserObj = {
+            ...u,
+            displayName: displayName.trim(),
+            email: email.trim().toLowerCase(),
+            role,
+            password: password.trim() || "admin",
+            phone: phone.trim() || undefined,
+            permissions: selectedPermissions,
+          };
+          return updatedUserObj;
+        }
+        return u;
+      });
       saveUsers(updated);
+      if (updatedUserObj) {
+        recordActivity({
+          userId: currentUser?.id,
+          userName: currentUser?.displayName || "Owner",
+          userRole: currentUser?.role || "owner",
+          userEmail: currentUser?.email,
+          action: "update",
+          entityType: "user",
+          entityId: updatedUserObj.id,
+          entityTitle: `${updatedUserObj.displayName} (${updatedUserObj.email})`,
+          details: `Updated staff user account: ${updatedUserObj.displayName} (${updatedUserObj.email}) [Role: ${getUserRoleLabel(updatedUserObj.role)}]`,
+          snapshotBefore: prevUser ? { ...prevUser } : undefined,
+          snapshotAfter: updatedUserObj,
+          canUndo: true,
+        }).catch(console.warn);
+      }
     } else {
       // Create new
       const newUser: UserProfile = {
@@ -259,6 +279,19 @@ export default function UserManagementPage() {
         createdAt: new Date().toISOString(),
       };
       saveUsers([newUser, ...users]);
+      recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "create",
+        entityType: "user",
+        entityId: newUser.id,
+        entityTitle: `${newUser.displayName} (${newUser.email})`,
+        details: `Created new staff user account: ${newUser.displayName} (${newUser.email}) [Role: ${getUserRoleLabel(newUser.role)}]`,
+        snapshotAfter: newUser,
+        canUndo: true,
+      }).catch(console.warn);
     }
 
     setIsModalOpen(false);
@@ -270,8 +303,26 @@ export default function UserManagementPage() {
       alert("Owner account ko deactivate nahi kiya ja sakta.");
       return;
     }
+    const prevUser = users.find((u) => u.id === userId);
     const updated = users.map((u) => (u.id === userId ? { ...u, active: !u.active } : u));
     saveUsers(updated);
+    if (prevUser) {
+      const nextUser = { ...prevUser, active: !prevUser.active };
+      recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "update",
+        entityType: "user",
+        entityId: prevUser.id,
+        entityTitle: `${prevUser.displayName} (${prevUser.email})`,
+        details: `${nextUser.active ? "Activated" : "Deactivated"} staff user account: ${prevUser.displayName}`,
+        snapshotBefore: prevUser,
+        snapshotAfter: nextUser,
+        canUndo: true,
+      }).catch(console.warn);
+    }
   };
 
   // Delete user (Opens confirmation modal)
@@ -325,6 +376,8 @@ export default function UserManagementPage() {
         entityId: deletingUser.id,
         entityTitle: `${deletingUser.displayName} (${deletingUser.email})`,
         details: `Deleted staff user account: ${deletingUser.displayName} (${deletingUser.email})`,
+        snapshotBefore: deletingUser,
+        canUndo: true,
       });
       setSelectedUserIds((prev) => prev.filter((id) => id !== deletingUser.id));
       setDeletingUser(null);
@@ -383,6 +436,8 @@ export default function UserManagementPage() {
         entityId: idsToDelete.slice(0, 5).join(", "),
         entityTitle: `Bulk deleted ${toDelete.length} staff account(s)`,
         details: `Bulk deleted ${toDelete.length} staff account(s) (Scope: ${scope})`,
+        snapshotBefore: toDelete,
+        canUndo: true,
       });
       setSelectedUserIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
       setDeleteUsersModalOpen(false);

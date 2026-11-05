@@ -18,6 +18,23 @@ function generateSequentialReference(): string {
   return `NXD-${year}-${String(seq).padStart(5, "0")}`;
 }
 
+function withServerTimeout<T>(promise: Promise<T>, timeoutMs = 2500): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Server Firestore write timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const op: OutboxOperation = await request.json();
@@ -276,7 +293,10 @@ export async function POST(request: Request) {
             syncedAt,
           })
         );
-        await setDoc(doc(clientFirestoreDb, "invoices", invoice.id), cleanedInvoice, { merge: true });
+        await withServerTimeout(
+          setDoc(doc(clientFirestoreDb, "invoices", invoice.id), cleanedInvoice, { merge: true }),
+          2500
+        );
       } catch (err) {
         console.warn("[Sync API] Direct Firestore invoice write warning:", err);
       }
@@ -293,7 +313,10 @@ export async function POST(request: Request) {
 
     try {
       const cleanedPayload = JSON.parse(JSON.stringify(op.payload || {}));
-      await setDoc(doc(clientFirestoreDb, targetCollection, op.entityId), cleanedPayload, { merge: true });
+      await withServerTimeout(
+        setDoc(doc(clientFirestoreDb, targetCollection, op.entityId), cleanedPayload, { merge: true }),
+        2500
+      );
     } catch (err) {
       console.warn(`[Sync API] Direct Firestore write warning for ${targetCollection}:`, err);
     }

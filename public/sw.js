@@ -1,4 +1,4 @@
-const CACHE_NAME = "noxderma-shell-v19";
+const CACHE_NAME = "noxderma-shell-v20";
 
 const PRECACHE_ASSETS = [
   "/",
@@ -66,8 +66,9 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // 1. Never intercept API endpoints (including /api/health & /api/sync) or external cloud services
+  // 1. Never intercept cross-origin requests or API endpoints (including /api/health & /api/sync)
   if (
+    url.origin !== self.location.origin ||
     url.pathname.startsWith("/api/") ||
     url.hostname.includes("firestore.googleapis.com") ||
     url.hostname.includes("identitytoolkit.googleapis.com") ||
@@ -85,10 +86,10 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
-  // 3. Page Navigation Requests: Network-first (4s timeout) + ALWAYS update cached HTML so offline reload gets latest UI
+  // 3. Page Navigation Requests: Network-first (10s timeout) + ALWAYS update cached HTML so offline reload gets latest UI
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetchWithTimeout(event.request, 4000)
+      fetchWithTimeout(event.request, 10000)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const cloneForRoute = networkResponse.clone();
@@ -110,7 +111,7 @@ self.addEventListener("fetch", (event) => {
                 rootCached ||
                 new Response(
                   "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Noxderma Offline</title></head><body style='font-family:sans-serif;padding:2rem;text-align:center;background:#0f172a;color:#f8fafc'><h2>No Internet Connection</h2><p>Please connect to the internet once to cache the latest Noxderma version.</p></body></html>",
-                  { status: 503, headers: { "Content-Type": "text/html" } }
+                  { status: 200, headers: { "Content-Type": "text/html" } }
                 )
             );
           })
@@ -129,7 +130,7 @@ self.addEventListener("fetch", (event) => {
         if (cachedResponse) {
           return cachedResponse;
         }
-        return fetchWithTimeout(event.request, 6000)
+        return fetchWithTimeout(event.request, 10000)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
               const responseToCache = networkResponse.clone();
@@ -143,9 +144,9 @@ self.addEventListener("fetch", (event) => {
             caches.match(event.request).then(
               (fallback) =>
                 fallback ||
-                new Response("Offline asset unavailable", {
-                  status: 503,
-                  statusText: "Service Unavailable",
+                new Response("", {
+                  status: 200,
+                  headers: { "x-noxderma-offline": "1" },
                 })
             )
           );
@@ -154,23 +155,45 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 5. Next.js RSC flight payloads & other GET requests: Network-first with 4s timeout + cache update
+  // 5. Next.js RSC flight payloads & other same-origin GET requests: Network-first with 10s timeout + normalized cache fallback
+  const isRscRequest =
+    url.searchParams.has("_rsc") || event.request.headers.get("RSC") === "1";
+  const normalizedRscKey = `${url.origin}${url.pathname}?_rsc=cached`;
+
   event.respondWith(
-    fetchWithTimeout(event.request, 4000)
+    fetchWithTimeout(event.request, 10000)
       .then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const clone = networkResponse.clone();
+          const rscClone = isRscRequest ? networkResponse.clone() : null;
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);
+            if (rscClone) {
+              cache.put(normalizedRscKey, rscClone);
+            }
           });
         }
         return networkResponse;
       })
-      .catch(() =>
-        caches.match(event.request).then(
-          (cached) =>
-            cached || new Response("", { status: 503, statusText: "Offline Not Found" })
-        )
-      )
+      .catch(async () => {
+        const exactMatch = await caches.match(event.request);
+        if (exactMatch) return exactMatch;
+
+        if (isRscRequest) {
+          const normalizedMatch = await caches.match(normalizedRscKey);
+          if (normalizedMatch) return normalizedMatch;
+        } else {
+          const pathMatch = await caches.match(url.pathname);
+          if (pathMatch) return pathMatch;
+        }
+
+        return new Response("", {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "x-noxderma-offline": "1",
+          },
+        });
+      })
   );
 });

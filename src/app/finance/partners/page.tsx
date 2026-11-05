@@ -192,6 +192,10 @@ export default function PartnersKhataPage() {
   // Dynamic Multi-Partner Management State
   const [partners, setPartners] = useState<PartnerConfig[]>(DEFAULT_PARTNERS);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+  const isPartnerModalOpenRef = React.useRef(false);
+  useEffect(() => {
+    isPartnerModalOpenRef.current = isPartnerModalOpen;
+  }, [isPartnerModalOpen]);
   const [editingPartnerList, setEditingPartnerList] = useState<PartnerConfig[]>([]);
   const [partnerToDelete, setPartnerToDelete] = useState<PartnerConfig | null>(null);
   const [isDeleteWarningModalOpen, setIsDeleteWarningModalOpen] = useState(false);
@@ -301,6 +305,7 @@ export default function PartnersKhataPage() {
       doc(firestoreDb, "partnerSettings", "config"),
       async (snapshot) => {
         const localRaw = localStorage.getItem("nox_partner_configs");
+        const localUpdatedAt = localStorage.getItem("nox_partner_configs_updated_at") || "";
         let localPartners: PartnerConfig[] = [];
         if (localRaw) {
           try {
@@ -317,26 +322,36 @@ export default function PartnersKhataPage() {
         if (snapshot.exists()) {
           const data = snapshot.data();
           const remotePartners = data?.partners;
+          const remoteUpdatedAt = data?.updatedAt || "";
           const remoteHasCustom =
             Array.isArray(remotePartners) &&
             remotePartners.some((p: any) => p.name && p.name !== "Partner 1" && p.name !== "Partner 2");
 
-          if (!remoteHasCustom && localHasCustom && localPartners.length > 0) {
-            // Local PC has custom names, push them up to Firestore
+          const isLocalNewer =
+            Boolean(localUpdatedAt) &&
+            localPartners.length > 0 &&
+            (!remoteUpdatedAt || new Date(localUpdatedAt).getTime() > new Date(remoteUpdatedAt).getTime());
+
+          if (isLocalNewer || (!remoteHasCustom && localHasCustom && localPartners.length > 0)) {
+            // Local has newer/undone or custom partner config, push up to Firestore
             try {
+              const syncIso = localUpdatedAt || new Date().toISOString();
+              setPartners(localPartners);
               await setDoc(
                 doc(firestoreDb, "partnerSettings", "config"),
-                { partners: localPartners, updatedAt: new Date().toISOString() },
+                { partners: localPartners, updatedAt: syncIso },
                 { merge: true }
               );
-              setPartners(localPartners);
             } catch (e) {
               console.warn("Failed to push custom partner config:", e);
             }
           } else if (Array.isArray(remotePartners) && remotePartners.length > 0) {
-            if (!isPartnerModalOpen) {
+            if (!isPartnerModalOpenRef.current) {
               setPartners(remotePartners);
               localStorage.setItem("nox_partner_configs", JSON.stringify(remotePartners));
+              if (remoteUpdatedAt) {
+                localStorage.setItem("nox_partner_configs_updated_at", remoteUpdatedAt);
+              }
               if (remotePartners[0]) localStorage.setItem("nox_partner_1_name", remotePartners[0].name);
               if (remotePartners[1]) localStorage.setItem("nox_partner_2_name", remotePartners[1].name);
             }
@@ -351,13 +366,15 @@ export default function PartnersKhataPage() {
             ];
           }
           try {
+            const nowIso = new Date().toISOString();
             await setDoc(
               doc(firestoreDb, "partnerSettings", "config"),
-              { partners: toPush, updatedAt: new Date().toISOString() },
+              { partners: toPush, updatedAt: nowIso },
               { merge: true }
             );
             setPartners(toPush);
             localStorage.setItem("nox_partner_configs", JSON.stringify(toPush));
+            localStorage.setItem("nox_partner_configs_updated_at", nowIso);
           } catch (e) {
             console.warn("Failed to initialize partner config in Firestore:", e);
           }
@@ -368,45 +385,35 @@ export default function PartnersKhataPage() {
       }
     );
 
-    // Listener B: Sync Partner Transactions in real-time (Two-Way Push & Pull)
+    // Listener B: Sync Partner Transactions in real-time (incremental docChanges so deleted/undone items are never resurrected)
     const unsubTx = onSnapshot(
       collection(firestoreDb, "partnerTransactions"),
       async (snapshot) => {
-        const remoteItems: PartnerTransaction[] = [];
-        snapshot.forEach((d) => {
-          const data = d.data();
-          remoteItems.push({ ...data, id: d.id } as PartnerTransaction);
-        });
+        const changes = snapshot.docChanges();
+        const toPut: PartnerTransaction[] = [];
+        const toDelete: string[] = [];
 
-        // 1. Reconcile remote items into local Dexie
-        if (remoteItems.length > 0) {
-          await offlineDb.partnerTransactions.bulkPut(remoteItems).catch(console.warn);
-
-          setTransactions((prev) => {
-            const map = new Map<string, PartnerTransaction>();
-            prev.forEach((t) => map.set(t.id, t));
-            remoteItems.forEach((t) => map.set(t.id, t));
-            return Array.from(map.values()).sort(comparePartnerTxNewestFirst);
-          });
+        for (const change of changes) {
+          const docId = change.doc.id;
+          if (change.type === "added" || change.type === "modified") {
+            const data = change.doc.data();
+            toPut.push({ ...data, id: docId } as PartnerTransaction);
+          } else if (change.type === "removed") {
+            toDelete.push(docId);
+          }
         }
 
-        // 2. Check for any local transactions that are not yet in Firestore, and push them up!
-        try {
-          const localList = await offlineDb.partnerTransactions.toArray();
-          const remoteIdSet = new Set(remoteItems.map((r) => r.id));
-          const unpushed = localList.filter((l) => !remoteIdSet.has(l.id));
+        if (toPut.length > 0) {
+          await offlineDb.partnerTransactions.bulkPut(toPut).catch(console.warn);
+        }
+        if (toDelete.length > 0) {
+          await offlineDb.partnerTransactions.bulkDelete(toDelete).catch(console.warn);
+        }
 
-          if (unpushed.length > 0) {
-            for (const item of unpushed) {
-              await setDoc(
-                doc(firestoreDb, "partnerTransactions", item.id),
-                sanitizeForFirestore(item),
-                { merge: true }
-              );
-            }
-          }
-        } catch (err) {
-          console.warn("[CloudSync] Error syncing unpushed local transactions:", err);
+        if (toPut.length > 0 || toDelete.length > 0) {
+          const latestList = await offlineDb.partnerTransactions.toArray();
+          latestList.sort(comparePartnerTxNewestFirst);
+          setTransactions(latestList);
         }
       },
       (err) => {
@@ -423,7 +430,16 @@ export default function PartnersKhataPage() {
           list.sort(comparePartnerTxNewestFirst);
           setTransactions(list);
         });
-      }, 300);
+        const savedConfigsRaw = localStorage.getItem("nox_partner_configs");
+        if (savedConfigsRaw && !isPartnerModalOpenRef.current) {
+          try {
+            const parsed = JSON.parse(savedConfigsRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setPartners(parsed);
+            }
+          } catch {}
+        }
+      }, 200);
     };
     window.addEventListener("noxderma-cloud-synced", handleSync);
 
@@ -433,7 +449,7 @@ export default function PartnersKhataPage() {
       if (syncTimer) clearTimeout(syncTimer);
       window.removeEventListener("noxderma-cloud-synced", handleSync);
     };
-  }, [isPartnerModalOpen]);
+  }, []);
 
   // Ensure default partnerId selection is valid whenever partners change
   useEffect(() => {
@@ -654,12 +670,16 @@ export default function PartnersKhataPage() {
       return;
     }
 
+    const previousPartners = partners.map((p) => ({ ...p }));
+    const nowIso = new Date().toISOString();
+
     // 1. Commit to React state immediately
     setPartners(cleaned);
     setIsPartnerModalOpen(false);
 
     // 2. Commit to LocalStorage
     localStorage.setItem("nox_partner_configs", JSON.stringify(cleaned));
+    localStorage.setItem("nox_partner_configs_updated_at", nowIso);
     if (cleaned[0]) localStorage.setItem("nox_partner_1_name", cleaned[0].name);
     if (cleaned[1]) localStorage.setItem("nox_partner_2_name", cleaned[1].name);
 
@@ -667,22 +687,25 @@ export default function PartnersKhataPage() {
     firestoreSyncBackground(
       setDoc(
         doc(firestoreDb, "partnerSettings", "config"),
-        { partners: cleaned, updatedAt: new Date().toISOString() },
+        { partners: cleaned, updatedAt: nowIso },
         { merge: true }
       ),
-      () => scheduleCloudUpsert("partnerSettings", "config", { partners: cleaned, updatedAt: new Date().toISOString() })
+      () => scheduleCloudUpsert("partnerSettings", "config", { partners: cleaned, updatedAt: nowIso })
     );
 
-    // 4. Audit Trail
+    // 4. Audit Trail (with full snapshotBefore & snapshotAfter so Undo rolls back accurately)
     recordActivity({
       userId: currentUser?.id || "usr_admin",
       userName: currentUser?.displayName || "Owner",
       userRole: currentUser?.role || "owner",
       action: "update",
-      entityType: "settings",
+      entityType: "partner_settings",
       entityId: "partnerSettings_config",
       entityTitle: `Updated Partners Configuration (${cleaned.length} Partners)`,
       details: `Active partners: ${cleaned.map((p) => p.name).join(", ")}`,
+      snapshotBefore: { partners: previousPartners },
+      snapshotAfter: { partners: cleaned },
+      canUndo: true,
     }).catch(console.warn);
   };
 
@@ -746,11 +769,12 @@ export default function PartnersKhataPage() {
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
         action: "create",
-        entityType: "transaction",
+        entityType: "partner_transaction",
         entityId: newTx.id,
         entityTitle: `Added Partner ${newTx.type} - ${newTx.partnerName}`,
         details: `Recorded ${newTx.type} of PKR ${newTx.amount.toLocaleString()} for ${newTx.partnerName}`,
         snapshotAfter: newTx,
+        canUndo: true,
       }).catch(console.warn);
     } catch (err) {
       console.error("Error saving partner transaction:", err);
@@ -789,6 +813,7 @@ export default function PartnersKhataPage() {
 
       const newTxList: PartnerTransaction[] = [];
       const allSettledAdvanceUpdates: PartnerTransaction[] = [];
+      const previousUnsettledAdvances: PartnerTransaction[] = [];
 
       profitDistributionPreview.forEach((item, idx) => {
         const pTxs = transactions.filter((t) => t.partnerId === item.partner.id);
@@ -799,6 +824,7 @@ export default function PartnersKhataPage() {
           if ((t.type === "withdrawal" || t.type === "out") && !t.isSettled && remainingDeduction > 0) {
             settledIds.push(t.id);
             remainingDeduction -= t.amount;
+            previousUnsettledAdvances.push({ ...t, isSettled: false });
             allSettledAdvanceUpdates.push({ ...t, isSettled: true });
           }
         }
@@ -865,10 +891,13 @@ export default function PartnersKhataPage() {
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
         action: "create",
-        entityType: "transaction",
+        entityType: "partner_transaction",
         entityId: newTxList.map((t) => t.id).join(", "),
         entityTitle: `Distributed Profit - ${partners.map((p) => p.name).join(" & ")}`,
         details: `Distributed total PKR ${distributableProfit.toLocaleString()} profit across ${partners.length} partners.`,
+        snapshotBefore: { unsettledAdvances: previousUnsettledAdvances },
+        snapshotAfter: { createdTxs: newTxList, settledAdvances: allSettledAdvanceUpdates },
+        canUndo: true,
       }).catch(console.warn);
 
       alert("Tamam partners ka profit share (advance cut karke) kamyabi se khate mein darj ho gaya hai!");
@@ -909,6 +938,7 @@ export default function PartnersKhataPage() {
 
     setIsSavingEdit(true);
     try {
+      const previousTx: PartnerTransaction = { ...editingTx };
       const pName = getPartnerName(editPartnerId);
       const updatedTx: PartnerTransaction = {
         ...editingTx,
@@ -946,11 +976,13 @@ export default function PartnersKhataPage() {
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
         action: "update",
-        entityType: "transaction",
+        entityType: "partner_transaction",
         entityId: updatedTx.id,
         entityTitle: `Updated Partner Transaction - ${updatedTx.partnerName}`,
         details: `Updated ${updatedTx.type} of PKR ${updatedTx.amount.toLocaleString()} for ${updatedTx.partnerName}`,
+        snapshotBefore: previousTx,
         snapshotAfter: updatedTx,
+        canUndo: true,
       }).catch(console.warn);
     } catch (err: any) {
       console.error("Error updating partner transaction:", err);
@@ -1038,12 +1070,12 @@ export default function PartnersKhataPage() {
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
         action: "delete",
-        entityType: "transaction",
+        entityType: "partner_transaction",
         entityId: idsToDelete.slice(0, 5).join(", "),
         entityTitle: `Bulk deleted ${toDelete.length} partner transaction(s)`,
         details: `Purged ${toDelete.length} partner transactions under scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       }).catch(console.warn);
     } catch (err: any) {
       console.error("Bulk delete partner transactions failed:", err);
@@ -1106,12 +1138,12 @@ export default function PartnersKhataPage() {
         userName: currentUser?.displayName || "Owner",
         userRole: currentUser?.role || "owner",
         action: "delete",
-        entityType: "transaction",
+        entityType: "partner_transaction",
         entityId: targetId,
         entityTitle: `Deleted Partner Transaction - ${targetTx.partnerName}`,
         details: `Deleted ${targetTx.type} of PKR ${targetTx.amount.toLocaleString()} for ${targetTx.partnerName}`,
         snapshotBefore: targetTx,
-        canUndo: false,
+        canUndo: true,
       }).catch(console.warn);
     } catch (err: any) {
       console.error("Delete partner transaction error:", err);
@@ -2614,26 +2646,26 @@ export default function PartnersKhataPage() {
       {/* 9. INDIVIDUAL TRANSACTION VOUCHER SLIP MODAL                   */}
       {/* ============================================================== */}
       {slipTx && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:fixed print:inset-0 print:bg-white print:p-6 print:m-0 print:z-[9999] print:block print:overflow-visible">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in print:shadow-none print:border-none print:p-0 print:m-0 print:max-w-none print:w-full print:bg-white print:text-black">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 print:hidden">
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-teal-600" />
-                <span>Transaction Slip Voucher</span>
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto print:fixed print:inset-0 print:bg-white print:p-6 print:m-0 print:z-[9999] print:block print:overflow-visible">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 space-y-3.5 sm:space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in print:shadow-none print:border-none print:p-0 print:m-0 print:max-w-none print:max-h-none print:w-full print:bg-white print:text-black print:overflow-visible">
+            <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100 dark:border-slate-800 print:hidden">
+              <h3 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-teal-600 shrink-0" />
+                <span className="truncate">Transaction Slip Voucher</span>
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={triggerCleanPrint}
-                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+                  className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 whitespace-nowrap shrink-0"
                 >
-                  <Printer className="w-3.5 h-3.5" />
+                  <Printer className="w-3.5 h-3.5 shrink-0" />
                   <span>Print Slip</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSlipTx(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2641,7 +2673,7 @@ export default function PartnersKhataPage() {
             </div>
 
             {/* Printable Slip Container */}
-            <div className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3.5 text-xs text-slate-800 dark:text-slate-200 print:bg-white print:border-black print:text-black print:p-0">
+            <div className="p-3 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3 sm:space-y-3.5 text-xs text-slate-800 dark:text-slate-200 overflow-hidden print:bg-white print:border-black print:text-black print:p-0">
               <OfficialPrintHeader
                 title={
                   slipTx.type === "investment" || slipTx.type === "in"
@@ -2657,19 +2689,19 @@ export default function PartnersKhataPage() {
                 className="pb-3 border-b border-slate-200 dark:border-slate-700 print:border-black"
               />
 
-              <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 print:border-black print:bg-white">
-                <div>
+              <div className="grid grid-cols-2 gap-2 p-2.5 sm:p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 print:border-black print:bg-white">
+                <div className="min-w-0">
                   <span className="text-[10px] text-slate-500 print:text-slate-700 block">Partner Name:</span>
-                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 print:text-black">
+                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 print:text-black break-words block">
                     {getPartnerName(slipTx.partnerId, slipTx.partnerName)}
                   </strong>
                   <span className="text-[10px] text-teal-600 print:text-black font-bold block mt-0.5">
                     Share: {partnerStatsMap[slipTx.partnerId]?.ratioPercent || 0}%
                   </span>
                 </div>
-                <div className="text-right">
+                <div className="text-right min-w-0">
                   <span className="text-[10px] text-slate-500 print:text-slate-700 block">Transaction Type:</span>
-                  <span className="inline-block font-extrabold uppercase text-[11px] print:text-black">
+                  <span className="inline-block font-extrabold uppercase text-[10px] sm:text-[11px] print:text-black break-words">
                     {slipTx.type === "investment" || slipTx.type === "in"
                       ? "💰 Capital Investment"
                       : slipTx.type === "profit_payout"

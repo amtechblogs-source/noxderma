@@ -22,6 +22,7 @@ import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { useAuth } from "@/context/AuthContext";
 import { useCategory } from "@/context/CategoryContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import type { Customer, Product, InventoryBatch, StockMovement } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import {
@@ -238,11 +239,44 @@ export default function SalesBookingsPage() {
   };
 
   const handleUpdateStatus = async (bookingId: string, nextStatus: SalesBooking["status"]) => {
+    const prevBooking = bookings.find((b) => b.id === bookingId);
     if (nextStatus === "delivered") {
       await deliverBookingAndDeductStock(bookingId);
+      if (prevBooking) {
+        recordActivity({
+          userId: currentUser?.id,
+          userName: currentUser?.displayName || "Owner",
+          userRole: currentUser?.role || "owner",
+          userEmail: currentUser?.email,
+          action: "update",
+          entityType: "sales_booking",
+          entityId: bookingId,
+          entityTitle: `${prevBooking.bookingRef} - ${prevBooking.customerName}`,
+          details: `Marked booking ${prevBooking.bookingRef} for ${prevBooking.customerName} as DELIVERED.`,
+          snapshotBefore: prevBooking,
+          snapshotAfter: { ...prevBooking, status: "delivered", stockDeducted: true },
+          canUndo: true,
+        }).catch(console.warn);
+      }
     } else {
       const updated = bookings.map((b) => (b.id === bookingId ? { ...b, status: nextStatus } : b));
       saveBookings(updated);
+      if (prevBooking) {
+        recordActivity({
+          userId: currentUser?.id,
+          userName: currentUser?.displayName || "Owner",
+          userRole: currentUser?.role || "owner",
+          userEmail: currentUser?.email,
+          action: "update",
+          entityType: "sales_booking",
+          entityId: bookingId,
+          entityTitle: `${prevBooking.bookingRef} - ${prevBooking.customerName}`,
+          details: `Updated booking ${prevBooking.bookingRef} status from ${prevBooking.status} to ${nextStatus}.`,
+          snapshotBefore: prevBooking,
+          snapshotAfter: { ...prevBooking, status: nextStatus },
+          canUndo: true,
+        }).catch(console.warn);
+      }
     }
   };
 
@@ -315,6 +349,19 @@ export default function SalesBookingsPage() {
 
     const updatedList = [newBooking, ...bookings];
     saveBookings(updatedList);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "sales_booking",
+      entityId: newBooking.id,
+      entityTitle: `${newBooking.bookingRef} - ${newBooking.customerName}`,
+      details: `Created sales booking ${newBooking.bookingRef} for ${newBooking.customerName} (${formatPKR(newBooking.totalAmount)}).`,
+      snapshotAfter: newBooking,
+      canUndo: true,
+    }).catch(console.warn);
     setIsCreating(false);
     setNotes("");
 

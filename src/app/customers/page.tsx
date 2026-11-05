@@ -210,7 +210,7 @@ export default function CustomersDirectoryPage() {
         entityTitle: `Bulk deleted ${toDelete.length} customer(s)`,
         details: `Purged ${toDelete.length} medical store(s) under criteria scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       });
 
       setSelectedIds([]);

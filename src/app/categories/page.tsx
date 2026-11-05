@@ -19,10 +19,13 @@ import {
 } from "lucide-react";
 import { offlineDb } from "@/lib/offline/db";
 import { useCategory } from "@/context/CategoryContext";
+import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import { INITIAL_DEFAULT_CATEGORIES } from "@/types";
 import type { DynamicCategory } from "@/types";
 
 export default function CategoriesPage() {
+  const { currentUser } = useAuth();
   const { refreshCategories: refreshGlobalCategories, setSelectedCategoryId } = useCategory();
   const [categories, setCategories] = useState<DynamicCategory[]>([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -83,12 +86,36 @@ export default function CategoriesPage() {
     const slug = trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
     if (editingId) {
+      const prevCat = categories.find((c) => c.id === editingId);
       await offlineDb.categories.update(editingId, {
         name: trimmedName,
         slug,
         description: description.trim(),
         updatedAt: now,
       });
+      if (prevCat) {
+        const updatedCat: DynamicCategory = {
+          ...prevCat,
+          name: trimmedName,
+          slug,
+          description: description.trim(),
+          updatedAt: now,
+        };
+        await recordActivity({
+          userId: currentUser?.id,
+          userName: currentUser?.displayName || "Owner",
+          userRole: currentUser?.role || "owner",
+          userEmail: currentUser?.email,
+          action: "update",
+          entityType: "category",
+          entityId: editingId,
+          entityTitle: trimmedName,
+          details: `Updated medicine category "${prevCat.name}" to "${trimmedName}".`,
+          snapshotBefore: prevCat,
+          snapshotAfter: updatedCat,
+          canUndo: true,
+        });
+      }
       setSuccessMessage(`Category "${trimmedName}" kamyabi se update ho gai!`);
       setEditingId(null);
     } else {
@@ -104,6 +131,19 @@ export default function CategoriesPage() {
         updatedAt: now,
       };
       await offlineDb.categories.add(newCat);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "create",
+        entityType: "category",
+        entityId: newCat.id,
+        entityTitle: newCat.name,
+        details: `Created new medicine category "${newCat.name}".`,
+        snapshotAfter: newCat,
+        canUndo: true,
+      });
       setSuccessMessage(`Nayi category "${trimmedName}" kamyabi se shamil ho gai!`);
       setIsAdding(false);
     }
@@ -141,7 +181,21 @@ export default function CategoriesPage() {
     if (!categoryToDelete || deleteCountdown > 0) return;
 
     try {
+      const deletedCat = { ...categoryToDelete };
       await offlineDb.categories.delete(categoryToDelete.id);
+      await recordActivity({
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || "Owner",
+        userRole: currentUser?.role || "owner",
+        userEmail: currentUser?.email,
+        action: "delete",
+        entityType: "category",
+        entityId: deletedCat.id,
+        entityTitle: deletedCat.name,
+        details: `Deleted medicine category "${deletedCat.name}".`,
+        snapshotBefore: deletedCat,
+        canUndo: true,
+      });
       setSelectedCategoryId("all");
       await refreshCategories();
       setSuccessMessage(`Category "${categoryToDelete.name}" delete ho chuki hai.`);
@@ -154,9 +208,24 @@ export default function CategoriesPage() {
   };
 
   const handleToggleActive = async (cat: DynamicCategory) => {
+    const nowIso = new Date().toISOString();
     await offlineDb.categories.update(cat.id, {
       active: !cat.active,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
+    });
+    await recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "update",
+      entityType: "category",
+      entityId: cat.id,
+      entityTitle: cat.name,
+      details: `${!cat.active ? "Shown" : "Hidden"} medicine category "${cat.name}".`,
+      snapshotBefore: cat,
+      snapshotAfter: { ...cat, active: !cat.active, updatedAt: nowIso },
+      canUndo: true,
     });
     await refreshCategories();
   };

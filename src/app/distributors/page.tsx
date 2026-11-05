@@ -216,7 +216,7 @@ export default function DistributorsPage() {
         entityTitle: `Bulk deleted ${toDelete.length} distributor(s)`,
         details: `Purged ${toDelete.length} wholesale distributor(s) under scope: ${scope}.`,
         snapshotBefore: toDelete,
-        canUndo: false,
+        canUndo: true,
       });
 
       setSelectedIds([]);

@@ -20,7 +20,18 @@ import { formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { syncManager, type SyncResult } from "@/lib/offline/sync";
 import { getDeviceId } from "@/lib/offline/device";
+import { detectDeviceMetadata } from "@/lib/monitoring/deviceIdentity";
 import type { OutboxOperation, SyncConflict } from "@/types";
+
+function detectIsMobileDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const uaData = (navigator as any).userAgentData;
+  if (Boolean(uaData?.mobile) || /Android|iPhone|iPod|iPad|IEMobile|Opera Mini|Mobile/i.test(ua)) {
+    return true;
+  }
+  return window.innerWidth < 768;
+}
 
 export default function SyncReconciliationPage() {
   const [operations, setOperations] = useState<OutboxOperation[]>([]);
@@ -29,6 +40,7 @@ export default function SyncReconciliationPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [deviceId, setDeviceId] = useState("");
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
 
   const refreshData = async () => {
     try {
@@ -45,13 +57,32 @@ export default function SyncReconciliationPage() {
   };
 
   useEffect(() => {
+    setIsMobileDevice(detectIsMobileDevice());
+    detectDeviceMetadata()
+      .then((meta) => {
+        if (meta.deviceCategory === "mobile" || meta.deviceCategory === "tablet") {
+          setIsMobileDevice(true);
+        } else {
+          setIsMobileDevice(detectIsMobileDevice());
+        }
+      })
+      .catch(() => {});
+
+    const handleResize = () => {
+      setIsMobileDevice(detectIsMobileDevice());
+    };
+    window.addEventListener("resize", handleResize);
+
     refreshData();
     const unsub = syncManager.subscribe((st) => {
       setIsOnline(st.isOnline);
       setIsSyncing(st.isSyncing);
       refreshData();
     });
-    return () => unsub();
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      unsub();
+    };
   }, []);
 
   const handleSyncNow = async () => {
@@ -122,7 +153,11 @@ export default function SyncReconciliationPage() {
           <div>
             <span className="text-[10px] font-bold uppercase text-slate-400">Internet Connection</span>
             <p className={`font-bold ${isOnline ? "text-emerald-600" : "text-amber-600"}`}>
-              {isOnline ? "Connected (Online - Server Active)" : "Offline (Internet Band - Saved in PC)"}
+              {isOnline
+                ? "Connected (Online - Server Active)"
+                : isMobileDevice
+                ? "Offline (No Internet - Saved in Mobile)"
+                : "Offline (No Internet - Saved in PC)"}
             </p>
           </div>
         </div>

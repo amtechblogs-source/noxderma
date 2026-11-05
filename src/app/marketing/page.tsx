@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { useAuth } from "@/context/AuthContext";
+import { recordActivity } from "@/lib/audit/auditTracker";
 
 interface Campaign {
   id: string;
@@ -37,6 +39,7 @@ interface Campaign {
 }
 
 export default function MarketingCampaignsPage() {
+  const { currentUser } = useAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -114,6 +117,19 @@ export default function MarketingCampaignsPage() {
     };
 
     saveCampaigns([newCamp, ...campaigns]);
+    recordActivity({
+      userId: currentUser?.id,
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "owner",
+      userEmail: currentUser?.email,
+      action: "create",
+      entityType: "marketing_campaign",
+      entityId: newCamp.id,
+      entityTitle: newCamp.name,
+      details: `Created marketing campaign "${newCamp.name}" (Budget: ${formatPKR(newCamp.budgetPkr)}).`,
+      snapshotAfter: newCamp,
+      canUndo: true,
+    }).catch(console.warn);
     setIsCreating(false);
     setName("");
   };
