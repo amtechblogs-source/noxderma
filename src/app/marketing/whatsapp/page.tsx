@@ -60,6 +60,11 @@ export default function WhatsAppMarketingPage() {
       }
     };
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) || products[0];

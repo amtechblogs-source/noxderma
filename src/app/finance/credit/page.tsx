@@ -44,6 +44,11 @@ export default function CreditManagementPage() {
       setMfrPayables(totalMfr);
     }
     loadCreditData();
+    const handleCloudSynced = () => {
+      loadCreditData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const filteredInvoices = useMemo(() => {

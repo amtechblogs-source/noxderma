@@ -57,8 +57,10 @@ export default function MarketingCampaignsPage() {
     async function loadCampaigns() {
       try {
         const dbCamps = await (offlineDb as any).marketingCampaigns?.toArray();
-        if (dbCamps && dbCamps.length > 0) {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_marketingCampaigns") === "true";
+        if (dbCamps && (dbCamps.length > 0 || isCloudInit)) {
           setCampaigns(dbCamps as Campaign[]);
+          localStorage.setItem("noxderma_marketing_campaigns", JSON.stringify(dbCamps));
           return;
         }
       } catch {
@@ -71,6 +73,9 @@ export default function MarketingCampaignsPage() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
             setCampaigns(parsed);
+            if (parsed.length > 0 && (offlineDb as any).marketingCampaigns) {
+              await (offlineDb as any).marketingCampaigns.bulkPut(parsed);
+            }
           } else {
             setCampaigns([]);
           }
@@ -82,6 +87,11 @@ export default function MarketingCampaignsPage() {
       }
     }
     loadCampaigns();
+    const handleCloudSynced = () => {
+      loadCampaigns();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const saveCampaigns = async (updated: Campaign[]) => {
@@ -298,7 +308,7 @@ export default function MarketingCampaignsPage() {
       {/* Launch Campaign Modal */}
       {isCreating && (
         <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Megaphone className="w-5 h-5 text-teal-600" /> Add New Marketing Scheme
@@ -326,7 +336,7 @@ export default function MarketingCampaignsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                     For Whom?
@@ -375,7 +385,7 @@ export default function MarketingCampaignsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                     Start Date

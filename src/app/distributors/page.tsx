@@ -92,6 +92,11 @@ export default function DistributorsPage() {
 
   useEffect(() => {
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const handleAddDistributor = async (e: React.FormEvent) => {

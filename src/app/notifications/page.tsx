@@ -89,6 +89,11 @@ export default function NotificationsCenterPage() {
     };
 
     buildAlerts();
+    const handleCloudSynced = () => {
+      buildAlerts();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   return (

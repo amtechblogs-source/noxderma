@@ -202,9 +202,11 @@ export function ProductCatalogView() {
       refreshCatalog();
     };
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("noxderma-cloud-synced", handleFocus);
     const interval = setInterval(refreshCatalog, 10000);
     return () => {
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("noxderma-cloud-synced", handleFocus);
       clearInterval(interval);
     };
   }, [categories]);

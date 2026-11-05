@@ -82,6 +82,11 @@ export default function LeadsCrmPage() {
 
   useEffect(() => {
     loadLeads();
+    const handleCloudSynced = () => {
+      loadLeads();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const handleSaveLead = async (e: React.FormEvent) => {

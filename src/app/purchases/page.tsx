@@ -105,8 +105,10 @@ export default function PurchasesPage() {
 
       try {
         const dbPOs = await (offlineDb as any).purchaseOrders?.toArray();
-        if (dbPOs && dbPOs.length > 0) {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_purchaseOrders") === "true";
+        if (dbPOs && (dbPOs.length > 0 || isCloudInit)) {
           setPurchases(dbPOs as PurchaseOrder[]);
+          localStorage.setItem("noxderma_purchase_orders", JSON.stringify(dbPOs));
           return;
         }
       } catch {
@@ -119,6 +121,9 @@ export default function PurchasesPage() {
           const parsed = JSON.parse(savedPOs);
           if (Array.isArray(parsed)) {
             setPurchases(parsed);
+            if (parsed.length > 0 && (offlineDb as any).purchaseOrders) {
+              await (offlineDb as any).purchaseOrders.bulkPut(parsed);
+            }
           } else {
             setPurchases([]);
           }

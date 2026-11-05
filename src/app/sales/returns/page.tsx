@@ -79,8 +79,10 @@ export default function SalesReturnsPage() {
 
       try {
         const dbReturns = await (offlineDb as any).salesReturns?.toArray();
-        if (dbReturns && dbReturns.length > 0) {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_salesReturns") === "true";
+        if (dbReturns && (dbReturns.length > 0 || isCloudInit)) {
           setReturns(dbReturns as SalesReturn[]);
+          localStorage.setItem("noxderma_sales_returns", JSON.stringify(dbReturns));
           return;
         }
       } catch {
@@ -93,6 +95,9 @@ export default function SalesReturnsPage() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
             setReturns(parsed);
+            if (parsed.length > 0 && (offlineDb as any).salesReturns) {
+              await (offlineDb as any).salesReturns.bulkPut(parsed);
+            }
           } else {
             setReturns([]);
           }
@@ -109,6 +114,11 @@ export default function SalesReturnsPage() {
 
   useEffect(() => {
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const saveReturns = async (updated: SalesReturn[]) => {
@@ -381,7 +391,7 @@ export default function SalesReturnsPage() {
       {/* Credit Note Modal */}
       {isProcessing && (
         <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <RotateCcw className="w-5 h-5 text-teal-600" /> Record Medicine Return from Customer
@@ -446,7 +456,7 @@ export default function SalesReturnsPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                     Batch No.
@@ -495,7 +505,7 @@ export default function SalesReturnsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                     Why is it Returned?

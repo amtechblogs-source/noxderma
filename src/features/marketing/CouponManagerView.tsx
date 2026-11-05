@@ -143,6 +143,11 @@ export function CouponManagerView() {
 
   useEffect(() => {
     refreshData();
+    const handleCloudSynced = () => {
+      refreshData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   // Initialize fresh code on mount or when discount/prefix changes

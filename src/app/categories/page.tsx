@@ -50,6 +50,11 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     refreshCategories();
+    const handleCloudSynced = () => {
+      refreshCategories();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   // Cleanup timer on unmount

@@ -83,6 +83,11 @@ export default function SalesInvoicesListPage() {
 
   useEffect(() => {
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const filtered = useMemo(() => {

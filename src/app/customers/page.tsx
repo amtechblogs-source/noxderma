@@ -76,6 +76,11 @@ export default function CustomersDirectoryPage() {
 
   useEffect(() => {
     refreshCustomers();
+    const handleCloudSynced = () => {
+      refreshCustomers();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {

@@ -149,8 +149,10 @@ export default function OnlineOrdersPage() {
 
       try {
         const dbOrders = await (offlineDb as any).onlineOrders?.toArray();
-        if (dbOrders && dbOrders.length > 0) {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_onlineOrders") === "true";
+        if (dbOrders && (dbOrders.length > 0 || isCloudInit)) {
           setOrders(dbOrders as OnlineOrder[]);
+          localStorage.setItem("noxderma_online_orders", JSON.stringify(dbOrders));
           return;
         }
       } catch {
@@ -163,6 +165,9 @@ export default function OnlineOrdersPage() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
             setOrders(parsed);
+            if (parsed.length > 0 && (offlineDb as any).onlineOrders) {
+              await (offlineDb as any).onlineOrders.bulkPut(parsed);
+            }
           } else {
             setOrders([]);
           }
@@ -174,6 +179,11 @@ export default function OnlineOrdersPage() {
       }
     }
     initData();
+    const handleCloudSynced = () => {
+      initData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const saveOrders = async (updated: OnlineOrder[]) => {

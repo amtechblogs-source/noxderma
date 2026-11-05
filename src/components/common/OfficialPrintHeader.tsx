@@ -57,15 +57,24 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
   useEffect(() => {
     if (propSettings) return;
     let isMounted = true;
-    offlineDb.settings.get("primary").then((saved) => {
-      if (isMounted && saved) {
-        setInternalSettings(saved as BusinessSettings);
-      }
-    }).catch(() => {
-      // Ignore fallback
-    });
+    const loadSavedSettings = () => {
+      offlineDb.settings
+        .get("primary")
+        .then((saved) => {
+          if (isMounted && saved) {
+            setInternalSettings(saved as BusinessSettings);
+          }
+        })
+        .catch(() => {});
+    };
+    loadSavedSettings();
+
+    window.addEventListener("noxderma_settings_updated", loadSavedSettings);
+    window.addEventListener("noxderma-cloud-synced", loadSavedSettings);
     return () => {
       isMounted = false;
+      window.removeEventListener("noxderma_settings_updated", loadSavedSettings);
+      window.removeEventListener("noxderma-cloud-synced", loadSavedSettings);
     };
   }, [propSettings]);
 

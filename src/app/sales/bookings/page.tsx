@@ -102,8 +102,10 @@ export default function SalesBookingsPage() {
 
       try {
         const dbBookings = await (offlineDb as any).salesBookings?.toArray();
-        if (dbBookings && dbBookings.length > 0) {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_salesBookings") === "true";
+        if (dbBookings && (dbBookings.length > 0 || isCloudInit)) {
           setBookings(dbBookings as SalesBooking[]);
+          localStorage.setItem("noxderma_sales_bookings", JSON.stringify(dbBookings));
           return;
         }
       } catch {
@@ -116,6 +118,9 @@ export default function SalesBookingsPage() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
             setBookings(parsed);
+            if (parsed.length > 0 && (offlineDb as any).salesBookings) {
+              await (offlineDb as any).salesBookings.bulkPut(parsed);
+            }
           } else {
             setBookings([]);
           }
@@ -132,6 +137,11 @@ export default function SalesBookingsPage() {
 
   useEffect(() => {
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const saveBookings = async (updated: SalesBooking[]) => {

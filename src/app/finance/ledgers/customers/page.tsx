@@ -88,6 +88,11 @@ export default function CustomerLedgersPage() {
 
   useEffect(() => {
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   // Merge Invoices & Payments into a simple Khata history

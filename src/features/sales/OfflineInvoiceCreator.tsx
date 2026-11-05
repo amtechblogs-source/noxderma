@@ -334,6 +334,27 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
 
   useEffect(() => {
     loadMasterData();
+    const handleCloudSynced = async () => {
+      try {
+        const [custList, allBatches, prodList, pricingList, settingsRecord] = await Promise.all([
+          offlineDb.customers.toArray(),
+          offlineDb.inventoryBatches.toArray(),
+          offlineDb.products.toArray(),
+          offlineDb.productPricing.toArray(),
+          offlineDb.settings.get("primary"),
+        ]);
+        setCustomers(custList || []);
+        setProducts(prodList || []);
+        setPricings(pricingList || []);
+        if (settingsRecord) setBusinessSettings(settingsRecord);
+        const validBatches = (allBatches || []).filter(
+          (b) => Number(b.remainingQuantity || 0) > 0
+        );
+        setBatches(validBatches);
+      } catch {}
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, [editInvoiceId]);
 
   // Category isolation
@@ -1040,7 +1061,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         </div>
 
         {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
-        <div className="print-page p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-6 text-slate-900 dark:text-slate-100 print:p-0 print:m-0 print:border-none print:rounded-none print:shadow-none print:bg-white print:text-black">
+        <div className="print-page p-3.5 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-5 sm:space-y-6 text-slate-900 dark:text-slate-100 overflow-hidden print:p-0 print:m-0 print:border-none print:rounded-none print:shadow-none print:bg-white print:text-black">
           {/* Header with Print Logo support */}
           <OfficialPrintHeader
             title={createdInvoice.paymentMethod === "cash" ? "Cash Invoice" : "Sale Invoice"}
@@ -1055,33 +1076,31 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           />
 
           {/* Customer & Payment Details Cards */}
-          <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
             <div
-              className="invoice-info-card p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400 print:!p-4"
-              style={{ padding: "14px 16px" }}
+              className="invoice-info-card p-3.5 sm:p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400 print:!p-4 min-w-0"
             >
               <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 CUSTOMER / PHARMACY:
               </span>
-              <p className="font-black text-base sm:text-lg text-slate-900 print:text-black mt-1">
+              <p className="font-black text-base sm:text-lg text-slate-900 print:text-black mt-1 break-words">
                 {createdInvoice.customerName}
               </p>
               {createdInvoice.customerPhone && (
-                <div className="flex items-center gap-1.5 font-bold text-slate-700 print:text-black mt-1 text-xs sm:text-sm">
+                <div className="flex items-center gap-1.5 font-bold text-slate-700 print:text-black mt-1 text-xs sm:text-sm break-all">
                   <Phone className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
                   <span>{createdInvoice.customerPhone}</span>
                 </div>
               )}
               {createdInvoice.customerAddress && (
-                <div className="flex items-center gap-1.5 font-semibold text-slate-700 print:text-slate-800 mt-0.5 text-xs sm:text-sm">
+                <div className="flex items-center gap-1.5 font-semibold text-slate-700 print:text-slate-800 mt-0.5 text-xs sm:text-sm break-words">
                   <MapPin className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
                   <span>{createdInvoice.customerAddress}</span>
                 </div>
               )}
             </div>
             <div
-              className="invoice-info-card p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400 print:!p-4"
-              style={{ padding: "14px 16px" }}
+              className="invoice-info-card p-3.5 sm:p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-400 print:!p-4 min-w-0"
             >
               <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 PAYMENT DETAILS:
@@ -1172,7 +1191,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
 
           {/* Summary Box */}
           <div className="flex justify-end pt-4 border-t-2 border-slate-900 dark:border-slate-700 print:border-black">
-            <div className="w-72 sm:w-80 space-y-2 text-xs sm:text-sm">
+            <div className="w-full sm:w-80 print:w-80 space-y-2 text-xs sm:text-sm">
               <div className="flex justify-between text-slate-600 print:text-slate-800 font-bold">
                 <span>Gross Total:</span>
                 <span className="font-mono text-slate-900 print:text-black font-black">{formatPKR(createdInvoice.subtotal)}</span>
@@ -1194,7 +1213,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                   <span className="font-mono text-slate-900 print:text-black font-black">{formatPKR(createdInvoice.deliveryCharge)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-xl sm:text-2xl font-black text-slate-900 print:text-black pt-2 border-t-2 border-slate-900 dark:border-slate-700 print:border-black">
+              <div className="flex justify-between text-lg sm:text-2xl font-black text-slate-900 print:text-black pt-2 border-t-2 border-slate-900 dark:border-slate-700 print:border-black">
                 <span>Net Payable:</span>
                 <span className="font-mono text-teal-700 print:text-black">{formatPKR(createdInvoice.netTotal)}</span>
               </div>
@@ -1212,7 +1231,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           </div>
 
           {/* Official Signatures Section */}
-          <div className="pt-8 pb-3 grid grid-cols-2 gap-10 text-xs font-bold text-slate-700 print:text-black">
+          <div className="pt-8 pb-3 grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-6 sm:gap-10 text-xs font-bold text-slate-700 print:text-black">
             <div className="border-t-2 border-slate-400 pt-2 text-center">
               <span>Received By (Customer Signature & Stamp)</span>
             </div>

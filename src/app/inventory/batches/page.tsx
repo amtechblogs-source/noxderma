@@ -46,6 +46,11 @@ export default function BatchInventoryPage() {
       setProducts(prodList);
     }
     loadBatches();
+    const handleCloudSynced = () => {
+      loadBatches();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const now = Date.now();

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { recordActivity } from "@/lib/audit/auditTracker";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type {
@@ -74,6 +75,11 @@ export default function InventoryOverviewPage() {
 
   useEffect(() => {
     loadData();
+    const handleCloudSynced = () => {
+      loadData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   // Category isolation
@@ -120,7 +126,10 @@ export default function InventoryOverviewPage() {
     if (!damageProdId || damageQty <= 0) return;
 
     const prod = products.find((p) => p.id === damageProdId);
-    const batch = batches.find((b) => b.id === damageBatchId);
+    const fallbackBatch = batches
+      .filter((b) => b.productId === damageProdId && (b.remainingQuantity || 0) > 0)
+      .sort((a, b) => new Date(a.expiryDate || 0).getTime() - new Date(b.expiryDate || 0).getTime())[0];
+    const batch = batches.find((b) => b.id === damageBatchId) || fallbackBatch;
     const now = new Date().toISOString();
 
     if (batch) {
@@ -135,7 +144,7 @@ export default function InventoryOverviewPage() {
       id: `mov_dmg_${Date.now()}`,
       productId: damageProdId,
       productName: prod ? prod.name : "Pharmaceutical Product",
-      batchId: damageBatchId || undefined,
+      batchId: batch ? batch.id : damageBatchId || undefined,
       batchNumber: batch ? batch.batchNumber : undefined,
       type: "damaged_stock",
       quantityChange: -damageQty,
@@ -149,6 +158,21 @@ export default function InventoryOverviewPage() {
     };
 
     await offlineDb.stockMovements.put(movement);
+
+    await recordActivity({
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "admin",
+      action: "create",
+      module: "Inventory",
+      entityType: "stock_movement",
+      entityId: movement.id,
+      summary: `Recorded ${damageQty} broken/damaged packs of ${movement.productName}${batch ? ` (Batch ${batch.batchNumber})` : ""}`,
+      snapshotBefore: { batch: batch || null },
+      snapshotAfter: movement,
+      canUndo: true,
+    });
+
     setIsRecordingDamage(false);
     setDamageQty(5);
     await loadData();
@@ -161,7 +185,10 @@ export default function InventoryOverviewPage() {
     if (!sampleProdId || sampleQty <= 0) return;
 
     const prod = products.find((p) => p.id === sampleProdId);
-    const batch = batches.find((b) => b.id === sampleBatchId);
+    const fallbackBatch = batches
+      .filter((b) => b.productId === sampleProdId && (b.remainingQuantity || 0) > 0)
+      .sort((a, b) => new Date(a.expiryDate || 0).getTime() - new Date(b.expiryDate || 0).getTime())[0];
+    const batch = batches.find((b) => b.id === sampleBatchId) || fallbackBatch;
     const now = new Date().toISOString();
 
     if (batch) {
@@ -176,7 +203,7 @@ export default function InventoryOverviewPage() {
       id: `mov_smp_${Date.now()}`,
       productId: sampleProdId,
       productName: prod ? prod.name : "Pharmaceutical Product",
-      batchId: sampleBatchId || undefined,
+      batchId: batch ? batch.id : sampleBatchId || undefined,
       batchNumber: batch ? batch.batchNumber : undefined,
       type: "sample_issue",
       quantityChange: -sampleQty,
@@ -190,6 +217,21 @@ export default function InventoryOverviewPage() {
     };
 
     await offlineDb.stockMovements.put(movement);
+
+    await recordActivity({
+      userId: currentUser?.id || "usr_admin",
+      userName: currentUser?.displayName || "Owner",
+      userRole: currentUser?.role || "admin",
+      action: "create",
+      module: "Inventory",
+      entityType: "stock_movement",
+      entityId: movement.id,
+      summary: `Issued ${sampleQty} free sample packs of ${movement.productName} to ${sampleRecipient}`,
+      snapshotBefore: { batch: batch || null },
+      snapshotAfter: movement,
+      canUndo: true,
+    });
+
     setIsRecordingSample(false);
     setSampleQty(10);
     await loadData();
@@ -412,7 +454,7 @@ export default function InventoryOverviewPage() {
       {/* Record Damage Modal */}
       {isRecordingDamage && (
         <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <PackageX className="w-5 h-5 text-rose-600" /> Record Broken / Damaged Medicine
@@ -519,7 +561,7 @@ export default function InventoryOverviewPage() {
       {/* Record Clinical Sample Modal */}
       {isRecordingSample && (
         <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-sky-600" /> Give Free Doctor Sample

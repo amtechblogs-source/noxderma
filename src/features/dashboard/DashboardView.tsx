@@ -63,6 +63,7 @@ export function DashboardView() {
   const [selectedRange, setSelectedRange] = useState<"month" | "7d" | "30d">("month");
   const [viewPeriod, setViewPeriod] = useState<"month" | "today">("month");
   const [partnerTransactions, setPartnerTransactions] = useState<PartnerTransaction[]>([]);
+  const [partnerConfigRefreshTick, setPartnerConfigRefreshTick] = useState(0);
 
   // Load live data from IndexedDB
   const refreshDashboardData = async () => {
@@ -86,6 +87,7 @@ export function DashboardView() {
       setManufacturers(mfrList);
       setPurchaseOrders(poList);
       setPartnerTransactions(partList || []);
+      setPartnerConfigRefreshTick((t) => t + 1);
     } catch (err) {
       console.warn("Failed to query IndexedDB dashboard metrics:", err);
     }
@@ -96,7 +98,14 @@ export function DashboardView() {
     const unsub = syncManager.subscribe(() => {
       refreshDashboardData();
     });
-    return () => unsub();
+    const handleCloudSynced = () => {
+      refreshDashboardData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => {
+      unsub();
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
+    };
   }, []);
 
   // Compute category isolation
@@ -167,7 +176,7 @@ export function DashboardView() {
       { id: "partner_1", name: p1 },
       { id: "partner_2", name: p2 },
     ];
-  }, []);
+  }, [partnerConfigRefreshTick]);
 
   const { dashboardStats, combinedTotalInvestment } = useMemo(() => {
     let combinedTotal = 0;
@@ -235,7 +244,10 @@ export function DashboardView() {
   const distributorReceivables = displayInvoices
     .filter((inv) => inv.customerCategory === "distributor")
     .reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
-  const totalManufacturerPayables = manufacturers.reduce((sum, m) => sum + (m.currentPayable || 0), 0);
+  const totalManufacturerPayables = manufacturers.reduce(
+    (sum, m) => sum + (Number(m.payableBalance ?? m.currentPayable) || 0),
+    0
+  );
   const pendingPoPayables = purchaseOrders
     .filter((po) => po.status !== "cancelled" && po.status !== "completed")
     .reduce((sum, po) => sum + (po.totalAmount || 0), 0);

@@ -990,16 +990,53 @@ async function executeRollbackForLog(
   }
 
   // ---------------------------------------------------------------------------
-  // 20. INVENTORY BATCHES, CATEGORIES & BUSINESS SETTINGS
+  // 20. INVENTORY BATCHES, STOCK MOVEMENTS, MANUFACTURER LEDGER, CATEGORIES & SETTINGS
   // ---------------------------------------------------------------------------
-  if (entityType === "inventory_batch") {
+  if (entityType === "stock_movement") {
     if (log.action === "create") {
-      await offlineDb.inventoryBatches.delete(log.entityId);
+      await offlineDb.stockMovements.delete(log.entityId);
+      await cloudDeleteWithFallback("stockMovements", log.entityId);
+      if (log.snapshotBefore?.batch) {
+        await offlineDb.inventoryBatches.put(log.snapshotBefore.batch);
+        await cloudUpsertWithFallback("inventoryBatches", log.snapshotBefore.batch.id, log.snapshotBefore.batch);
+      }
+    } else if (log.snapshotBefore) {
+      await offlineDb.stockMovements.put(log.snapshotBefore);
+    }
+    return { rolledBack: true };
+  }
+
+  if (entityType === "manufacturer_ledger") {
+    if (log.action === "create") {
+      await (offlineDb as any).manufacturerLedger?.delete(log.entityId);
+      await cloudDeleteWithFallback("manufacturerLedger", log.entityId);
+      if (log.snapshotBefore?.manufacturer) {
+        await offlineDb.manufacturers.put(log.snapshotBefore.manufacturer);
+        await cloudUpsertWithFallback("manufacturers", log.snapshotBefore.manufacturer.id, log.snapshotBefore.manufacturer);
+      }
     } else if (log.snapshotBefore) {
       const items = Array.isArray(log.snapshotBefore)
         ? log.snapshotBefore
         : [log.snapshotBefore];
+      await (offlineDb as any).manufacturerLedger?.bulkPut(items);
+    }
+    await syncMirrorKeyFromTable("manufacturerLedger", "noxderma_mfr_ledger");
+    return { rolledBack: true };
+  }
+
+  if (entityType === "inventory_batch") {
+    if (log.action === "create") {
+      await offlineDb.inventoryBatches.delete(log.entityId);
+    } else if (log.snapshotBefore) {
+      const batchToRestore = log.snapshotBefore?.batch || log.snapshotBefore;
+      const items = Array.isArray(batchToRestore)
+        ? batchToRestore
+        : [batchToRestore];
       await offlineDb.inventoryBatches.bulkPut(items);
+      if (log.snapshotAfter?.movementId) {
+        await offlineDb.stockMovements.delete(log.snapshotAfter.movementId);
+        await cloudDeleteWithFallback("stockMovements", log.snapshotAfter.movementId);
+      }
     }
     return { rolledBack: true };
   }

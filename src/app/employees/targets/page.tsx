@@ -222,8 +222,10 @@ export default function SalesTargetsPage() {
       // 4. Load Employee Targets
       try {
         const dbTargets = await (offlineDb as any).employeeTargets?.toArray();
-        if (dbTargets && dbTargets.length > 0) {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_employeeTargets") === "true";
+        if (dbTargets && (dbTargets.length > 0 || isCloudInit)) {
           setTargets(dbTargets as RepTarget[]);
+          localStorage.setItem("noxderma_rep_targets", JSON.stringify(dbTargets));
           return;
         }
       } catch {}
@@ -234,6 +236,9 @@ export default function SalesTargetsPage() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
             setTargets(parsed);
+            if (parsed.length > 0 && (offlineDb as any).employeeTargets) {
+              await (offlineDb as any).employeeTargets.bulkPut(parsed);
+            }
           } else {
             setTargets([]);
           }
@@ -246,6 +251,11 @@ export default function SalesTargetsPage() {
     }
 
     loadAllData();
+    const handleCloudSynced = () => {
+      loadAllData();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
   }, []);
 
   const saveTargets = async (updated: RepTarget[]) => {

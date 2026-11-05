@@ -128,7 +128,11 @@ export default function ReportsExportPage() {
       } catch {}
     };
     window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
-    return () => window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    window.addEventListener("noxderma-cloud-synced", fetchAll);
+    return () => {
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+      window.removeEventListener("noxderma-cloud-synced", fetchAll);
+    };
   }, []);
 
   // Category isolation

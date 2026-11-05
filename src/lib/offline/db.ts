@@ -92,6 +92,7 @@ export class NoxdermaDexieDB extends Dexie {
   operatingExpenses!: Table<OperatingExpense, string>;
   staffSalaries!: Table<StaffSalary, string>;
   partnerTransactions!: Table<PartnerTransaction, string>;
+  manufacturerLedger!: Table<any, string>;
 
   constructor() {
     super("NoxdermaPharmaOfflineDB");
@@ -160,6 +161,10 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(10).stores({
       partnerTransactions: "id, partnerId, type, date, paymentMethod, createdAt",
+    });
+
+    this.version(11).stores({
+      manufacturerLedger: "id, manufacturerId, date, referenceType, referenceNumber",
     });
   }
 }

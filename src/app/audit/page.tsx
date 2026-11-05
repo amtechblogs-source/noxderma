@@ -394,6 +394,11 @@ export default function AuditLogsPage() {
   useEffect(() => {
     if (isOwner) {
       loadLogs();
+      const handleCloudSynced = () => {
+        getAuditLogs().then((records) => setLogs(records)).catch(() => {});
+      };
+      window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
+      return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     } else {
       setLoading(false);
     }

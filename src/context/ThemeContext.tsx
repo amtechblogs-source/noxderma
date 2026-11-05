@@ -163,20 +163,22 @@ const THEME_RGB_PALETTES: Record<ThemeId, Record<number, string>> = {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeId, setThemeIdState] = useState<ThemeId>("teal");
 
-  // Load persisted theme with database fallback
+  // Load persisted theme with database & cloud sync fallback
   useEffect(() => {
     async function loadTheme() {
-      // 1. Check fast localStorage
+      let appliedAny = false;
+
+      // 1. Check fast localStorage for instant zero-flicker paint
       if (typeof window !== "undefined") {
         const local = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
         if (local && COLOR_THEMES.some((t) => t.id === local)) {
           setThemeIdState(local);
           applyThemeToDOM(local);
-          return;
+          appliedAny = true;
         }
       }
 
-      // 2. Check offline Dexie database
+      // 2. Check offline Dexie database (which receives real-time Cloud Firestore updates)
       try {
         const stored = await offlineDb.settings.get("primary");
         if (stored && (stored as any).colorTheme) {
@@ -184,10 +186,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           if (COLOR_THEMES.some((t) => t.id === tId)) {
             setThemeIdState(tId);
             applyThemeToDOM(tId);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(THEME_STORAGE_KEY, tId);
+            }
             return;
           }
         }
       } catch {}
+
+      if (appliedAny) return;
 
       // 3. Fallback: Rehydrate from server database (/api/settings)
       try {
@@ -214,6 +221,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
 
     loadTheme();
+
+    const handleSettingsOrCloudSync = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail?.colorTheme && COLOR_THEMES.some((t) => t.id === detail.colorTheme)) {
+        const nextTheme = detail.colorTheme as ThemeId;
+        setThemeIdState(nextTheme);
+        applyThemeToDOM(nextTheme);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+        }
+      } else {
+        loadTheme();
+      }
+    };
+
+    window.addEventListener("noxderma_settings_updated", handleSettingsOrCloudSync);
+    window.addEventListener("noxderma-cloud-synced", handleSettingsOrCloudSync);
+    return () => {
+      window.removeEventListener("noxderma_settings_updated", handleSettingsOrCloudSync);
+      window.removeEventListener("noxderma-cloud-synced", handleSettingsOrCloudSync);
+    };
   }, []);
 
   const applyThemeToDOM = (id: ThemeId) => {
