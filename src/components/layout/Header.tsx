@@ -434,6 +434,61 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const categoryMenuRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [isHeaderHiddenOnMobile, setIsHeaderHiddenOnMobile] = useState(false);
+  const lastScrollYRef = useRef(0);
+
+  // Mobile Smart Sticky Header: Hide when scrolling down, show immediately when scrolling up
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const getScrollTop = () => {
+      return (
+        window.scrollY ||
+        window.pageYOffset ||
+        document.documentElement.scrollTop ||
+        document.body.scrollTop ||
+        0
+      );
+    };
+
+    const handleScroll = (e: Event) => {
+      if (
+        e.target instanceof HTMLElement &&
+        e.target !== document.documentElement &&
+        e.target !== document.body &&
+        e.target.tagName !== "MAIN"
+      ) {
+        return;
+      }
+
+      const currentY = Math.max(0, getScrollTop());
+      const prevY = lastScrollYRef.current;
+      const delta = currentY - prevY;
+
+      if (currentY <= 24) {
+        setIsHeaderHiddenOnMobile(false);
+        lastScrollYRef.current = currentY;
+        return;
+      }
+
+      if (Math.abs(delta) < 6) return;
+
+      if (delta > 0 && currentY > 56) {
+        // Scrolling down -> hide header on mobile
+        setIsHeaderHiddenOnMobile(true);
+      } else if (delta < 0) {
+        // Scrolling up -> show sticky header on mobile immediately
+        setIsHeaderHiddenOnMobile(false);
+      }
+
+      lastScrollYRef.current = currentY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll, { capture: true } as EventListenerOptions);
+    };
+  }, []);
 
   useEffect(() => {
     setIsMounted(true);
@@ -712,8 +767,19 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
     searchResults.invoices.length > 0 ||
     searchResults.batches.length > 0;
 
+  const shouldHideMobileHeader =
+    isHeaderHiddenOnMobile &&
+    !isCategoryMenuOpen &&
+    !isProfileMenuOpen &&
+    !isSearchOpen &&
+    !isMobileSearchOpen;
+
   return (
-    <header className="sticky top-0 z-30 w-full max-w-[100vw] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
+    <header
+      className={`sticky top-0 z-30 w-full max-w-[100vw] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-in-out ${
+        shouldHideMobileHeader ? "-translate-y-full md:translate-y-0" : "translate-y-0"
+      }`}
+    >
       <div className="flex items-center justify-between px-2.5 sm:px-4 md:px-6 h-16 gap-1.5 sm:gap-3">
         {/* Left: Category Switcher */}
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">

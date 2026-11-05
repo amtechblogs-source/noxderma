@@ -602,7 +602,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const SecondaryLeftIcon = secondaryLeftTab?.Icon;
 
   return (
-    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
+    <div className="min-h-screen w-full max-w-[100vw] [overflow-x:clip] bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
       {/* Instant Ultra-Slim Top Route Progress Bar */}
       {isNavigating && (
         <div
