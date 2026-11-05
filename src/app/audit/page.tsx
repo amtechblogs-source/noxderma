@@ -33,6 +33,7 @@ import {
   seedInitialAuditLogsIfEmpty,
   deleteAuditLogEntries,
   clearAllAuditLogs,
+  reconcileAndRepairAuditLogs,
 } from "@/lib/audit/auditTracker";
 import { formatKarachiDate } from "@/lib/formatting";
 import {
@@ -103,7 +104,7 @@ function formatEntityMeta(entityType: string): { label: string; badgeClass: stri
       badgeClass: "bg-teal-50 text-teal-700 dark:bg-teal-950/80 dark:text-teal-300",
     };
   }
-  if (normalized === "customer") {
+  if (normalized === "customer" || normalized === "distributor") {
     return {
       label: "CUSTOMER",
       badgeClass: "bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300",
@@ -125,6 +126,60 @@ function formatEntityMeta(entityType: string): { label: string; badgeClass: stri
     return {
       label: "STOCK BATCH",
       badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300",
+    };
+  }
+  if (normalized === "partner_transaction" || normalized === "transaction") {
+    return {
+      label: "PARTNER KHATA",
+      badgeClass: "bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300",
+    };
+  }
+  if (normalized === "partner_settings") {
+    return {
+      label: "PARTNERS CONFIG",
+      badgeClass: "bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/80 dark:text-fuchsia-300",
+    };
+  }
+  if (normalized === "salary" || normalized === "staff_salary") {
+    return {
+      label: "STAFF SALARY",
+      badgeClass: "bg-violet-50 text-violet-700 dark:bg-violet-950/80 dark:text-violet-300",
+    };
+  }
+  if (normalized === "operating_expense" || normalized === "expense") {
+    return {
+      label: "EXPENSE",
+      badgeClass: "bg-rose-50 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300",
+    };
+  }
+  if (normalized === "crm_lead" || normalized === "lead") {
+    return {
+      label: "CRM LEAD",
+      badgeClass: "bg-sky-50 text-sky-700 dark:bg-sky-950/80 dark:text-sky-300",
+    };
+  }
+  if (normalized === "employee_target" || normalized === "target") {
+    return {
+      label: "SALES TARGET",
+      badgeClass: "bg-orange-50 text-orange-700 dark:bg-orange-950/80 dark:text-orange-300",
+    };
+  }
+  if (normalized === "manufacturer") {
+    return {
+      label: "MANUFACTURER",
+      badgeClass: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+    };
+  }
+  if (normalized === "user") {
+    return {
+      label: "STAFF ACCOUNT",
+      badgeClass: "bg-teal-50 text-teal-700 dark:bg-teal-950/80 dark:text-teal-300",
+    };
+  }
+  if (normalized === "coupon") {
+    return {
+      label: "COUPON",
+      badgeClass: "bg-pink-50 text-pink-700 dark:bg-pink-950/80 dark:text-pink-300",
     };
   }
   return {
@@ -325,6 +380,7 @@ export default function AuditLogsPage() {
   const loadLogs = async () => {
     setLoading(true);
     try {
+      await reconcileAndRepairAuditLogs();
       await seedInitialAuditLogsIfEmpty();
       const records = await getAuditLogs();
       setLogs(records);
@@ -396,6 +452,31 @@ export default function AuditLogsPage() {
         const typeLower = l.entityType.toLowerCase();
         if (entityFilter === "visit") {
           if (typeLower !== "visit" && typeLower !== "customervisit") return false;
+        } else if (entityFilter === "partner") {
+          const isPartner =
+            typeLower === "partner_settings" ||
+            typeLower === "partner_transaction" ||
+            typeLower === "transaction" ||
+            l.entityId === "partnerSettings_config";
+          if (!isPartner) return false;
+        } else if (entityFilter === "customer") {
+          if (typeLower !== "customer" && typeLower !== "distributor") return false;
+        } else if (entityFilter === "operating_expense") {
+          if (typeLower !== "operating_expense" && typeLower !== "expense") return false;
+        } else if (entityFilter === "salary") {
+          if (typeLower !== "salary" && typeLower !== "staff_salary") return false;
+        } else if (entityFilter === "crm_lead") {
+          if (typeLower !== "crm_lead" && typeLower !== "lead") return false;
+        } else if (entityFilter === "employee_target") {
+          if (typeLower !== "employee_target" && typeLower !== "target") return false;
+        } else if (entityFilter === "purchase_order") {
+          if (typeLower !== "purchase_order" && typeLower !== "purchase") return false;
+        } else if (entityFilter === "setting") {
+          if (
+            (typeLower !== "setting" && typeLower !== "settings") ||
+            l.entityId === "partnerSettings_config"
+          )
+            return false;
         } else if (typeLower !== entityFilter.toLowerCase()) {
           return false;
         }
@@ -1010,12 +1091,27 @@ export default function AuditLogsPage() {
               className="w-full min-h-[42px] px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
               <option value="all">All Modules</option>
+              <option value="partner">Partners Khata &amp; Equity</option>
               <option value="visit">Doctor &amp; Field Visits</option>
               <option value="invoice">Customer Invoices</option>
-              <option value="customer">Customers &amp; Stores</option>
+              <option value="customer">Customers &amp; Distributors</option>
               <option value="product">Medicines &amp; Catalog</option>
               <option value="payment">Payments &amp; Receipts</option>
               <option value="inventory_batch">Warehouse Batches</option>
+              <option value="operating_expense">P&amp;L Operating Expenses</option>
+              <option value="salary">Staff Salaries &amp; Payroll</option>
+              <option value="crm_lead">CRM Leads</option>
+              <option value="employee_target">Employee Targets</option>
+              <option value="manufacturer">Manufacturers</option>
+              <option value="purchase_order">Purchases &amp; GRNs</option>
+              <option value="sales_booking">Sales Bookings</option>
+              <option value="online_order">Online Orders</option>
+              <option value="sales_return">Sales Returns</option>
+              <option value="coupon">Promo Coupons</option>
+              <option value="marketing_campaign">Marketing Campaigns</option>
+              <option value="user">Staff Users</option>
+              <option value="category">Categories</option>
+              <option value="setting">Business Settings</option>
             </select>
           </div>
 

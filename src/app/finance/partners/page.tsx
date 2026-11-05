@@ -60,7 +60,7 @@ import {
   scheduleCloudDelete,
   sanitizeForFirestore,
 } from "@/lib/offline/cloudSync";
-import { recordActivity } from "@/lib/audit/auditTracker";
+import { recordActivity, reconcileAndRepairAuditLogs } from "@/lib/audit/auditTracker";
 import {
   computeDateScopeCounts,
   getItemsInScope,
@@ -261,6 +261,7 @@ export default function PartnersKhataPage() {
   // 1. Initial Load from Local Cache (IndexedDB & LocalStorage)
   const loadData = async () => {
     try {
+      await reconcileAndRepairAuditLogs();
       const [list, settings] = await Promise.all([
         offlineDb.partnerTransactions.toArray(),
         offlineDb.settings.get("primary"),

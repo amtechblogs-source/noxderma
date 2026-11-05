@@ -345,7 +345,7 @@ export default function BusinessSettingsPage() {
         entityType: "setting",
         entityId: "primary",
         entityTitle: updated.brandName || "Company Settings",
-        details: `Updated company settings (${updated.companyLegalName || updated.brandName}).`,
+        details: `Updated company settings (${updated.legalName || updated.brandName}).`,
         snapshotBefore: prevSettings,
         snapshotAfter: updated,
         canUndo: true,

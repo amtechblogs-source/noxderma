@@ -143,7 +143,7 @@ export default function LeadsCrmPage() {
     });
 
     if (targetLead) {
-      const updatedLead: ClientLead = {
+      const updatedLead: Lead = {
         ...targetLead,
         status: nextStage,
         lastContactedAt: nowIso,

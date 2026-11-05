@@ -1,6 +1,132 @@
 import { offlineDb, type LocalAuditLog } from "@/lib/offline/db";
 import { getDeviceId } from "@/lib/offline/device";
-import type { Invoice, Customer, Product, Payment, InventoryBatch } from "@/types";
+import {
+  scheduleCloudUpsert,
+  scheduleCloudDelete,
+  sanitizeForFirestore,
+} from "@/lib/offline/cloudSync";
+import { db as firestoreDb } from "@/lib/firebase/config";
+import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import type { Invoice, Customer, Product, Payment, InventoryBatch, PartnerTransaction } from "@/types";
+
+async function syncMirrorKeyFromTable(tableName: string, mirrorKey: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const table = (offlineDb as any)[tableName];
+    if (table) {
+      const all = await table.toArray();
+      localStorage.setItem(mirrorKey, JSON.stringify(all || []));
+    }
+  } catch (err) {
+    console.warn(`[AuditUndo] Failed to sync localStorage mirror ${mirrorKey}:`, err);
+  }
+}
+
+async function cloudUpsertWithFallback(collectionName: string, docId: string, data: any) {
+  if (!docId) return;
+  scheduleCloudUpsert(collectionName, docId, data);
+  try {
+    await Promise.race([
+      setDoc(doc(firestoreDb, collectionName, String(docId)), sanitizeForFirestore(data), {
+        merge: true,
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 1800)),
+    ]);
+  } catch {
+    // scheduleCloudUpsert will still retry
+  }
+}
+
+async function cloudDeleteWithFallback(collectionName: string, docId: string) {
+  if (!docId) return;
+  scheduleCloudDelete(collectionName, docId);
+  try {
+    await Promise.race([
+      deleteDoc(doc(firestoreDb, collectionName, String(docId))),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 1800)),
+    ]);
+  } catch {
+    // scheduleCloudDelete will still retry
+  }
+}
+
+/**
+ * Resolves previous partners list for a partnerSettings_config log entry,
+ * even for legacy log entries that were recorded without `snapshotBefore`.
+ */
+async function resolvePreviousPartnersForLog(
+  log: LocalAuditLog
+): Promise<Array<{ id: string; name: string }> | null> {
+  if (log.snapshotBefore) {
+    if (Array.isArray(log.snapshotBefore.partners) && log.snapshotBefore.partners.length > 0) {
+      return log.snapshotBefore.partners;
+    }
+    if (Array.isArray(log.snapshotBefore) && log.snapshotBefore.length > 0) {
+      return log.snapshotBefore;
+    }
+  }
+
+  // Fallback for legacy logs without snapshotBefore:
+  // 1. Check if there is an earlier audit log for partnerSettings_config
+  try {
+    const allLogs = await offlineDb.auditLogs
+      .where("entityId")
+      .equals("partnerSettings_config")
+      .toArray();
+    const earlierLogs = allLogs
+      .filter(
+        (l) =>
+          l.id !== log.id &&
+          l.action !== "undo" &&
+          !l.isUndone &&
+          new Date(l.timestamp).getTime() < new Date(log.timestamp).getTime()
+      )
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    if (earlierLogs.length > 0) {
+      const prevLog = earlierLogs[0];
+      if (prevLog.snapshotAfter?.partners && Array.isArray(prevLog.snapshotAfter.partners)) {
+        return prevLog.snapshotAfter.partners;
+      }
+      const match = (prevLog.details || "").match(/Active partners:\s*(.+)$/i);
+      if (match && match[1]) {
+        const names = match[1]
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (names.length > 0) {
+          let currentPartners: Array<{ id: string; name: string }> = [];
+          try {
+            const raw = localStorage.getItem("nox_partner_configs");
+            if (raw) currentPartners = JSON.parse(raw);
+          } catch {}
+          return names.map((name, idx) => {
+            const matched = currentPartners.find(
+              (p) => p.name.toLowerCase() === name.toLowerCase()
+            );
+            return {
+              id: matched?.id || `partner_${idx + 1}`,
+              name,
+            };
+          });
+        }
+      }
+    }
+  } catch {}
+
+  // 2. Otherwise inspect current `nox_partner_configs` vs the log's `Active partners: ...`
+  try {
+    const raw = localStorage.getItem("nox_partner_configs");
+    if (raw) {
+      const currentPartners: Array<{ id: string; name: string }> = JSON.parse(raw);
+      if (Array.isArray(currentPartners) && currentPartners.length > 1) {
+        return currentPartners.slice(0, currentPartners.length - 1);
+      }
+    }
+  } catch {}
+
+  return null;
+}
 
 export interface RecordActivityParams {
   userId?: string;
@@ -65,6 +191,850 @@ export async function recordActivity(params: RecordActivityParams): Promise<stri
 }
 
 /**
+ * Executes the actual database, localStorage, and Cloud Firestore rollback for a given audit log entry.
+ */
+async function executeRollbackForLog(
+  log: LocalAuditLog,
+  performer: { id: string; displayName: string; role: string },
+  now: string
+): Promise<{ rolledBack: boolean; reason?: string }> {
+  const entityType = (log.entityType || "").toLowerCase();
+
+  // ---------------------------------------------------------------------------
+  // 1. PARTNERS CONFIGURATION (Add / Rename / Remove Partner in Partners Khata)
+  // ---------------------------------------------------------------------------
+  if (
+    entityType === "partner_settings" ||
+    log.entityId === "partnerSettings_config" ||
+    ((entityType === "settings" || entityType === "setting") &&
+      log.entityId === "partnerSettings_config")
+  ) {
+    const restoredPartners = await resolvePreviousPartnersForLog(log);
+    if (!restoredPartners || restoredPartners.length === 0) {
+      return {
+        rolledBack: false,
+        reason: "Previous partner configuration snapshot is not available to restore.",
+      };
+    }
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("nox_partner_configs", JSON.stringify(restoredPartners));
+      localStorage.setItem("nox_partner_configs_updated_at", now);
+      if (restoredPartners[0]) {
+        localStorage.setItem("nox_partner_1_name", restoredPartners[0].name);
+      }
+      if (restoredPartners[1]) {
+        localStorage.setItem("nox_partner_2_name", restoredPartners[1].name);
+      }
+    }
+
+    await cloudUpsertWithFallback("partnerSettings", "config", {
+      partners: restoredPartners,
+      updatedAt: now,
+    });
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. PARTNER TRANSACTIONS (Investment, Withdrawal, Profit Distribution, Edit, Delete)
+  // ---------------------------------------------------------------------------
+  if (entityType === "partner_transaction" || entityType === "transaction") {
+    if (log.action === "create") {
+      // Subcase A: Distributed profit with snapshotAfter.createdTxs
+      if (log.snapshotAfter && Array.isArray(log.snapshotAfter.createdTxs)) {
+        const createdIds: string[] = log.snapshotAfter.createdTxs
+          .map((t: any) => t?.id)
+          .filter(Boolean);
+        const unsettledList: PartnerTransaction[] = Array.isArray(
+          log.snapshotBefore?.unsettledAdvances
+        )
+          ? log.snapshotBefore.unsettledAdvances
+          : Array.isArray(log.snapshotAfter?.settledAdvances)
+          ? log.snapshotAfter.settledAdvances.map((a: any) => ({ ...a, isSettled: false }))
+          : [];
+
+        if (createdIds.length > 0) {
+          await offlineDb.partnerTransactions.bulkDelete(createdIds);
+          for (const id of createdIds) {
+            await cloudDeleteWithFallback("partnerTransactions", id);
+          }
+        }
+        if (unsettledList.length > 0) {
+          await offlineDb.partnerTransactions.bulkPut(unsettledList);
+          for (const adv of unsettledList) {
+            await cloudUpsertWithFallback("partnerTransactions", adv.id, adv);
+          }
+        }
+      } else {
+        // Subcase B: Single or comma-separated transaction IDs
+        const ids = String(log.entityId || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        for (const id of ids) {
+          const existingTx = await offlineDb.partnerTransactions.get(id);
+          const targetTx = existingTx || (log.snapshotAfter as PartnerTransaction | undefined);
+          if (
+            targetTx &&
+            targetTx.type === "profit_payout" &&
+            Array.isArray(targetTx.settledAdvanceTxIds)
+          ) {
+            for (const advId of targetTx.settledAdvanceTxIds) {
+              const adv = await offlineDb.partnerTransactions.get(advId);
+              if (adv && adv.isSettled) {
+                const restoredAdv = { ...adv, isSettled: false };
+                await offlineDb.partnerTransactions.put(restoredAdv);
+                await cloudUpsertWithFallback("partnerTransactions", advId, restoredAdv);
+              }
+            }
+          }
+          await offlineDb.partnerTransactions.delete(id);
+          await cloudDeleteWithFallback("partnerTransactions", id);
+        }
+      }
+      await syncMirrorKeyFromTable("partnerTransactions", "noxderma_partner_transactions");
+      return { rolledBack: true };
+    } else if (log.action === "update") {
+      if (!log.snapshotBefore) {
+        return {
+          rolledBack: false,
+          reason: "Previous transaction state was not recorded for this edit.",
+        };
+      }
+      const prevTx = log.snapshotBefore as PartnerTransaction;
+      await offlineDb.partnerTransactions.put(prevTx);
+      await cloudUpsertWithFallback("partnerTransactions", prevTx.id, prevTx);
+      await syncMirrorKeyFromTable("partnerTransactions", "noxderma_partner_transactions");
+      return { rolledBack: true };
+    } else if (log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return {
+          rolledBack: false,
+          reason: "Deleted transaction snapshot is not available to restore.",
+        };
+      }
+      const itemsToRestore: PartnerTransaction[] = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+
+      await offlineDb.partnerTransactions.bulkPut(itemsToRestore);
+      for (const tx of itemsToRestore) {
+        await cloudUpsertWithFallback("partnerTransactions", tx.id, tx);
+        if (tx.type === "profit_payout" && Array.isArray(tx.settledAdvanceTxIds)) {
+          for (const advId of tx.settledAdvanceTxIds) {
+            const adv = await offlineDb.partnerTransactions.get(advId);
+            if (adv && !adv.isSettled) {
+              const settledAdv = { ...adv, isSettled: true };
+              await offlineDb.partnerTransactions.put(settledAdv);
+              await cloudUpsertWithFallback("partnerTransactions", advId, settledAdv);
+            }
+          }
+        }
+      }
+      await syncMirrorKeyFromTable("partnerTransactions", "noxderma_partner_transactions");
+      return { rolledBack: true };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. INVOICES (Customer Bills)
+  // ---------------------------------------------------------------------------
+  if (entityType === "invoice") {
+    await offlineDb.transaction(
+      "rw",
+      [
+        offlineDb.invoices,
+        offlineDb.inventoryBatches,
+        offlineDb.stockMovements,
+        offlineDb.customers,
+        offlineDb.auditLogs,
+      ],
+      async () => {
+        if (log.action === "create") {
+          const inv =
+            (await offlineDb.invoices.get(log.entityId)) || (log.snapshotAfter as Invoice);
+          if (inv) {
+            for (const line of inv.lines || []) {
+              for (const alloc of line.batchAllocations || []) {
+                if (alloc.batchId) {
+                  const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
+                  if (batch) {
+                    const restoredQty =
+                      (Number(batch.remainingQuantity) || 0) + (alloc.quantity || 0);
+                    await offlineDb.inventoryBatches.update(alloc.batchId, {
+                      remainingQuantity: restoredQty,
+                      updatedAt: now,
+                    });
+
+                    await offlineDb.stockMovements.add({
+                      id: `mov_undo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                      productId: line.productId,
+                      productName: line.productName,
+                      batchId: alloc.batchId,
+                      batchNumber: alloc.batchNumber || batch.batchNumber,
+                      type: "sales_return",
+                      quantityChange: alloc.quantity,
+                      balanceAfter: restoredQty,
+                      referenceId: inv.id,
+                      referenceType: "invoice",
+                      userId: performer.id,
+                      userName: performer.displayName,
+                      reason: `Undo bill creation by owner: ${inv.provisionalReference}`,
+                      timestamp: now,
+                    });
+                  }
+                }
+              }
+            }
+
+            if (inv.customerId && inv.outstandingBalance > 0) {
+              const cust = await offlineDb.customers.get(inv.customerId);
+              if (cust) {
+                const newBal = Math.max(
+                  0,
+                  (cust.currentOutstandingBalance || 0) - inv.outstandingBalance
+                );
+                await offlineDb.customers.update(inv.customerId, {
+                  currentOutstandingBalance: newBal,
+                  updatedAt: now,
+                });
+              }
+            }
+
+            await offlineDb.invoices.delete(inv.id);
+          }
+        } else if (log.action === "delete") {
+          const invoicesToRestore: Invoice[] = Array.isArray(log.snapshotBefore)
+            ? log.snapshotBefore
+            : log.snapshotBefore
+            ? [log.snapshotBefore as Invoice]
+            : [];
+
+          for (const inv of invoicesToRestore) {
+            await offlineDb.invoices.put(inv);
+
+            for (const line of inv.lines || []) {
+              for (const alloc of line.batchAllocations || []) {
+                if (alloc.batchId) {
+                  const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
+                  if (batch) {
+                    const newRem = Math.max(
+                      0,
+                      (Number(batch.remainingQuantity) || 0) - (alloc.quantity || 0)
+                    );
+                    await offlineDb.inventoryBatches.update(alloc.batchId, {
+                      remainingQuantity: newRem,
+                      updatedAt: now,
+                    });
+
+                    await offlineDb.stockMovements.add({
+                      id: `mov_rest_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                      productId: line.productId,
+                      productName: line.productName,
+                      batchId: alloc.batchId,
+                      batchNumber: alloc.batchNumber || batch.batchNumber,
+                      type: "sales_deduction",
+                      quantityChange: -alloc.quantity,
+                      balanceAfter: newRem,
+                      referenceId: inv.id,
+                      referenceType: "invoice",
+                      userId: performer.id,
+                      userName: performer.displayName,
+                      reason: `Restored deleted bill by owner: ${inv.provisionalReference}`,
+                      timestamp: now,
+                    });
+                  }
+                }
+              }
+            }
+
+            if (inv.customerId && inv.outstandingBalance > 0) {
+              const cust = await offlineDb.customers.get(inv.customerId);
+              if (cust) {
+                const newBal = (cust.currentOutstandingBalance || 0) + inv.outstandingBalance;
+                await offlineDb.customers.update(inv.customerId, {
+                  currentOutstandingBalance: newBal,
+                  updatedAt: now,
+                });
+              }
+            }
+          }
+        } else if (log.action === "update") {
+          const oldInv = log.snapshotBefore as Invoice;
+          const currentInv = await offlineDb.invoices.get(log.entityId);
+
+          if (oldInv && currentInv) {
+            for (const line of currentInv.lines || []) {
+              for (const alloc of line.batchAllocations || []) {
+                if (alloc.batchId) {
+                  const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
+                  if (batch) {
+                    const restored =
+                      (Number(batch.remainingQuantity) || 0) + (alloc.quantity || 0);
+                    await offlineDb.inventoryBatches.update(alloc.batchId, {
+                      remainingQuantity: restored,
+                    });
+                  }
+                }
+              }
+            }
+
+            if (currentInv.customerId && currentInv.outstandingBalance > 0) {
+              const cust = await offlineDb.customers.get(currentInv.customerId);
+              if (cust) {
+                const newBal = Math.max(
+                  0,
+                  (cust.currentOutstandingBalance || 0) - currentInv.outstandingBalance
+                );
+                await offlineDb.customers.update(currentInv.customerId, {
+                  currentOutstandingBalance: newBal,
+                });
+              }
+            }
+
+            for (const line of oldInv.lines || []) {
+              for (const alloc of line.batchAllocations || []) {
+                if (alloc.batchId) {
+                  const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
+                  if (batch) {
+                    const newRem = Math.max(
+                      0,
+                      (Number(batch.remainingQuantity) || 0) - (alloc.quantity || 0)
+                    );
+                    await offlineDb.inventoryBatches.update(alloc.batchId, {
+                      remainingQuantity: newRem,
+                    });
+                  }
+                }
+              }
+            }
+
+            if (oldInv.customerId && oldInv.outstandingBalance > 0) {
+              const cust = await offlineDb.customers.get(oldInv.customerId);
+              if (cust) {
+                const newBal = (cust.currentOutstandingBalance || 0) + oldInv.outstandingBalance;
+                await offlineDb.customers.update(oldInv.customerId, {
+                  currentOutstandingBalance: newBal,
+                });
+              }
+            }
+
+            await offlineDb.invoices.put(oldInv);
+          }
+        }
+      }
+    );
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. FIELD VISITS (CRM Visits)
+  // ---------------------------------------------------------------------------
+  if (entityType === "visit" || entityType === "customervisit") {
+    if (log.action === "create") {
+      await offlineDb.customerVisits.delete(log.entityId);
+      await cloudDeleteWithFallback("customerVisits", log.entityId);
+    } else if (log.action === "delete" || log.action === "update") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing visit snapshot to restore." };
+      }
+      if (Array.isArray(log.snapshotBefore)) {
+        await offlineDb.customerVisits.bulkPut(log.snapshotBefore);
+      } else {
+        await offlineDb.customerVisits.put(log.snapshotBefore);
+      }
+    }
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. CUSTOMERS & DISTRIBUTORS
+  // ---------------------------------------------------------------------------
+  if (entityType === "customer" || entityType === "distributor") {
+    if (log.action === "create") {
+      await offlineDb.customers.delete(log.entityId);
+      await cloudDeleteWithFallback("customers", log.entityId);
+    } else if (log.action === "delete" || log.action === "update") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing customer snapshot to restore." };
+      }
+      if (Array.isArray(log.snapshotBefore)) {
+        await offlineDb.customers.bulkPut(log.snapshotBefore);
+      } else {
+        await offlineDb.customers.put(log.snapshotBefore);
+      }
+    }
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. PRODUCTS / MEDICINES
+  // ---------------------------------------------------------------------------
+  if (entityType === "product") {
+    await offlineDb.transaction(
+      "rw",
+      [
+        offlineDb.products,
+        offlineDb.productPricing,
+        offlineDb.inventoryBatches,
+        offlineDb.stockMovements,
+      ],
+      async () => {
+        if (log.action === "create") {
+          await offlineDb.products.delete(log.entityId);
+          await offlineDb.productPricing.delete(log.entityId);
+          await offlineDb.inventoryBatches.where("productId").equals(log.entityId).delete();
+          await offlineDb.stockMovements.where("productId").equals(log.entityId).delete();
+        } else if (log.action === "delete" || log.action === "update") {
+          if (log.snapshotBefore) {
+            const snaps = Array.isArray(log.snapshotBefore)
+              ? log.snapshotBefore
+              : [log.snapshotBefore];
+            for (const snap of snaps) {
+              if (snap.product && snap.product.id) {
+                await offlineDb.products.put(snap.product);
+                if (snap.pricing) {
+                  await offlineDb.productPricing.put(snap.pricing);
+                }
+                if (Array.isArray(snap.batches)) {
+                  await offlineDb.inventoryBatches
+                    .where("productId")
+                    .equals(snap.product.id)
+                    .delete();
+                  if (snap.batches.length > 0) {
+                    await offlineDb.inventoryBatches.bulkPut(snap.batches);
+                  }
+                }
+              } else if (snap.id) {
+                await offlineDb.products.put(snap);
+              }
+            }
+          }
+        }
+      }
+    );
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 7. CUSTOMER PAYMENTS (with Invoice Allocations Rollback)
+  // ---------------------------------------------------------------------------
+  if (entityType === "payment") {
+    await offlineDb.transaction(
+      "rw",
+      [offlineDb.payments, offlineDb.customers, offlineDb.invoices],
+      async () => {
+        if (log.action === "create") {
+          const pay =
+            (await offlineDb.payments.get(log.entityId)) || (log.snapshotAfter as Payment);
+          if (pay) {
+            if (pay.customerId && pay.amount > 0) {
+              const cust = await offlineDb.customers.get(pay.customerId);
+              if (cust) {
+                await offlineDb.customers.update(pay.customerId, {
+                  currentOutstandingBalance:
+                    (cust.currentOutstandingBalance || 0) + pay.amount,
+                  updatedAt: now,
+                });
+              }
+            }
+            if (Array.isArray(pay.allocations)) {
+              for (const alloc of pay.allocations) {
+                const allocAmt =
+                  Number(alloc.amountAllocated ?? (alloc as any).allocatedAmount) || 0;
+                if (alloc.invoiceId && allocAmt > 0) {
+                  const inv = await offlineDb.invoices.get(alloc.invoiceId);
+                  if (inv) {
+                    const nextPaid = Math.max(
+                      0,
+                      (inv.paidAmount || 0) - allocAmt
+                    );
+                    const nextOut = (inv.outstandingBalance || 0) + allocAmt;
+                    await offlineDb.invoices.update(inv.id, {
+                      paidAmount: nextPaid,
+                      outstandingBalance: nextOut,
+                      paymentStatus: nextPaid <= 0 ? "unpaid" : "partially_paid",
+                      updatedAt: now,
+                    });
+                  }
+                }
+              }
+            }
+          }
+          await offlineDb.payments.delete(log.entityId);
+        } else if (log.action === "delete") {
+          if (log.snapshotBefore) {
+            const pay = log.snapshotBefore as Payment;
+            await offlineDb.payments.put(pay);
+            if (pay.customerId && pay.amount > 0) {
+              const cust = await offlineDb.customers.get(pay.customerId);
+              if (cust) {
+                await offlineDb.customers.update(pay.customerId, {
+                  currentOutstandingBalance: Math.max(
+                    0,
+                    (cust.currentOutstandingBalance || 0) - pay.amount
+                  ),
+                  updatedAt: now,
+                });
+              }
+            }
+            if (Array.isArray(pay.allocations)) {
+              for (const alloc of pay.allocations) {
+                const allocAmt =
+                  Number(alloc.amountAllocated ?? (alloc as any).allocatedAmount) || 0;
+                if (alloc.invoiceId && allocAmt > 0) {
+                  const inv = await offlineDb.invoices.get(alloc.invoiceId);
+                  if (inv) {
+                    const nextPaid = (inv.paidAmount || 0) + allocAmt;
+                    const nextOut = Math.max(
+                      0,
+                      (inv.outstandingBalance || 0) - allocAmt
+                    );
+                    await offlineDb.invoices.update(inv.id, {
+                      paidAmount: nextPaid,
+                      outstandingBalance: nextOut,
+                      paymentStatus: nextOut <= 0 ? "paid" : "partially_paid",
+                      updatedAt: now,
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } else if (log.action === "update") {
+          if (log.snapshotBefore) {
+            await offlineDb.payments.put(log.snapshotBefore);
+          }
+        }
+      }
+    );
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 8. OPERATING EXPENSES (Profit & Loss Module)
+  // ---------------------------------------------------------------------------
+  if (entityType === "operating_expense" || entityType === "expense") {
+    if (log.action === "create") {
+      await offlineDb.operatingExpenses.delete(log.entityId);
+      await cloudDeleteWithFallback("operatingExpenses", log.entityId);
+    } else if (log.action === "delete" || log.action === "update") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing expense snapshot to restore." };
+      }
+      const list = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.operatingExpenses.bulkPut(list);
+      for (const item of list) {
+        await cloudUpsertWithFallback("operatingExpenses", item.id, item);
+      }
+    }
+    await syncMirrorKeyFromTable("operatingExpenses", "noxderma_operating_expenses");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 9. STAFF SALARIES & PAYROLL
+  // ---------------------------------------------------------------------------
+  if (entityType === "salary" || entityType === "staff_salary") {
+    if (log.action === "create") {
+      const idsToDelete: string[] = Array.isArray(log.snapshotAfter)
+        ? log.snapshotAfter.map((s: any) => s?.id).filter(Boolean)
+        : String(log.entityId || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+      if (idsToDelete.length > 0) {
+        await offlineDb.staffSalaries.bulkDelete(idsToDelete);
+        for (const id of idsToDelete) {
+          await cloudDeleteWithFallback("staffSalaries", id);
+        }
+      }
+    } else if (log.action === "update" || log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing salary snapshot to restore." };
+      }
+      const itemsToRestore = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.staffSalaries.bulkPut(itemsToRestore);
+      for (const item of itemsToRestore) {
+        await cloudUpsertWithFallback("staffSalaries", item.id, item);
+      }
+    }
+    await syncMirrorKeyFromTable("staffSalaries", "noxderma_staff_salaries");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 10. CRM LEADS
+  // ---------------------------------------------------------------------------
+  if (entityType === "crm_lead" || entityType === "lead") {
+    if (log.action === "create") {
+      await offlineDb.leads.delete(log.entityId);
+      await cloudDeleteWithFallback("leads", log.entityId);
+    } else if (log.action === "update" || log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing lead snapshot to restore." };
+      }
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.leads.bulkPut(items);
+    }
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 11. EMPLOYEE SALES TARGETS
+  // ---------------------------------------------------------------------------
+  if (entityType === "employee_target" || entityType === "target") {
+    if (log.action === "create") {
+      await offlineDb.employeeTargets.delete(log.entityId);
+      await cloudDeleteWithFallback("employeeTargets", log.entityId);
+    } else if (log.action === "update" || log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing sales target snapshot to restore." };
+      }
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.employeeTargets.bulkPut(items);
+      for (const item of items) {
+        await cloudUpsertWithFallback("employeeTargets", item.id, item);
+      }
+    }
+    await syncMirrorKeyFromTable("employeeTargets", "noxderma_rep_targets");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 12. PHARMACEUTICAL MANUFACTURERS / SUPPLIERS
+  // ---------------------------------------------------------------------------
+  if (entityType === "manufacturer") {
+    if (log.action === "create") {
+      await offlineDb.manufacturers.delete(log.entityId);
+      await cloudDeleteWithFallback("manufacturers", log.entityId);
+    } else if (log.action === "update" || log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing manufacturer snapshot to restore." };
+      }
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.manufacturers.bulkPut(items);
+      for (const item of items) {
+        await cloudUpsertWithFallback("manufacturers", item.id, item);
+      }
+    }
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 13. STAFF USER ACCOUNTS
+  // ---------------------------------------------------------------------------
+  if (entityType === "user") {
+    if (log.action === "create") {
+      await (offlineDb as any).users?.delete(log.entityId);
+      await cloudDeleteWithFallback("users", log.entityId);
+    } else if (log.action === "update" || log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing user account snapshot to restore." };
+      }
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await (offlineDb as any).users?.bulkPut(items);
+      for (const item of items) {
+        await cloudUpsertWithFallback("users", item.id, item);
+      }
+    }
+    await syncMirrorKeyFromTable("users", "noxderma_users");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("noxderma-users-updated"));
+    }
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 14. PROMOTIONAL COUPONS
+  // ---------------------------------------------------------------------------
+  if (entityType === "coupon") {
+    if (log.action === "create") {
+      await offlineDb.coupons.delete(log.entityId);
+      await cloudDeleteWithFallback("coupons", log.entityId);
+    } else if (log.action === "update" || log.action === "delete") {
+      if (!log.snapshotBefore) {
+        return { rolledBack: false, reason: "Missing coupon snapshot to restore." };
+      }
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.coupons.bulkPut(items);
+      for (const item of items) {
+        await cloudUpsertWithFallback("coupons", item.id, item);
+      }
+    }
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 15. PURCHASE ORDERS & GRN STOCK RECEIPTS
+  // ---------------------------------------------------------------------------
+  if (entityType === "purchase_order" || entityType === "purchase") {
+    if (log.action === "create") {
+      await (offlineDb as any).purchaseOrders?.delete(log.entityId);
+      await cloudDeleteWithFallback("purchaseOrders", log.entityId);
+    } else if (log.action === "update") {
+      if (log.snapshotBefore?.po) {
+        await (offlineDb as any).purchaseOrders?.put(log.snapshotBefore.po);
+        if (log.snapshotAfter?.batch?.id) {
+          await offlineDb.inventoryBatches.delete(log.snapshotAfter.batch.id);
+        }
+        if (log.snapshotAfter?.movementId) {
+          await offlineDb.stockMovements.delete(log.snapshotAfter.movementId);
+        }
+      } else if (log.snapshotBefore) {
+        await (offlineDb as any).purchaseOrders?.put(log.snapshotBefore);
+      }
+    } else if (log.action === "delete" && log.snapshotBefore) {
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await (offlineDb as any).purchaseOrders?.bulkPut(items);
+    }
+    await syncMirrorKeyFromTable("purchaseOrders", "noxderma_purchase_orders");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 16. SALES BOOKINGS (Field Staff Orders)
+  // ---------------------------------------------------------------------------
+  if (entityType === "sales_booking" || entityType === "booking") {
+    if (log.action === "create") {
+      await (offlineDb as any).salesBookings?.delete(log.entityId);
+      await cloudDeleteWithFallback("salesBookings", log.entityId);
+    } else if ((log.action === "update" || log.action === "delete") && log.snapshotBefore) {
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await (offlineDb as any).salesBookings?.bulkPut(items);
+    }
+    await syncMirrorKeyFromTable("salesBookings", "noxderma_sales_bookings");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 17. ONLINE COURIER ORDERS
+  // ---------------------------------------------------------------------------
+  if (entityType === "online_order") {
+    if (log.action === "create") {
+      await (offlineDb as any).onlineOrders?.delete(log.entityId);
+      await cloudDeleteWithFallback("onlineOrders", log.entityId);
+    } else if ((log.action === "update" || log.action === "delete") && log.snapshotBefore) {
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await (offlineDb as any).onlineOrders?.bulkPut(items);
+    }
+    await syncMirrorKeyFromTable("onlineOrders", "noxderma_online_orders");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 18. CUSTOMER SALES RETURNS
+  // ---------------------------------------------------------------------------
+  if (entityType === "sales_return") {
+    if (log.action === "create") {
+      await (offlineDb as any).salesReturns?.delete(log.entityId);
+      await cloudDeleteWithFallback("salesReturns", log.entityId);
+      if (log.snapshotAfter?.movementId) {
+        await offlineDb.stockMovements.delete(log.snapshotAfter.movementId);
+      }
+      if (
+        log.snapshotBefore?.customerId &&
+        typeof log.snapshotBefore?.prevBalance === "number"
+      ) {
+        await offlineDb.customers.update(log.snapshotBefore.customerId, {
+          currentOutstandingBalance: log.snapshotBefore.prevBalance,
+          updatedAt: now,
+        });
+      }
+    } else if ((log.action === "update" || log.action === "delete") && log.snapshotBefore) {
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await (offlineDb as any).salesReturns?.bulkPut(items);
+    }
+    await syncMirrorKeyFromTable("salesReturns", "noxderma_sales_returns");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 19. MARKETING CAMPAIGNS
+  // ---------------------------------------------------------------------------
+  if (entityType === "marketing_campaign") {
+    if (log.action === "create") {
+      await (offlineDb as any).marketingCampaigns?.delete(log.entityId);
+      await cloudDeleteWithFallback("marketingCampaigns", log.entityId);
+    } else if ((log.action === "update" || log.action === "delete") && log.snapshotBefore) {
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await (offlineDb as any).marketingCampaigns?.bulkPut(items);
+    }
+    await syncMirrorKeyFromTable("marketingCampaigns", "noxderma_marketing_campaigns");
+    return { rolledBack: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 20. INVENTORY BATCHES, CATEGORIES & BUSINESS SETTINGS
+  // ---------------------------------------------------------------------------
+  if (entityType === "inventory_batch") {
+    if (log.action === "create") {
+      await offlineDb.inventoryBatches.delete(log.entityId);
+    } else if (log.snapshotBefore) {
+      const items = Array.isArray(log.snapshotBefore)
+        ? log.snapshotBefore
+        : [log.snapshotBefore];
+      await offlineDb.inventoryBatches.bulkPut(items);
+    }
+    return { rolledBack: true };
+  }
+
+  if (entityType === "category") {
+    if (log.action === "create") {
+      await offlineDb.categories.delete(log.entityId);
+    } else if (log.snapshotBefore) {
+      await offlineDb.categories.put(log.snapshotBefore);
+    }
+    return { rolledBack: true };
+  }
+
+  if (entityType === "setting" || entityType === "settings") {
+    if (!log.snapshotBefore) {
+      return { rolledBack: false, reason: "Missing settings snapshot to restore." };
+    }
+    await offlineDb.settings.put(log.snapshotBefore);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("noxderma_business_settings", JSON.stringify([log.snapshotBefore]));
+      window.dispatchEvent(
+        new CustomEvent("noxderma_settings_updated", { detail: log.snapshotBefore })
+      );
+    }
+    await cloudUpsertWithFallback("settings", "primary", log.snapshotBefore);
+    return { rolledBack: true };
+  }
+
+  return {
+    rolledBack: false,
+    reason: `Unsupported entity type "${log.entityType}" for automatic undo.`,
+  };
+}
+
+/**
  * Undo an action performed by any staff member.
  * Restores previous entity snapshot, adjusts inventory stock & customer balance accordingly.
  * Strictly available to Owner / Admin.
@@ -83,290 +1053,19 @@ export async function undoActivity(
       return { success: false, message: "This action has already been undone." };
     }
 
-    if (!log.canUndo) {
+    if (!log.canUndo && !log.snapshotBefore && !log.snapshotAfter) {
       return { success: false, message: "This action cannot be undone." };
     }
 
     const now = new Date().toISOString();
 
-    // 1. Rollback according to entityType and action
-    if (log.entityType === "invoice") {
-      await offlineDb.transaction(
-        "rw",
-        [
-          offlineDb.invoices,
-          offlineDb.inventoryBatches,
-          offlineDb.stockMovements,
-          offlineDb.customers,
-          offlineDb.auditLogs,
-        ],
-        async () => {
-          if (log.action === "create") {
-            // Undo creation = Delete invoice and return stock & reverse customer balance
-            const inv = (await offlineDb.invoices.get(log.entityId)) || (log.snapshotAfter as Invoice);
-            if (inv) {
-              // Revert stock
-              for (const line of inv.lines || []) {
-                for (const alloc of line.batchAllocations || []) {
-                  if (alloc.batchId) {
-                    const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
-                    if (batch) {
-                      const restoredQty = (Number(batch.remainingQuantity) || 0) + (alloc.quantity || 0);
-                      await offlineDb.inventoryBatches.update(alloc.batchId, {
-                        remainingQuantity: restoredQty,
-                        updatedAt: now,
-                      });
-
-                      await offlineDb.stockMovements.add({
-                        id: `mov_undo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                        productId: line.productId,
-                        productName: line.productName,
-                        batchId: alloc.batchId,
-                        batchNumber: alloc.batchNumber || batch.batchNumber,
-                        type: "sales_return",
-                        quantityChange: alloc.quantity,
-                        balanceAfter: restoredQty,
-                        referenceId: inv.id,
-                        referenceType: "invoice",
-                        userId: performer.id,
-                        userName: performer.displayName,
-                        reason: `Undo bill creation by owner: ${inv.provisionalReference}`,
-                        timestamp: now,
-                      });
-                    }
-                  }
-                }
-              }
-
-              // Revert customer balance
-              if (inv.customerId && inv.outstandingBalance > 0) {
-                const cust = await offlineDb.customers.get(inv.customerId);
-                if (cust) {
-                  const newBal = Math.max(0, (cust.currentOutstandingBalance || 0) - inv.outstandingBalance);
-                  await offlineDb.customers.update(inv.customerId, {
-                    currentOutstandingBalance: newBal,
-                    updatedAt: now,
-                  });
-                }
-              }
-
-              // Delete the invoice record
-              await offlineDb.invoices.delete(inv.id);
-            }
-          } else if (log.action === "delete") {
-            // Undo deletion = Restore deleted invoice from snapshotBefore
-            const inv = log.snapshotBefore as Invoice;
-            if (inv) {
-              await offlineDb.invoices.put(inv);
-
-              // Re-deduct stock
-              for (const line of inv.lines || []) {
-                for (const alloc of line.batchAllocations || []) {
-                  if (alloc.batchId) {
-                    const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
-                    if (batch) {
-                      const newRem = Math.max(0, (Number(batch.remainingQuantity) || 0) - (alloc.quantity || 0));
-                      await offlineDb.inventoryBatches.update(alloc.batchId, {
-                        remainingQuantity: newRem,
-                        updatedAt: now,
-                      });
-
-                      await offlineDb.stockMovements.add({
-                        id: `mov_rest_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                        productId: line.productId,
-                        productName: line.productName,
-                        batchId: alloc.batchId,
-                        batchNumber: alloc.batchNumber || batch.batchNumber,
-                        type: "sales_deduction",
-                        quantityChange: -alloc.quantity,
-                        balanceAfter: newRem,
-                        referenceId: inv.id,
-                        referenceType: "invoice",
-                        userId: performer.id,
-                        userName: performer.displayName,
-                        reason: `Restored deleted bill by owner: ${inv.provisionalReference}`,
-                        timestamp: now,
-                      });
-                    }
-                  }
-                }
-              }
-
-              // Re-apply customer balance
-              if (inv.customerId && inv.outstandingBalance > 0) {
-                const cust = await offlineDb.customers.get(inv.customerId);
-                if (cust) {
-                  const newBal = (cust.currentOutstandingBalance || 0) + inv.outstandingBalance;
-                  await offlineDb.customers.update(inv.customerId, {
-                    currentOutstandingBalance: newBal,
-                    updatedAt: now,
-                  });
-                }
-              }
-            }
-          } else if (log.action === "update") {
-            // Undo update = Revert current allocations & balance, restore snapshotBefore
-            const oldInv = log.snapshotBefore as Invoice;
-            const currentInv = await offlineDb.invoices.get(log.entityId);
-
-            if (oldInv && currentInv) {
-              // 1. Revert current allocations
-              for (const line of currentInv.lines || []) {
-                for (const alloc of line.batchAllocations || []) {
-                  if (alloc.batchId) {
-                    const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
-                    if (batch) {
-                      const restored = (Number(batch.remainingQuantity) || 0) + (alloc.quantity || 0);
-                      await offlineDb.inventoryBatches.update(alloc.batchId, { remainingQuantity: restored });
-                    }
-                  }
-                }
-              }
-
-              // Revert customer balance
-              if (currentInv.customerId && currentInv.outstandingBalance > 0) {
-                const cust = await offlineDb.customers.get(currentInv.customerId);
-                if (cust) {
-                  const newBal = Math.max(0, (cust.currentOutstandingBalance || 0) - currentInv.outstandingBalance);
-                  await offlineDb.customers.update(currentInv.customerId, { currentOutstandingBalance: newBal });
-                }
-              }
-
-              // 2. Re-apply oldInv allocations
-              for (const line of oldInv.lines || []) {
-                for (const alloc of line.batchAllocations || []) {
-                  if (alloc.batchId) {
-                    const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
-                    if (batch) {
-                      const newRem = Math.max(0, (Number(batch.remainingQuantity) || 0) - (alloc.quantity || 0));
-                      await offlineDb.inventoryBatches.update(alloc.batchId, { remainingQuantity: newRem });
-                    }
-                  }
-                }
-              }
-
-              // Re-apply old customer balance
-              if (oldInv.customerId && oldInv.outstandingBalance > 0) {
-                const cust = await offlineDb.customers.get(oldInv.customerId);
-                if (cust) {
-                  const newBal = (cust.currentOutstandingBalance || 0) + oldInv.outstandingBalance;
-                  await offlineDb.customers.update(oldInv.customerId, { currentOutstandingBalance: newBal });
-                }
-              }
-
-              // Put old invoice back
-              await offlineDb.invoices.put(oldInv);
-            }
-          }
-        }
-      );
-    } else if (log.entityType === "visit" || log.entityType === "customerVisit") {
-      await offlineDb.transaction("rw", [offlineDb.customerVisits], async () => {
-        if (log.action === "create") {
-          await offlineDb.customerVisits.delete(log.entityId);
-        } else if (log.action === "delete" || log.action === "update") {
-          if (log.snapshotBefore) {
-            await offlineDb.customerVisits.put(log.snapshotBefore);
-          }
-        }
-      });
-    } else if (log.entityType === "customer") {
-      await offlineDb.transaction("rw", [offlineDb.customers], async () => {
-        if (log.action === "create") {
-          await offlineDb.customers.delete(log.entityId);
-        } else if (log.action === "delete" || log.action === "update") {
-          if (log.snapshotBefore) {
-            await offlineDb.customers.put(log.snapshotBefore);
-          }
-        }
-      });
-    } else if (log.entityType === "product") {
-      await offlineDb.transaction(
-        "rw",
-        [
-          offlineDb.products,
-          offlineDb.productPricing,
-          offlineDb.inventoryBatches,
-          offlineDb.stockMovements,
-        ],
-        async () => {
-          if (log.action === "create") {
-            await offlineDb.products.delete(log.entityId);
-            await offlineDb.productPricing.delete(log.entityId);
-            await offlineDb.inventoryBatches.where("productId").equals(log.entityId).delete();
-            await offlineDb.stockMovements.where("productId").equals(log.entityId).delete();
-          } else if (log.action === "delete" || log.action === "update") {
-            if (log.snapshotBefore) {
-              if (log.snapshotBefore.product && log.snapshotBefore.product.id) {
-                await offlineDb.products.put(log.snapshotBefore.product);
-                if (log.snapshotBefore.pricing) {
-                  await offlineDb.productPricing.put(log.snapshotBefore.pricing);
-                }
-                if (Array.isArray(log.snapshotBefore.batches)) {
-                  await offlineDb.inventoryBatches.where("productId").equals(log.entityId).delete();
-                  if (log.snapshotBefore.batches.length > 0) {
-                    await offlineDb.inventoryBatches.bulkPut(log.snapshotBefore.batches);
-                  }
-                }
-              } else {
-                await offlineDb.products.put(log.snapshotBefore);
-              }
-            }
-          }
-        }
-      );
-    } else if (log.entityType === "payment") {
-      await offlineDb.transaction("rw", [offlineDb.payments, offlineDb.customers], async () => {
-        if (log.action === "create") {
-          const pay = (await offlineDb.payments.get(log.entityId)) || (log.snapshotAfter as Payment);
-          if (pay && pay.customerId && pay.amount > 0) {
-            const cust = await offlineDb.customers.get(pay.customerId);
-            if (cust) {
-              await offlineDb.customers.update(pay.customerId, {
-                currentOutstandingBalance: (cust.currentOutstandingBalance || 0) + pay.amount,
-              });
-            }
-          }
-          await offlineDb.payments.delete(log.entityId);
-        } else if (log.action === "delete") {
-          if (log.snapshotBefore) {
-            const pay = log.snapshotBefore as Payment;
-            await offlineDb.payments.put(pay);
-            if (pay.customerId && pay.amount > 0) {
-              const cust = await offlineDb.customers.get(pay.customerId);
-              if (cust) {
-                await offlineDb.customers.update(pay.customerId, {
-                  currentOutstandingBalance: Math.max(0, (cust.currentOutstandingBalance || 0) - pay.amount),
-                });
-              }
-            }
-          }
-        } else if (log.action === "update") {
-          if (log.snapshotBefore) {
-            await offlineDb.payments.put(log.snapshotBefore);
-          }
-        }
-      });
-    } else if (log.entityType === "inventory_batch") {
-      await offlineDb.transaction("rw", [offlineDb.inventoryBatches], async () => {
-        if (log.snapshotBefore) {
-          await offlineDb.inventoryBatches.put(log.snapshotBefore);
-        }
-      });
-    } else if (log.entityType === "category") {
-      await offlineDb.transaction("rw", [offlineDb.categories], async () => {
-        if (log.action === "create") {
-          await offlineDb.categories.delete(log.entityId);
-        } else if (log.snapshotBefore) {
-          await offlineDb.categories.put(log.snapshotBefore);
-        }
-      });
-    } else if (log.entityType === "setting") {
-      await offlineDb.transaction("rw", [offlineDb.settings], async () => {
-        if (log.snapshotBefore) {
-          await offlineDb.settings.put(log.snapshotBefore);
-        }
-      });
+    // 1. Execute actual rollback across IndexedDB, localStorage mirrors, and Cloud Firestore
+    const rollbackResult = await executeRollbackForLog(log, performer, now);
+    if (!rollbackResult.rolledBack) {
+      return {
+        success: false,
+        message: rollbackResult.reason || "Could not undo this action.",
+      };
     }
 
     // 2. Mark this audit log entry as undone
@@ -394,6 +1093,10 @@ export async function undoActivity(
       canUndo: false,
     });
 
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("noxderma-cloud-synced"));
+    }
+
     return {
       success: true,
       message: `Action on "${log.entityTitle || log.entityId}" was undone successfully!`,
@@ -404,6 +1107,129 @@ export async function undoActivity(
       success: false,
       message: "Undo operation failed: " + (err.message || "Unknown error"),
     };
+  }
+}
+
+/**
+ * Self-healing reconciliation for audit logs that were previously marked `isUndone: true`
+ * when `undoActivity` lacked a handler for their entityType (e.g., Partners Khata config/transactions,
+ * salaries, expenses, leads, targets, manufacturers, users, coupons), OR logs that had `canUndo: false`
+ * despite having a valid `snapshotBefore` (such as bulk deletes or partner transaction deletes).
+ */
+export async function reconcileAndRepairAuditLogs(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const allLogs = await offlineDb.auditLogs.toArray();
+    let anyChanged = false;
+    const now = new Date().toISOString();
+
+    for (const log of allLogs) {
+      if (log.action === "undo") continue;
+
+      // 1. Upgrade legacy delete/update logs that have snapshotBefore or partnerSettings_config to canUndo: true
+      if (
+        !log.canUndo &&
+        !log.isUndone &&
+        (Boolean(log.snapshotBefore) ||
+          Boolean(log.snapshotAfter) ||
+          log.entityId === "partnerSettings_config")
+      ) {
+        await offlineDb.auditLogs.update(log.id, { canUndo: true });
+        anyChanged = true;
+      }
+
+      // 2. Check if a previously "undone" log for Partners Khata or other modules never actually rolled back!
+      if (log.isUndone && !(log as any).repairedRealUndo) {
+        const et = (log.entityType || "").toLowerCase();
+
+        if (et === "transaction" || et === "partner_transaction") {
+          if (log.action === "create") {
+            const ids = String(log.entityId || "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            let stillExists = false;
+            for (const id of ids) {
+              const found = await offlineDb.partnerTransactions.get(id);
+              if (found) {
+                stillExists = true;
+                break;
+              }
+            }
+            if (stillExists) {
+              await executeRollbackForLog(
+                log,
+                { id: "usr_admin", displayName: log.undoneBy || "Owner", role: "owner" },
+                now
+              );
+              anyChanged = true;
+            }
+          } else if (log.action === "update" && !log.snapshotBefore) {
+            // Legacy edit without snapshotBefore couldn't be undone; reset isUndone so it doesn't show fake UNDONE
+            await offlineDb.auditLogs.update(log.id, {
+              isUndone: false,
+              canUndo: false,
+              undoneAt: undefined,
+              undoneBy: undefined,
+              undoneDetails: undefined,
+            });
+            anyChanged = true;
+            continue;
+          }
+        } else if (
+          et === "partner_settings" ||
+          log.entityId === "partnerSettings_config"
+        ) {
+          // Check if there is any newer non-undone partnerSettings_config log after this one
+          const newerConfigLog = allLogs.some(
+            (other) =>
+              other.id !== log.id &&
+              other.action !== "undo" &&
+              !other.isUndone &&
+              other.entityId === "partnerSettings_config" &&
+              new Date(other.timestamp).getTime() > new Date(log.timestamp).getTime()
+          );
+          if (!newerConfigLog) {
+            const match = (log.details || "").match(/Active partners:\s*(.+)$/i);
+            const rawCurrent = localStorage.getItem("nox_partner_configs");
+            if (match && match[1] && rawCurrent) {
+              try {
+                const currentPartners: Array<{ id: string; name: string }> =
+                  JSON.parse(rawCurrent);
+                const currentNames = currentPartners.map((p) => p.name).join(", ");
+                if (currentNames.toLowerCase() === match[1].trim().toLowerCase()) {
+                  // The undone partner config is STILL active in localStorage! Execute real rollback now:
+                  await executeRollbackForLog(
+                    log,
+                    { id: "usr_admin", displayName: log.undoneBy || "Owner", role: "owner" },
+                    now
+                  );
+                  anyChanged = true;
+                }
+              } catch {}
+            }
+          }
+        } else if (
+          log.action === "create" &&
+          ["salary", "operating_expense", "crm_lead", "employee_target", "manufacturer", "user", "coupon"].includes(et)
+        ) {
+          await executeRollbackForLog(
+            log,
+            { id: "usr_admin", displayName: log.undoneBy || "Owner", role: "owner" },
+            now
+          );
+          anyChanged = true;
+        }
+
+        await offlineDb.auditLogs.update(log.id, { repairedRealUndo: true } as any);
+      }
+    }
+
+    if (anyChanged && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("noxderma-cloud-synced"));
+    }
+  } catch (err) {
+    console.warn("[AuditUndo] reconcileAndRepairAuditLogs warning:", err);
   }
 }
 
