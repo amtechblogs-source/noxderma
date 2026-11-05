@@ -199,16 +199,16 @@ export default function CustomerLedgersPage() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => window.print()}
-            className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300 transition-colors"
+            className="flex-1 sm:flex-none justify-center px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300 transition-colors"
           >
             <Printer className="w-3.5 h-3.5" /> Print Khata Statement
           </button>
           <Link
             href="/sales/invoices/new"
-            className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
+            className="flex-1 sm:flex-none justify-center px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
           >
             <Receipt className="w-4 h-4" /> Make Bill
           </Link>
@@ -295,13 +295,76 @@ export default function CustomerLedgersPage() {
         </div>
       </div>
 
-      {/* General Khata Table */}
+      {/* General Khata Table & Mobile Cards */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:border-none print:shadow-none print:p-0">
         {computedLedger.length === 0 ? (
           <p className="text-center text-slate-400 text-xs py-10">No bills or payments found.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
+          <>
+            {/* Mobile Card View */}
+            <div className="block md:hidden print:hidden space-y-3">
+              {computedLedger.map((row) => (
+                <div
+                  key={row.id}
+                  className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/customers/detail?id=${encodeURIComponent(row.customerId)}`}
+                        className="font-bold text-slate-900 dark:text-slate-100 hover:text-teal-600 hover:underline block truncate"
+                      >
+                        {row.customerName}
+                      </Link>
+                      <span className="font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                        {row.referenceNumber} • {row.date}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                        Baqaya Balance
+                      </span>
+                      <span
+                        className={`font-mono font-black ${
+                          row.runningBalance > 0
+                            ? "text-rose-600 dark:text-rose-400"
+                            : row.runningBalance < 0
+                              ? "text-sky-600 dark:text-sky-400"
+                              : "text-slate-900 dark:text-slate-100"
+                        }`}
+                      >
+                        {row.runningBalance < 0
+                          ? `Adv ${formatPKR(Math.abs(row.runningBalance))}`
+                          : formatPKR(row.runningBalance)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300 text-[11px]">{row.description}</p>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                    <div>
+                      <span className="text-[10px] font-bold text-rose-600 uppercase block">
+                        Bill Amount (+)
+                      </span>
+                      <span className="font-mono font-bold text-rose-600">
+                        {row.debit > 0 ? formatPKR(row.debit) : "—"}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase block">
+                        Cash Received (-)
+                      </span>
+                      <span className="font-mono font-bold text-emerald-600">
+                        {row.credit > 0 ? formatPKR(row.credit) : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop & Print Table */}
+            <div className="hidden md:block print:block overflow-x-auto">
+              <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
                 <tr>
                   <th className="p-2.5 print:p-1.5 print:border-r print:border-slate-300">Date</th>
@@ -363,6 +426,7 @@ export default function CustomerLedgersPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Print-Only Sign-off Block */}

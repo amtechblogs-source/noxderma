@@ -122,9 +122,90 @@ export default function StockMovementsPage() {
         </div>
       </div>
 
-      {/* Movements Table */}
-      <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-        <div className="overflow-x-auto">
+      {/* Movements Table & Mobile Cards */}
+      <div className="p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        {/* Mobile Card View */}
+        <div className="block md:hidden space-y-3">
+          {filtered.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No stock records found.
+            </div>
+          ) : (
+            filtered.map((m) => (
+              <div
+                key={m.id}
+                className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5 text-xs"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {m.productName}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {formatKarachiDate(m.timestamp, true)}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                      m.type === "sales_deduction"
+                        ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                        : m.type === "purchase_receipt"
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                          : m.type === "damaged_stock"
+                            ? "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                            : "bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300"
+                    }`}
+                  >
+                    {m.type === "sales_deduction"
+                      ? "SOLD IN BILL"
+                      : m.type === "purchase_receipt"
+                        ? "STOCK BOUGHT"
+                        : m.type === "damaged_stock"
+                          ? "BROKEN STOCK"
+                          : "DOCTOR SAMPLE"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                      Batch #
+                    </span>
+                    <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                      {m.batchNumber || "—"}
+                    </span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                      Changed
+                    </span>
+                    <span
+                      className={`font-mono font-extrabold ${
+                        m.quantityChange < 0 ? "text-rose-600" : "text-emerald-600"
+                      }`}
+                    >
+                      {m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                      Left in Godown
+                    </span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                      {formatNumber(m.balanceAfter)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                  <span className="font-mono">Ref: {m.referenceId}</span>
+                  <span>By: {m.userName}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">

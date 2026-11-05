@@ -1876,6 +1876,54 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           </div>
         </div>
 
+        {/* Sticky Mobile Bottom Action Bar (Pinned above bottom nav on phones) */}
+        <div className="sticky bottom-[68px] z-30 md:hidden no-print print:hidden -mx-1 px-3 py-2.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-teal-500/30 dark:border-teal-500/40 shadow-2xl flex items-center justify-between gap-2.5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Net Payable
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 font-mono text-[10px] font-bold">
+                {lines.length} {lines.length === 1 ? "item" : "items"}
+              </span>
+            </div>
+            <div className="font-mono font-black text-base text-teal-600 dark:text-teal-400 leading-tight truncate">
+              {formatPKR(netTotal)}
+            </div>
+            {outstandingBalance > 0 && (
+              <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400 truncate">
+                Udhaar: {formatPKR(outstandingBalance)}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsProductModalOpen(true)}
+              className="px-2.5 py-2.5 min-h-[42px] rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-bold text-xs flex items-center gap-1 btn-interactive"
+              title="Add Medicine"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Item</span>
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || lines.length === 0}
+              className="px-4 py-2.5 min-h-[42px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-extrabold text-xs shadow-lg shadow-teal-600/30 transition-all disabled:opacity-50 btn-interactive flex items-center justify-center gap-1.5"
+            >
+              <Printer className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                {isSubmitting
+                  ? "Saving..."
+                  : originalInvoice
+                    ? "Update Bill"
+                    : "Save & Print Bill"}
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* Submit */}
         <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
           <Link

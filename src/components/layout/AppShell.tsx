@@ -21,6 +21,7 @@ import {
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { OfflineBanner } from "./OfflineBanner";
+import { PrintChoiceModal } from "@/components/common/PrintChoiceModal";
 import { CategoryProvider } from "@/context/CategoryContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -896,6 +897,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AuthProvider>
         <CategoryProvider>
           <MainAppLayout>{children}</MainAppLayout>
+          <PrintChoiceModal />
         </CategoryProvider>
       </AuthProvider>
     </ThemeProvider>

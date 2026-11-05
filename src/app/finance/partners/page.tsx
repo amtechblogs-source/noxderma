@@ -2674,7 +2674,10 @@ export default function PartnersKhataPage() {
             </div>
 
             {/* Printable Slip Container */}
-            <div className="p-3 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3 sm:space-y-3.5 text-xs text-slate-800 dark:text-slate-200 overflow-hidden print:bg-white print:border-black print:text-black print:p-0">
+            <div
+              id="printable-partner-voucher"
+              className="p-3 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3 sm:space-y-3.5 text-xs text-slate-800 dark:text-slate-200 overflow-hidden print:bg-white print:border-black print:text-black print:p-0"
+            >
               <OfficialPrintHeader
                 title={
                   slipTx.type === "investment" || slipTx.type === "in"

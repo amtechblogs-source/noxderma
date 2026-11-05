@@ -89,6 +89,9 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
 
   return (
     <div
+      data-print-header="true"
+      data-print-title={title}
+      data-print-ref={docRef || ""}
       className={`flex-col sm:flex-row print:flex-row justify-between items-start pb-3.5 sm:pb-4 border-b-2 border-black gap-3 sm:gap-4 text-slate-900 dark:text-slate-100 print:text-black w-full max-w-full overflow-hidden ${
         showInPreview ? "flex" : "hidden print:flex"
       } ${className}`}

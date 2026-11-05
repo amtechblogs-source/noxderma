@@ -651,7 +651,59 @@ export default function ReportsExportPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                {/* Mobile Card View */}
+                <div className="block md:hidden space-y-3">
+                  {filteredStockRows.map((row) => (
+                    <div
+                      key={row.sku}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {row.name}
+                          </p>
+                          <p className="font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                            {row.sku} • {row.category}
+                          </p>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono font-black text-slate-900 dark:text-slate-100 shrink-0">
+                          {formatNumber(row.quantity)} boxes
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                            Cost (Kharid)
+                          </span>
+                          <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                            {formatPKR(row.costValuation)}
+                          </span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-[10px] font-bold text-teal-600 uppercase block">
+                            Sale (Bikri)
+                          </span>
+                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                            {formatPKR(row.tradeValuation)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-emerald-600 uppercase block">
+                            Profit
+                          </span>
+                          <span className="font-mono font-bold text-emerald-600">
+                            +{formatPKR(row.projectedMargin)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                     <tr>
@@ -713,6 +765,7 @@ export default function ReportsExportPage() {
                   </tfoot>
                 </table>
               </div>
+              </>
             )}
           </div>
         )}
@@ -759,7 +812,39 @@ export default function ReportsExportPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                {/* Mobile Card View */}
+                <div className="block md:hidden space-y-2.5">
+                  {filteredSalesRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                          {row.name}
+                        </p>
+                        <p className="font-mono text-[11px] text-slate-500 mt-0.5">
+                          Packs Sold:{" "}
+                          <strong className="text-slate-800 dark:text-slate-200">
+                            {formatNumber(row.qty)}
+                          </strong>
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase block">
+                          Revenue
+                        </span>
+                        <span className="font-mono font-black text-emerald-600">
+                          {formatPKR(row.revenue)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                     <tr>
@@ -801,6 +886,7 @@ export default function ReportsExportPage() {
                   </tfoot>
                 </table>
               </div>
+              </>
             )}
           </div>
         )}
@@ -846,7 +932,51 @@ export default function ReportsExportPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                {/* Mobile Card View */}
+                <div className="block md:hidden space-y-2.5">
+                  {filteredCustomers.map((c) => (
+                    <div
+                      key={c.id}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {c.name}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {c.category === "pharmacy"
+                              ? "Medical Store"
+                              : c.category === "distributor"
+                                ? "Wholesale Dealer"
+                                : c.category === "direct_clinic"
+                                  ? "Clinic / Hospital"
+                                  : "Customer"}{" "}
+                            • {c.city}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] font-bold text-rose-600 uppercase block">
+                            Baqaya Udhaar
+                          </span>
+                          <span className="font-mono font-black text-rose-600">
+                            {formatPKR(c.currentOutstandingBalance)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/60">
+                        <span>Credit Limit:</span>
+                        <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          {formatPKR(c.creditLimit)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                     <tr>
@@ -898,6 +1028,7 @@ export default function ReportsExportPage() {
                   </tfoot>
                 </table>
               </div>
+              </>
             )}
           </div>
         )}
@@ -948,7 +1079,52 @@ export default function ReportsExportPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                {/* Mobile Card View */}
+                <div className="block md:hidden space-y-2.5">
+                  {filteredTaxInvoices.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {inv.customerName}
+                          </p>
+                          <p className="font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                            {inv.provisionalReference || inv.officialReference} • {inv.invoiceDate}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                            Final Total
+                          </span>
+                          <span className="font-mono font-black text-slate-900 dark:text-slate-100">
+                            {formatPKR(inv.netTotal)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/60 text-[11px]">
+                        <div>
+                          <span className="text-slate-400">Before Tax: </span>
+                          <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                            {formatPKR(inv.grossTotal)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-400">Tax: </span>
+                          <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                            {formatPKR(inv.taxAmount)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                     <tr>
@@ -1003,6 +1179,7 @@ export default function ReportsExportPage() {
                   </tfoot>
                 </table>
               </div>
+              </>
             )}
           </div>
         )}

@@ -18,6 +18,8 @@ import {
   Compass,
   Calendar,
   Users2,
+  PackageCheck,
+  Award,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -155,87 +157,121 @@ export function DashboardView() {
   const todaySalesTotal = todayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
   const todayPaymentsCollected = todayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
 
-  // Partner Calculations (Dynamic Partners, Total Investment, Ownership Ratio, and Monthly IN/OUT)
-  const dashboardPartners: PartnerConfig[] = useMemo(() => {
-    if (typeof window === "undefined") {
-      return [
-        { id: "partner_1", name: "Partner 1" },
-        { id: "partner_2", name: "Partner 2" },
-      ];
-    }
-    const raw = localStorage.getItem("nox_partner_configs");
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch {}
-    }
-    const p1 = localStorage.getItem("nox_partner_1_name") || "Partner 1";
-    const p2 = localStorage.getItem("nox_partner_2_name") || "Partner 2";
-    return [
-      { id: "partner_1", name: p1 },
-      { id: "partner_2", name: p2 },
-    ];
-  }, [partnerConfigRefreshTick]);
+  // Top Selling Medicines Aggregation (with Product Pictures)
+  const [topMedicinesRange, setTopMedicinesRange] = useState<"month" | "today" | "all">("month");
 
-  const { dashboardStats, combinedTotalInvestment } = useMemo(() => {
-    let combinedTotal = 0;
-    const stats: Record<
+  const topSellingMedicines = useMemo(() => {
+    const productById = new Map<string, Product>();
+    products.forEach((p) => productById.set(p.id, p));
+
+    const sourceInvoices =
+      topMedicinesRange === "today"
+        ? todayInvoices
+        : topMedicinesRange === "month"
+        ? monthInvoices
+        : displayInvoices;
+
+    const agg = new Map<
       string,
       {
-        totalInvestment: number;
-        monthIn: number;
-        monthOut: number;
-        monthNet: number;
-        ratioPercent: number;
+        productId: string;
+        productName: string;
+        sku: string;
+        categoryName: string;
+        packSize: string;
+        imageUrl: string;
+        quantitySold: number;
+        bonusQuantity: number;
+        revenue: number;
+        invoiceIds: Set<string>;
       }
-    > = {};
+    >();
 
-    dashboardPartners.forEach((p) => {
-      const pTxs = partnerTransactions.filter((t) => t.partnerId === p.id);
-      const totalInv = pTxs
-        .filter((t) => t.type === "investment" || t.type === "in")
-        .reduce((s, t) => s + t.amount, 0);
-      combinedTotal += totalInv;
+    sourceInvoices.forEach((inv) => {
+      if ((inv as any).status === "cancelled") return;
+      (inv.lines || []).forEach((line) => {
+        if (selectedCategoryId !== "all" && !categoryProductIds.has(line.productId)) {
+          return;
+        }
+        const prod = productById.get(line.productId);
+        const primaryImg = prod?.images?.find((i) => i.isPrimary) || prod?.images?.[0];
+        const resolvedImg =
+          primaryImg?.thumbnailUrl ||
+          primaryImg?.url ||
+          (line as any).imageUrl ||
+          (prod as any)?.imageUrl ||
+          "";
 
-      const mIn = pTxs
-        .filter(
-          (t) =>
-            (t.type === "investment" || t.type === "in") &&
-            t.date?.startsWith(currentMonthPrefix)
-        )
-        .reduce((s, t) => s + t.amount, 0);
+        const key = line.productId || line.productName;
+        const existing = agg.get(key);
+        const qty = Number(line.quantity) || 0;
+        const bonus = Number(line.bonusQuantity) || 0;
+        const rev = Number(line.lineTotal) || qty * (Number(line.unitPrice) || 0);
 
-      const mOut = pTxs
-        .filter(
-          (t) =>
-            (t.type === "withdrawal" || t.type === "profit_payout" || t.type === "out") &&
-            t.date?.startsWith(currentMonthPrefix)
-        )
-        .reduce((s, t) => s + t.amount, 0);
-
-      stats[p.id] = {
-        totalInvestment: totalInv,
-        monthIn: mIn,
-        monthOut: mOut,
-        monthNet: mIn - mOut,
-        ratioPercent: 0,
-      };
+        if (existing) {
+          existing.quantitySold += qty;
+          existing.bonusQuantity += bonus;
+          existing.revenue += rev;
+          existing.invoiceIds.add(inv.id);
+          if (!existing.imageUrl && resolvedImg) existing.imageUrl = resolvedImg;
+        } else {
+          agg.set(key, {
+            productId: prod?.id || line.productId || "",
+            productName: prod?.name || line.productName || "Medicine",
+            sku: prod?.sku || "",
+            categoryName: prod?.categoryName || "",
+            packSize: prod?.packSize || line.packSize || "",
+            imageUrl: resolvedImg,
+            quantitySold: qty,
+            bonusQuantity: bonus,
+            revenue: rev,
+            invoiceIds: new Set([inv.id]),
+          });
+        }
+      });
     });
 
-    const count = dashboardPartners.length || 1;
-    dashboardPartners.forEach((p) => {
-      if (combinedTotal <= 0) {
-        stats[p.id].ratioPercent = parseFloat((100 / count).toFixed(1));
-      } else {
-        stats[p.id].ratioPercent = parseFloat(
-          ((stats[p.id].totalInvestment / combinedTotal) * 100).toFixed(1)
-        );
-      }
-    });
+    let list = Array.from(agg.values())
+      .map((item) => ({
+        ...item,
+        billsCount: item.invoiceIds.size,
+      }))
+      .sort((a, b) => b.quantitySold - a.quantitySold || b.revenue - a.revenue);
 
-    return { dashboardStats: stats, combinedTotalInvestment: combinedTotal };
-  }, [dashboardPartners, partnerTransactions, currentMonthPrefix]);
+    // If no sales in the selected period yet, include catalog medicines so the widget still showcases medicines with pictures
+    if (list.length === 0 && products.length > 0) {
+      const filteredProds =
+        selectedCategoryId === "all"
+          ? products
+          : products.filter((p) => p.categoryId === selectedCategoryId);
+      list = filteredProds.slice(0, 6).map((prod) => {
+        const primaryImg = prod.images?.find((i) => i.isPrimary) || prod.images?.[0];
+        return {
+          productId: prod.id,
+          productName: prod.name,
+          sku: prod.sku,
+          categoryName: prod.categoryName,
+          packSize: prod.packSize,
+          imageUrl: primaryImg?.thumbnailUrl || primaryImg?.url || "",
+          quantitySold: 0,
+          bonusQuantity: 0,
+          revenue: 0,
+          invoiceIds: new Set<string>(),
+          billsCount: 0,
+        };
+      });
+    }
+
+    return list.slice(0, 8);
+  }, [
+    products,
+    todayInvoices,
+    monthInvoices,
+    displayInvoices,
+    topMedicinesRange,
+    selectedCategoryId,
+    categoryProductIds,
+  ]);
 
   const totalReceivables = displayInvoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
   const storeReceivables = displayInvoices
@@ -609,114 +645,182 @@ export function DashboardView() {
         </div>
       )}
 
-      {/* Partners Monthly Khata Widget (Owner / Admin / Accountant only) */}
-      {isOwnerOrAccountant && (
-        <div className="p-3.5 sm:p-5 rounded-2xl border-2 border-teal-500/20 bg-gradient-to-br from-teal-500/5 via-transparent to-indigo-500/5 dark:bg-slate-900/60 shadow-soft">
-          <div className="flex items-center justify-between gap-2 mb-3">
+      {/* Top Selling Medicines Widget (with Pictures) */}
+      {(canViewSalesSummary || canViewInventory) && (
+        <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3.5">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 flex items-center justify-center font-bold shrink-0">
-                <Users2 className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold shrink-0">
+                <Award className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div className="min-w-0">
                 <h2 className="text-xs sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
-                  <span>Partners Monthly Khata</span>
+                  <span>Top Selling Medicines</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-mono">
-                    {currentMonthShort} {currentYear}
+                    {topMedicinesRange === "month"
+                      ? `${currentMonthShort} ${currentYear}`
+                      : topMedicinesRange === "today"
+                      ? "Today"
+                      : "All Time"}
                   </span>
                 </h2>
+                <p className="text-[11px] sm:text-xs text-slate-500">
+                  Most sold medicines ranked by packs sold &amp; revenue
+                </p>
               </div>
             </div>
-            <Link
-              href="/finance/partners"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-teal-500/40 bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-50 dark:hover:bg-slate-700 transition-all shrink-0 shadow-sm"
-            >
-              <span>Full Khata</span> <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
 
-          {/* Partnership Capital & Dynamic Profit Ratio Bar */}
-          <div className="mb-3 p-3 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-teal-500/20 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between text-[11px] sm:text-xs font-bold gap-2 mb-2">
-              {dashboardPartners.map((p, idx) => {
-                const theme = getPartnerTheme(idx);
-                const stat = dashboardStats[p.id];
-                return (
-                  <span key={p.id} className={`${theme.primary} flex items-center gap-1.5`}>
-                    <span className={`w-2.5 h-2.5 rounded-full ${theme.barBg} inline-block`} />
-                    {p.name}: <strong className="font-mono">{stat?.ratioPercent || 0}%</strong> ({formatPKR(stat?.totalInvestment || 0)})
-                  </span>
-                );
-              })}
-            </div>
-            <div className="w-full h-2.5 sm:h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
-              {dashboardPartners.map((p, idx) => {
-                const theme = getPartnerTheme(idx);
-                const stat = dashboardStats[p.id];
-                const ratio = stat?.ratioPercent || 0;
-                return (
-                  <div
-                    key={p.id}
-                    className={`${theme.barBg} h-full transition-all duration-500`}
-                    style={{ width: `${ratio}%` }}
-                    title={`${p.name}: ${ratio}%`}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex justify-between items-center text-[10px] sm:text-[11px] text-slate-500 pt-1.5 font-medium">
-              <span>Capital: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatPKR(combinedTotalInvestment)}</strong></span>
-              <span>Total Ownership: 100%</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {dashboardPartners.map((p, idx) => {
-              const theme = getPartnerTheme(idx);
-              const stat = dashboardStats[p.id];
-              const ratio = stat?.ratioPercent || 0;
-              const mIn = stat?.monthIn || 0;
-              const mOut = stat?.monthOut || 0;
-              const mNet = stat?.monthNet || 0;
-              const totalInv = stat?.totalInvestment || 0;
-
-              return (
-                <div
-                  key={p.id}
-                  className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between"
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setTopMedicinesRange("month")}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    topMedicinesRange === "month"
+                      ? "bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
                 >
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                    <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5 truncate">
-                      <span className={`w-2 h-2 rounded-full ${theme.barBg} shrink-0`} />
-                      <span className="truncate">{p.name}</span>
-                    </span>
-                    <span className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full ${theme.badgeBg} font-mono shrink-0`}>
-                      {ratio}% Share
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-medium my-1.5 flex justify-between items-center">
-                    <span>Total Invested Capital:</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">{formatPKR(totalInv)}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 my-1.5 text-xs">
-                    <div className="p-2 sm:p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800/40">
-                      <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">{currentMonthShort} IN</span>
-                      <span className="font-mono font-bold text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm mt-0.5 block">{formatPKR(mIn)}</span>
-                    </div>
-                    <div className="p-2 sm:p-2.5 rounded-lg bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-800/40">
-                      <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">{currentMonthShort} OUT</span>
-                      <span className="font-mono font-bold text-rose-800 dark:text-rose-200 text-xs sm:text-sm mt-0.5 block">{formatPKR(mOut)}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800 text-xs font-bold">
-                    <span className="text-slate-500 text-[11px]">Net Standing ({currentMonthShort}):</span>
-                    <span className={`font-mono text-xs sm:text-sm ${mNet >= 0 ? theme.accent : "text-rose-600"}`}>
-                      {formatPKR(mNet)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTopMedicinesRange("today")}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    topMedicinesRange === "today"
+                      ? "bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTopMedicinesRange("all")}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    topMedicinesRange === "all"
+                      ? "bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  All Time
+                </button>
+              </div>
+
+              <Link
+                href="/products"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shrink-0 shadow-sm"
+              >
+                <span>All Medicines</span> <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           </div>
+
+          {topSellingMedicines.length === 0 ? (
+            <div className="p-8 text-center rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 text-slate-400 text-xs sm:text-sm">
+              No medicines or sales recorded yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
+              {topSellingMedicines.map((item, idx) => {
+                const maxQty = Math.max(topSellingMedicines[0]?.quantitySold || 1, 1);
+                const sharePercent =
+                  item.quantitySold > 0
+                    ? Math.max(8, Math.min(100, Math.round((item.quantitySold / maxQty) * 100)))
+                    : 0;
+                const rankBadgeClass =
+                  idx === 0
+                    ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-700"
+                    : idx === 1
+                    ? "bg-slate-200 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600"
+                    : idx === 2
+                    ? "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/80 dark:text-orange-300 dark:border-orange-700"
+                    : "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800";
+
+                return (
+                  <Link
+                    key={item.productId || `${item.productName}_${idx}`}
+                    href={
+                      item.productId
+                        ? `/products/detail?id=${encodeURIComponent(item.productId)}`
+                        : "/products"
+                    }
+                    className="p-3 sm:p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 hover:border-teal-500/40 shadow-sm transition-all flex flex-col justify-between gap-2.5 group"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Medicine Picture Thumbnail */}
+                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden relative flex items-center justify-center shadow-sm">
+                        {item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.imageUrl}
+                            alt={item.productName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <PackageCheck className="w-7 h-7 text-slate-400" />
+                        )}
+                        <span
+                          className={`absolute top-1 left-1 px-1.5 py-0.2 rounded-md text-[10px] font-black font-mono border shadow-sm ${rankBadgeClass}`}
+                        >
+                          #{idx + 1}
+                        </span>
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-1">
+                        {item.categoryName && (
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 truncate max-w-full">
+                            {item.categoryName}
+                          </span>
+                        )}
+                        <h3 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100 leading-snug line-clamp-2 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                          {item.productName}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 font-medium truncate">
+                          {item.packSize ? item.packSize : "Standard Pack"}
+                          {item.sku ? ` • ${item.sku}` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Sold:</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-black text-slate-900 dark:text-slate-100">
+                            {formatNumber(item.quantitySold)} pk
+                          </span>
+                          {item.bonusQuantity > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                              +{item.bonusQuantity} bonus
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {canViewSalesSummary && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500 font-medium">
+                            Sales ({item.billsCount} bill{item.billsCount !== 1 ? "s" : ""}):
+                          </span>
+                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                            {formatPKR(item.revenue)}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 rounded-full transition-all duration-500"
+                          style={{ width: `${sharePercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
