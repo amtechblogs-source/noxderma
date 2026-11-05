@@ -841,75 +841,78 @@ export default function SalesTargetsPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards (2x2 on mobile, 4 columns on desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Total Target Quota */}
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <div className="p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="flex items-center justify-between mb-1 gap-1">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
               Total Target (کل ہدف)
             </span>
-            <Target className="w-4 h-4 text-slate-400" />
+            <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           </div>
-          <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
+          <span className="text-base sm:text-2xl font-black font-mono text-slate-900 dark:text-slate-100 block truncate">
             {formatPKR(summaryMetrics.totalQuota)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
+          <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
             For {filtered.length} target assignments
           </span>
         </div>
 
         {/* Live Sales Done */}
-        <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Live Sales Done
+        <div className="p-3 sm:p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-sm">
+          <div className="flex items-center justify-between mb-1 gap-1">
+            <span className="text-[10px] sm:text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1 truncate">
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" /> Live Sales
             </span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
+            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
           </div>
-          <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+          <span className="text-base sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 block truncate">
             {formatPKR(summaryMetrics.totalAchieved)}
           </span>
-          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 block mt-0.5">
-            {summaryMetrics.overallPct}% overall target achieved
+          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 block mt-0.5 truncate">
+            {summaryMetrics.overallPct}% overall achieved
           </span>
         </div>
 
         {/* Total Visits Done */}
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Doctor & Shop Visits
+        <div className="p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="flex items-center justify-between mb-1 gap-1">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">
+              Visits Done
             </span>
-            <MapPin className="w-4 h-4 text-slate-400" />
+            <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           </div>
-          <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
-            {summaryMetrics.totalVisitsDone} <span className="text-xs text-slate-400 font-normal">/ {summaryMetrics.totalVisitsGoal} Goal</span>
+          <span className="text-base sm:text-2xl font-black font-mono text-slate-900 dark:text-slate-100 block truncate">
+            {summaryMetrics.totalVisitsDone}{" "}
+            <span className="text-[11px] sm:text-xs text-slate-400 font-normal">
+              / {summaryMetrics.totalVisitsGoal}
+            </span>
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
-            Field visits recorded in CRM
+          <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
+            Field visits in CRM
           </span>
         </div>
 
         {/* Total Commission Earned */}
-        <div className="p-4 rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50/30 dark:bg-teal-950/20 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
-              Commission Earned
+        <div className="p-3 sm:p-4 rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50/30 dark:bg-teal-950/20 shadow-sm">
+          <div className="flex items-center justify-between mb-1 gap-1">
+            <span className="text-[10px] sm:text-[11px] font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider truncate">
+              Commission
             </span>
-            <Award className="w-4 h-4 text-teal-600" />
+            <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600 shrink-0" />
           </div>
-          <span className="text-2xl font-black font-mono text-teal-600 dark:text-teal-400">
+          <span className="text-base sm:text-2xl font-black font-mono text-teal-600 dark:text-teal-400 block truncate">
             {formatPKR(summaryMetrics.totalCommission)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
-            Based on completed invoice sales
+          <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
+            From completed bills
           </span>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      <div className="p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row gap-2.5 sm:gap-3 items-stretch md:items-center justify-between">
         <div className="flex-1 relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -921,14 +924,14 @@ export default function SalesTargetsPage() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
           {/* Month Selector Filter */}
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden sm:block" />
             <select
               value={selectedMonthFilter}
               onChange={(e) => setSelectedMonthFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full sm:w-auto px-2.5 sm:px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 truncate"
             >
               <option value="all">All Target Months</option>
               {monthOptions.map((m) => (
@@ -940,12 +943,12 @@ export default function SalesTargetsPage() {
           </div>
 
           {/* Role Filter */}
-          <div className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden sm:block" />
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full sm:w-auto px-2.5 sm:px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 truncate"
             >
               <option value="all">All Roles (سبھی)</option>
               <option value="owner_partner">Owners & Partners</option>
@@ -957,8 +960,8 @@ export default function SalesTargetsPage() {
         </div>
       </div>
 
-      {/* Rep Performance Table */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+      {/* Rep Performance Section (Mobile Cards + Desktop Table) */}
+      <div className="p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         {filtered.length === 0 ? (
           <div className="py-12 text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
@@ -978,8 +981,202 @@ export default function SalesTargetsPage() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <>
+            {/* ================================================================= */}
+            {/* MOBILE CARD VIEW (No Horizontal Scrolling - Clean Thumb UX)       */}
+            {/* ================================================================= */}
+            <div className="block md:hidden space-y-3">
+              {/* Mobile Select All Header Bar */}
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 text-xs">
+                <label className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length === filtered.length && filtered.length > 0}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                  />
+                  <span>Select All ({filtered.length})</span>
+                </label>
+                {selectedIds.length > 0 && (
+                  <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                    {selectedIds.length} selected
+                  </span>
+                )}
+              </div>
+
+              {filtered.map((t) => {
+                const {
+                  actualSales,
+                  actualVisits,
+                  pct,
+                  comm,
+                  dynamicStatus,
+                  invoicesCount,
+                } = getDynamicTargetMetrics(t);
+                const isSelected = selectedIds.includes(t.id);
+                const remainingSales = Math.max(0, t.monthlyQuotaPkr - actualSales);
+
+                return (
+                  <div
+                    key={t.id}
+                    className={`p-3.5 rounded-2xl border transition-all space-y-3 ${
+                      isSelected
+                        ? "border-teal-500 bg-teal-50/30 dark:bg-teal-950/25 ring-1 ring-teal-500/30"
+                        : "border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+                    }`}
+                  >
+                    {/* Card Top: Checkbox, Staff Name, Role Badge, and Edit/Delete Buttons */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(t.id)}
+                          className="w-4 h-4 mt-0.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100 truncate">
+                              {t.repName}
+                            </span>
+                            {getRoleBadge(t.userRole, t.repName)}
+                          </div>
+                          {t.userEmail && (
+                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                              {t.userEmail}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(t)}
+                          className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-teal-600 transition-colors"
+                          title="Edit Target"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingTarget(t)}
+                          className="p-2 rounded-xl border border-rose-200/70 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition-colors"
+                          title="Delete Target"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Month, Territory & Status Row */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-slate-600 dark:text-slate-300">
+                        <span className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200">
+                          <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          {t.month}
+                        </span>
+                        <span className="text-slate-300 dark:text-slate-700">&bull;</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                          {t.territory}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold shrink-0 ${
+                          dynamicStatus === "ahead"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                            : dynamicStatus === "on_track"
+                            ? "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300 border border-teal-200 dark:border-teal-800"
+                            : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                        }`}
+                      >
+                        {dynamicStatus === "ahead"
+                          ? "TARGET COMPLETED"
+                          : dynamicStatus === "on_track"
+                          ? "ON TRACK"
+                          : "BEHIND TARGET"}
+                      </span>
+                    </div>
+
+                    {/* Target vs Live Sales Box + Progress Bar */}
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Target (Hadaf)
+                          </span>
+                          <span className="font-mono font-extrabold text-sm text-slate-900 dark:text-slate-100 block mt-0.5">
+                            {formatPKR(t.monthlyQuotaPkr)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                            Live Sales Done
+                          </span>
+                          <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 block mt-0.5">
+                            {formatPKR(actualSales)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">
+                            {invoicesCount} invoice(s)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] font-mono">
+                          <span className="font-extrabold text-slate-700 dark:text-slate-200">
+                            {pct}% Achieved
+                          </span>
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {formatPKR(remainingSales)} left
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-500 ${
+                              pct >= 100
+                                ? "bg-emerald-500"
+                                : pct >= 50
+                                ? "bg-teal-500"
+                                : "bg-amber-500"
+                            }`}
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visits / Goal & Commission Row */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-500 font-medium">Visits / Goal:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                          {actualVisits} <span className="text-slate-400 font-normal">/ {t.targetVisitsCount}</span>
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          Comm ({t.commissionRatePercent || 2.5}%):
+                        </span>
+                        <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                          {formatPKR(comm)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ================================================================= */}
+            {/* DESKTOP TABLE VIEW (Hidden on Mobile)                             */}
+            {/* ================================================================= */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="w-10 p-2.5">
@@ -1163,6 +1360,7 @@ export default function SalesTargetsPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
