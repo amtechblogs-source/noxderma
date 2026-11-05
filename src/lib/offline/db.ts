@@ -165,6 +165,7 @@ export class NoxdermaDexieDB extends Dexie {
 
     this.version(11).stores({
       manufacturerLedger: "id, manufacturerId, date, referenceType, referenceNumber",
+      payments: "id, customerId, paymentDate, referenceNumber, syncStatus",
     });
   }
 }

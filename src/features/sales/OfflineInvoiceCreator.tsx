@@ -722,15 +722,19 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               }
             }
 
-            // 5. Update or record payment if collected
+            // 5. Update, record, or remove payment on bill edit
+            const allPayments = await offlineDb.payments.toArray();
+            const existingPayments = allPayments.filter(
+              (p) =>
+                (originalInvoice.provisionalReference &&
+                  p.referenceNumber === originalInvoice.provisionalReference) ||
+                p.allocations?.some((a) => a.invoiceId === originalInvoice.id)
+            );
+
             if (effectivePaid > 0) {
               const payMethodMapped = paymentMethod === "credit" ? "cash" : paymentMethod;
-              const existingPayments = await offlineDb.payments
-                .where("referenceNumber")
-                .equals(originalInvoice.provisionalReference)
-                .toArray();
 
-              if (existingPayments && existingPayments.length > 0) {
+              if (existingPayments.length > 0) {
                 await offlineDb.payments.update(existingPayments[0].id, {
                   amount: effectivePaid,
                   customerId: targetCustomerId,
@@ -767,6 +771,10 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                   syncStatus: "local_only",
                   createdAt: now.toISOString(),
                 });
+              }
+            } else if (existingPayments.length > 0) {
+              for (const ep of existingPayments) {
+                await offlineDb.payments.delete(ep.id);
               }
             }
 
