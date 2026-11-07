@@ -558,7 +558,7 @@ export default function ProfitAndLossPage() {
       </div>
 
       {/* Structured P&L Statement Card */}
-      <div className="p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 sm:space-y-6 text-xs md:text-sm print:border-none print:shadow-none print:p-0 print:space-y-4 print:text-xs">
+      <div className="p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 sm:space-y-6 text-xs md:text-sm print:!mt-0 print:border-none print:shadow-none print:p-0 print:space-y-4 print:text-xs print:bg-white print:text-black">
         {/* Official Branded Print Header (Print Only) */}
         <OfficialPrintHeader
           title="PROFIT & LOSS STATEMENT"
@@ -704,12 +704,12 @@ export default function ProfitAndLossPage() {
               <span className="text-slate-700 dark:text-slate-300 font-medium block">
                 Traveling &amp; Fuel Expenses (Petrol / TA-DA)
               </span>
-              <div className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+              <div className="text-[10px] text-slate-400 print:text-slate-600 flex items-center gap-1.5 flex-wrap mt-0.5">
                 <span>Field visits fuel claims</span>
-                <span>•</span>
+                <span className="no-print print:hidden">•</span>
                 <Link
                   href="/finance/salaries"
-                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
+                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center no-print print:hidden"
                 >
                   Payroll Fuel &rarr;
                 </Link>
@@ -726,15 +726,15 @@ export default function ProfitAndLossPage() {
               <span className="text-slate-700 dark:text-slate-300 font-medium block">
                 Staff Salaries &amp; Field Commissions (Tankhwah)
               </span>
-              <div className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+              <div className="text-[10px] text-slate-400 print:text-slate-600 flex items-center gap-1.5 flex-wrap mt-0.5">
                 <span>
                   Earned month salaries
                   {filteredData.periodSalaries.length > 0 && ` (${filteredData.periodSalaries.length} slips synced)`}
                 </span>
-                <span>•</span>
+                <span className="no-print print:hidden">•</span>
                 <Link
                   href="/finance/salaries"
-                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center"
+                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center no-print print:hidden"
                 >
                   Manage Slips &rarr;
                 </Link>
@@ -823,7 +823,7 @@ export default function ProfitAndLossPage() {
 
         {/* 4. Final Net Profit Card */}
         <div
-          className={`p-4 sm:p-5 rounded-2xl border print:border-slate-800 print:bg-slate-50 ${
+          className={`p-4 sm:p-5 rounded-2xl border print:border-slate-800 print:bg-slate-50 print:bg-none ${
             netOperatingProfit >= 0
               ? "bg-gradient-to-br from-emerald-50/90 to-teal-50/90 dark:from-emerald-950/40 dark:to-teal-950/40 border-teal-200 dark:border-teal-800"
               : "bg-gradient-to-br from-rose-50/90 to-amber-50/90 dark:from-rose-950/40 dark:to-amber-950/40 border-rose-200 dark:border-rose-800"

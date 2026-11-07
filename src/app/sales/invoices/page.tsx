@@ -952,13 +952,13 @@ export default function SalesInvoicesListPage() {
               </p>
               {selectedInvoice.customerPhone && (
                 <div className="flex items-center gap-1.5 font-bold text-black mt-1 text-xs sm:text-sm">
-                  <Phone className="w-3.5 h-3.5 text-black shrink-0" />
+                  <Phone className="w-[14px] h-[14px] overflow-visible text-black shrink-0" />
                   <span>{selectedInvoice.customerPhone}</span>
                 </div>
               )}
               {selectedInvoice.customerAddress && (
-                <div className="flex items-center gap-1.5 font-semibold text-slate-800 mt-0.5 text-xs sm:text-sm">
-                  <MapPin className="w-3.5 h-3.5 text-black shrink-0" />
+                <div className="flex items-start gap-1.5 font-semibold text-slate-800 mt-0.5 text-xs sm:text-sm break-words">
+                  <MapPin className="w-[14px] h-[14px] overflow-visible text-black shrink-0 mt-[2px]" />
                   <span>{selectedInvoice.customerAddress}</span>
                 </div>
               )}

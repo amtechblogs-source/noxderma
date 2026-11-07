@@ -1262,7 +1262,7 @@ export default function StaffSalariesPage() {
                               <div>
                                 <span>+{formatPKR(sal.bonus)}</span>
                                 {sal.bonusReason && (
-                                  <span className="block text-[9px] text-slate-400 print:text-slate-600 truncate max-w-[120px] ml-auto">
+                                  <span className="block text-[9px] text-slate-400 print:text-slate-600 truncate print:whitespace-normal print:overflow-visible print:break-words max-w-[120px] ml-auto">
                                     {sal.bonusReason}
                                   </span>
                                 )}
@@ -1278,7 +1278,7 @@ export default function StaffSalariesPage() {
                               <div>
                                 <span>-{formatPKR(sal.deductions)}</span>
                                 {sal.deductionReason && (
-                                  <span className="block text-[9px] text-slate-400 print:text-slate-600 truncate max-w-[120px] ml-auto">
+                                  <span className="block text-[9px] text-slate-400 print:text-slate-600 truncate print:whitespace-normal print:overflow-visible print:break-words max-w-[120px] ml-auto">
                                     {sal.deductionReason}
                                   </span>
                                 )}

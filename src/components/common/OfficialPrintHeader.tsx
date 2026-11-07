@@ -126,11 +126,11 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
           </p>
           <div className="mt-1 space-y-0.5 text-[10px] sm:text-xs print:text-[11px] font-semibold text-slate-700 dark:text-slate-300 print:text-slate-800 leading-snug">
             <div className="flex items-start gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-slate-900 dark:text-slate-200 print:text-black shrink-0 mt-0.5" />
+              <MapPin className="w-[14px] h-[14px] overflow-visible text-slate-900 dark:text-slate-200 print:text-black shrink-0 mt-[1px]" />
               <span className="break-words">{address}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-slate-900 dark:text-slate-200 print:text-black shrink-0" />
+              <Phone className="w-[14px] h-[14px] overflow-visible text-slate-900 dark:text-slate-200 print:text-black shrink-0" />
               <span>{phone}</span>
               {ntn && (
                 <>
@@ -140,7 +140,7 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
               )}
             </div>
             <div className="flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5 text-slate-900 dark:text-slate-200 print:text-black shrink-0" />
+              <Mail className="w-[14px] h-[14px] overflow-visible text-slate-900 dark:text-slate-200 print:text-black shrink-0" />
               <span className="break-all">{email}</span>
             </div>
           </div>

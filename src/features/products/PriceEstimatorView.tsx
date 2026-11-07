@@ -1567,11 +1567,11 @@ export function PriceEstimatorView() {
 
       {/* Product Overview Banner */}
       <div className="my-3 p-3 rounded-xl border border-slate-400 bg-slate-50 grid grid-cols-4 gap-3 text-xs">
-        <div>
+        <div className="min-w-0">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
             Product Name
           </span>
-          <span className="font-black text-sm text-black block truncate">
+          <span className="font-black text-sm text-black block break-words leading-snug">
             {inputs.productName || "Untitled Medicine"}
           </span>
         </div>

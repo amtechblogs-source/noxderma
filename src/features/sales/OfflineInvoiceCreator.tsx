@@ -1091,18 +1091,18 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               <span className="text-slate-500 print:text-slate-600 font-black uppercase text-[11px] tracking-wider block">
                 CUSTOMER / PHARMACY:
               </span>
-              <p className="font-black text-base sm:text-lg text-slate-900 print:text-black mt-1 break-words">
+              <p className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 print:text-black mt-1 break-words">
                 {createdInvoice.customerName}
               </p>
               {createdInvoice.customerPhone && (
-                <div className="flex items-center gap-1.5 font-bold text-slate-700 print:text-black mt-1 text-xs sm:text-sm break-all">
-                  <Phone className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-200 print:text-black mt-1 text-xs sm:text-sm break-all">
+                  <Phone className="w-[14px] h-[14px] overflow-visible text-teal-600 print:text-black shrink-0" />
                   <span>{createdInvoice.customerPhone}</span>
                 </div>
               )}
               {createdInvoice.customerAddress && (
-                <div className="flex items-center gap-1.5 font-semibold text-slate-700 print:text-slate-800 mt-0.5 text-xs sm:text-sm break-words">
-                  <MapPin className="w-3.5 h-3.5 text-teal-600 print:text-black shrink-0" />
+                <div className="flex items-start gap-1.5 font-semibold text-slate-700 dark:text-slate-300 print:text-slate-800 mt-0.5 text-xs sm:text-sm break-words">
+                  <MapPin className="w-[14px] h-[14px] overflow-visible text-teal-600 print:text-black shrink-0 mt-[2px]" />
                   <span>{createdInvoice.customerAddress}</span>
                 </div>
               )}
@@ -1157,8 +1157,8 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                               className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-white p-0.5 shrink-0"
                             />
                           ) : (
-                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                              <Pill className="w-5 h-5 text-slate-400" />
+                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800 print:bg-slate-50 flex items-center justify-center shrink-0">
+                              <Pill className="w-5 h-5 overflow-visible text-slate-400 print:text-slate-600" />
                             </div>
                           )}
                           <div>
