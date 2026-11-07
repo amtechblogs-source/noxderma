@@ -180,7 +180,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
       }
     }
 
-    async function loadBrandLogo() {
+    async function loadBrandLogo(allowServerFallback = false) {
       // 1. Instant synchronous read from localStorage mirror
       if (typeof window !== "undefined") {
         try {
@@ -202,44 +202,46 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
         }
       } catch {}
 
-      // 3. Fallback: Authoritative Cloud Firestore / Server fetch
-      // ONLY overwrite local IndexedDB if local is empty or server has newer non-default data
+      // 3. One-time server fallback ONLY when local DB is completely empty on first boot
+      if (!allowServerFallback || localRecord) return;
+
       try {
         const res = await fetch("/api/settings");
         if (res.ok) {
           const data = await res.json();
           if (data?.settings && !data.isDefaultFallback) {
-            const isServerNewer =
-              !localRecord ||
-              localRecord.updatedBy === "system" ||
-              new Date(data.settings.updatedAt || 0) >= new Date(localRecord.updatedAt || 0);
-
-            if (isServerNewer) {
-              applyBrandSettings(data.settings);
-              await offlineDb.settings.put(data.settings);
-            }
+            applyBrandSettings(data.settings);
+            await offlineDb.settings.put(data.settings);
           }
         }
       } catch {}
     }
 
-    loadBrandLogo();
+    loadBrandLogo(true);
 
-    // Listen for instant settings updates & Cloud Firestore real-time syncs
+    // Listen for instant settings updates & scoped Cloud Firestore settings syncs
     const handleSettingsUpdated = (e: Event) => {
       const custom = (e as CustomEvent).detail;
       if (custom) {
         applyBrandSettings(custom);
       } else {
-        loadBrandLogo();
+        loadBrandLogo(false);
       }
     };
 
+    const handleCloudSynced = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (Array.isArray(detail?.tables) && !detail.tables.includes("settings")) {
+        return;
+      }
+      loadBrandLogo(false);
+    };
+
     window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
-    window.addEventListener("noxderma-cloud-synced", loadBrandLogo);
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
     return () => {
       window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
-      window.removeEventListener("noxderma-cloud-synced", loadBrandLogo);
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     };
   }, []);
 
@@ -389,16 +391,12 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
                       onClick={onClose}
                       title={item.name}
                       onMouseEnter={(e) => {
-                        router.prefetch(item.href);
                         if (!isCollapsed) return;
                         const rect = e.currentTarget.getBoundingClientRect();
                         setHoveredTooltip({
                           text: item.name,
                           top: rect.top + rect.height / 2,
                         });
-                      }}
-                      onTouchStart={() => {
-                        router.prefetch(item.href);
                       }}
                       onMouseLeave={() => {
                         if (isCollapsed) {

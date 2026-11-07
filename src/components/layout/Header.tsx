@@ -731,7 +731,7 @@ export function Header({ onToggleSidebar, currentUser, onLogout }: HeaderProps) 
   };
 
   const handleManualSync = async () => {
-    await syncManager.syncNow();
+    await syncManager.syncNow({ fullReconcile: true });
   };
 
   const handleNavigateToResult = (url: string) => {

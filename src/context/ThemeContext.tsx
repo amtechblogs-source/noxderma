@@ -222,7 +222,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     loadTheme();
 
-    const handleSettingsOrCloudSync = (e: Event) => {
+    const handleSettingsUpdated = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
       if (detail?.colorTheme && COLOR_THEMES.some((t) => t.id === detail.colorTheme)) {
         const nextTheme = detail.colorTheme as ThemeId;
@@ -231,16 +231,34 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (typeof window !== "undefined") {
           localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
         }
-      } else {
-        loadTheme();
       }
     };
 
-    window.addEventListener("noxderma_settings_updated", handleSettingsOrCloudSync);
-    window.addEventListener("noxderma-cloud-synced", handleSettingsOrCloudSync);
+    const handleCloudSynced = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (Array.isArray(detail?.tables) && !detail.tables.includes("settings")) {
+        return;
+      }
+      offlineDb.settings
+        .get("primary")
+        .then((stored) => {
+          const tId = (stored as any)?.colorTheme as ThemeId | undefined;
+          if (tId && COLOR_THEMES.some((t) => t.id === tId)) {
+            setThemeIdState(tId);
+            applyThemeToDOM(tId);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(THEME_STORAGE_KEY, tId);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
     return () => {
-      window.removeEventListener("noxderma_settings_updated", handleSettingsOrCloudSync);
-      window.removeEventListener("noxderma-cloud-synced", handleSettingsOrCloudSync);
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     };
   }, []);
 

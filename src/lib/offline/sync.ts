@@ -22,10 +22,12 @@ export interface SyncResult {
   timestamp: string;
 }
 
-const AUTO_SYNC_INTERVAL_MS = 10_000; // 10 seconds auto-sync delay
-const HEALTH_TIMEOUT_MS = 3_500;
-const SYNC_API_TIMEOUT_MS = 6_000;
-const CLOUD_RECONCILE_MAX_WAIT_MS = 7_500;
+const OUTBOX_DEBOUNCE_MS = 4_000;
+const AUTO_PROBE_INTERVAL_MS = 30_000; // Lightweight 30s Edge CDN probe (never hits serverless Lambda)
+const MIN_PROBE_COOLDOWN_MS = 6_000;
+const HEALTH_TIMEOUT_MS = 5_500;
+const SYNC_API_TIMEOUT_MS = 6_500;
+const CLOUD_RECONCILE_MAX_WAIT_MS = 8_000;
 
 function mapEntityTypeToTable(entityType: string): string {
   switch (entityType) {
@@ -65,7 +67,10 @@ function buildFallbackOfficialReference(payload?: Record<string, unknown>): stri
 class SynchronizationManager {
   private isSyncing = false;
   private reachableOnline = true;
+  private consecutiveFailures = 0;
+  private lastProbeMs = 0;
   private isCheckingConnectivity = false;
+  private retryVerifyTimer: ReturnType<typeof setTimeout> | null = null;
   private enqueueSyncTimer: ReturnType<typeof setTimeout> | null = null;
   private listeners: Array<
     (status: { isOnline: boolean; pendingCount: number; isSyncing: boolean }) => void
@@ -75,9 +80,10 @@ class SynchronizationManager {
     if (typeof window !== "undefined") {
       this.reachableOnline = navigator.onLine;
 
-      // 1. Browser radio events + active reachability verification
+      // 1. Browser radio events + active Edge CDN reachability verification
       window.addEventListener("online", () => {
-        this.checkConnectivity().then((online) => {
+        this.consecutiveFailures = 0;
+        this.checkConnectivity(true).then((online) => {
           if (online) {
             this.syncNow();
           }
@@ -85,24 +91,28 @@ class SynchronizationManager {
       });
 
       window.addEventListener("offline", () => {
+        this.consecutiveFailures = 2;
         this.setReachableOnline(false);
       });
 
       window.addEventListener("focus", () => {
-        this.checkConnectivity();
+        this.checkConnectivity(false);
       });
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-          this.checkConnectivity();
+          this.checkConnectivity(false);
         }
       });
 
-      // Android / Chrome Network Information API change event (e.g., 4.5G data exhausted or Wi-Fi switch)
-      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      // Android / Chrome Network Information API change event
+      const conn =
+        (navigator as any).connection ||
+        (navigator as any).mozConnection ||
+        (navigator as any).webkitConnection;
       if (conn && typeof conn.addEventListener === "function") {
         conn.addEventListener("change", () => {
-          this.checkConnectivity();
+          this.checkConnectivity(true);
         });
       }
 
@@ -110,7 +120,7 @@ class SynchronizationManager {
         this.notifyListeners();
       });
 
-      // 2. Debounced auto-sync (10 seconds delay) whenever new items enter outbox
+      // 2. Debounced auto-sync whenever new items enter outbox
       onOutboxEnqueued(() => {
         this.notifyListeners();
         if (this.enqueueSyncTimer) {
@@ -121,15 +131,15 @@ class SynchronizationManager {
           if (this.isOnline() && !this.isSyncing) {
             this.syncNow();
           }
-        }, AUTO_SYNC_INTERVAL_MS);
+        }, OUTBOX_DEBOUNCE_MS);
       });
 
-      // 3. Periodic 10-second connectivity probe & background outbox sync
+      // 3. Periodic 30-second lightweight Edge CDN connectivity check & pending outbox flush
       setInterval(async () => {
         if (typeof document !== "undefined" && document.visibilityState === "hidden") {
           return;
         }
-        const actuallyOnline = await this.checkConnectivity();
+        const actuallyOnline = await this.checkConnectivity(false);
         if (actuallyOnline && !this.isSyncing) {
           getPendingOutboxCount()
             .then((count) => {
@@ -139,15 +149,18 @@ class SynchronizationManager {
             })
             .catch(() => {});
         }
-      }, AUTO_SYNC_INTERVAL_MS);
+      }, AUTO_PROBE_INTERVAL_MS);
 
-      // 4. Initial startup reachability verification + cloud sync
+      // 4. Initial startup reachability verification + pending outbox flush (no duplicate 30-table re-download)
       setTimeout(async () => {
-        const actuallyOnline = await this.checkConnectivity();
+        const actuallyOnline = await this.checkConnectivity(true);
         if (actuallyOnline && !this.isSyncing) {
-          this.syncNow();
+          const count = await getPendingOutboxCount().catch(() => 0);
+          if (count > 0) {
+            this.syncNow();
+          }
         }
-      }, 600);
+      }, 900);
     }
   }
 
@@ -158,16 +171,63 @@ class SynchronizationManager {
     }
   }
 
+  private async probeEdgeHealth(): Promise<boolean> {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+
+    try {
+      // Primary probe: static `/health.json` served directly by Netlify Edge CDN (0ms Lambda cold start)
+      const res = await fetch(`${apiBase}/health.json?t=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+        signal: controller.signal,
+      });
+
+      if (res.ok) {
+        if (res.headers.get("x-noxderma-health") === "ok") {
+          return true;
+        }
+        const body = await res.json().catch(() => null);
+        if (body && body.ok === true) {
+          return true;
+        }
+      }
+
+      // Fallback to `/api/health` only if `/health.json` returned 404
+      if (res.status === 404) {
+        const apiRes = await fetch(`${apiBase}/api/health?t=${Date.now()}`, {
+          method: "GET",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+          signal: controller.signal,
+        });
+        return apiRes.ok && apiRes.headers.get("x-noxderma-health") === "ok";
+      }
+
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   /**
-   * Verifies real internet connectivity (detects expired mobile data packages / dead Wi-Fi / captive portals
-   * where `navigator.onLine` stays `true` even though Chrome has no internet connection).
+   * Verifies real internet connectivity using Netlify Edge CDN (`/health.json`) with 2-strike hysteresis
+   * so transient latency spikes NEVER falsely flip a stable fibre connection to "Offline".
    */
-  public async checkConnectivity(): Promise<boolean> {
+  public async checkConnectivity(force = false): Promise<boolean> {
     if (typeof window === "undefined") return true;
 
     if (!navigator.onLine) {
+      this.consecutiveFailures = 2;
       this.setReachableOnline(false);
       return false;
+    }
+
+    const now = Date.now();
+    if (!force && this.reachableOnline && now - this.lastProbeMs < MIN_PROBE_COOLDOWN_MS) {
+      return this.reachableOnline;
     }
 
     if (this.isCheckingConnectivity) {
@@ -175,39 +235,68 @@ class SynchronizationManager {
     }
 
     this.isCheckingConnectivity = true;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+    this.lastProbeMs = now;
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-      const res = await fetch(`${apiBase}/api/health?t=${Date.now()}`, {
-        method: "GET",
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
-        signal: controller.signal,
-      });
+      const isHealthy = await this.probeEdgeHealth();
 
-      const isHealthy =
-        res.ok && res.headers.get("x-noxderma-health") === "ok";
+      if (isHealthy) {
+        if (this.retryVerifyTimer) {
+          clearTimeout(this.retryVerifyTimer);
+          this.retryVerifyTimer = null;
+        }
+        const wasOffline = !this.reachableOnline;
+        this.consecutiveFailures = 0;
+        this.setReachableOnline(true);
 
-      const wasOffline = !this.reachableOnline;
-      this.setReachableOnline(isHealthy);
+        if (wasOffline && !this.isSyncing) {
+          setTimeout(async () => {
+            const count = await getPendingOutboxCount().catch(() => 0);
+            if (count > 0 && this.isOnline() && !this.isSyncing) {
+              this.syncNow();
+            }
+          }, 300);
+        }
 
-      if (isHealthy && wasOffline && !this.isSyncing) {
-        // Reconnected after data package renewal or network recovery
-        setTimeout(() => {
-          if (this.isOnline() && !this.isSyncing) {
-            this.syncNow();
-          }
-        }, 250);
+        return true;
       }
 
-      return isHealthy;
+      // Probe returned non-healthy while navigator.onLine is true -> apply 2-strike hysteresis
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= 2) {
+        this.setReachableOnline(false);
+        return false;
+      }
+
+      if (!this.retryVerifyTimer) {
+        this.retryVerifyTimer = setTimeout(() => {
+          this.retryVerifyTimer = null;
+          this.checkConnectivity(true);
+        }, 1_800);
+      }
+      return this.reachableOnline;
     } catch {
-      this.setReachableOnline(false);
-      return false;
+      if (!navigator.onLine) {
+        this.consecutiveFailures = 2;
+        this.setReachableOnline(false);
+        return false;
+      }
+
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= 2) {
+        this.setReachableOnline(false);
+        return false;
+      }
+
+      // Single transient glitch on active link: verify once more before declaring offline
+      if (!this.retryVerifyTimer) {
+        this.retryVerifyTimer = setTimeout(() => {
+          this.retryVerifyTimer = null;
+          this.checkConnectivity(true);
+        }, 1_800);
+      }
+      return this.reachableOnline;
     } finally {
-      clearTimeout(timeoutId);
       this.isCheckingConnectivity = false;
     }
   }
@@ -237,7 +326,7 @@ class SynchronizationManager {
     this.listeners.forEach((l) => l(state));
   }
 
-  public async syncNow(): Promise<SyncResult> {
+  public async syncNow(options?: { fullReconcile?: boolean }): Promise<SyncResult> {
     if (this.isSyncing) {
       return {
         totalProcessed: 0,
@@ -248,7 +337,7 @@ class SynchronizationManager {
       };
     }
 
-    const online = await this.checkConnectivity();
+    const online = await this.checkConnectivity(Boolean(options?.fullReconcile));
     if (!online) {
       return {
         totalProcessed: 0,
@@ -267,7 +356,7 @@ class SynchronizationManager {
     let failedCount = 0;
 
     try {
-      // 1. Start live listeners (non-blocking)
+      // 1. Ensure live listeners are running (non-blocking)
       startRealtimeCloudSync(offlineDb).catch((err) => {
         console.warn("[SyncManager] Realtime sync init notice:", err);
       });
@@ -310,7 +399,6 @@ class SynchronizationManager {
             );
             conflictCount++;
           } else if (this.reachableOnline && response.status >= 500) {
-            // Direct Cloud Firestore fallback if serverless endpoint returns 5xx while online
             const fallbackRef =
               op.entityType === "invoice"
                 ? buildFallbackOfficialReference(op.payload)
@@ -335,8 +423,7 @@ class SynchronizationManager {
           }
         } catch (netErr: unknown) {
           if (this.reachableOnline && navigator.onLine) {
-            // If online (verified by /api/health) and only the serverless POST timed out, complete via direct Firestore sync
-            const stillOnline = await this.checkConnectivity();
+            const stillOnline = await this.checkConnectivity(true);
             if (stillOnline) {
               const fallbackRef =
                 op.entityType === "invoice"
@@ -362,18 +449,19 @@ class SynchronizationManager {
           const message = netErr instanceof Error ? netErr.message : "Network error during sync";
           await markOperationFailed(op.id, message);
           failedCount++;
-          this.setReachableOnline(false);
           break;
         } finally {
           clearTimeout(apiTimer);
         }
       }
 
-      // 3. Delta table reconciliation with strict timeout cap so syncNow() never hangs
-      await Promise.race([
-        forceFullCloudDatabaseSync(offlineDb),
-        new Promise((resolve) => setTimeout(resolve, CLOUD_RECONCILE_MAX_WAIT_MS)),
-      ]);
+      // 3. Only run full 30-table pull/reconcile when explicitly requested by user (manual Sync button)
+      if (options?.fullReconcile) {
+        await Promise.race([
+          forceFullCloudDatabaseSync(offlineDb),
+          new Promise((resolve) => setTimeout(resolve, CLOUD_RECONCILE_MAX_WAIT_MS)),
+        ]);
+      }
     } finally {
       this.isSyncing = false;
       await this.notifyListeners();

@@ -69,12 +69,20 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
     };
     loadSavedSettings();
 
+    const handleCloudSynced = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (Array.isArray(detail?.tables) && !detail.tables.includes("settings")) {
+        return;
+      }
+      loadSavedSettings();
+    };
+
     window.addEventListener("noxderma_settings_updated", loadSavedSettings);
-    window.addEventListener("noxderma-cloud-synced", loadSavedSettings);
+    window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
     return () => {
       isMounted = false;
       window.removeEventListener("noxderma_settings_updated", loadSavedSettings);
-      window.removeEventListener("noxderma-cloud-synced", loadSavedSettings);
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     };
   }, [propSettings]);
 

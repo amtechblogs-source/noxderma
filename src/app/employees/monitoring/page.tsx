@@ -284,10 +284,12 @@ export default function StaffLocationAndPhoneStatusPage() {
       loadAndAutoFetchStaff();
     };
     window.addEventListener("noxderma-cloud-synced", handleCloudUpdate);
+    window.addEventListener("noxderma-monitors-synced", handleCloudUpdate);
     const pollInterval = setInterval(loadAndAutoFetchStaff, 10_000); // 10-second refresh delay
 
     return () => {
       window.removeEventListener("noxderma-cloud-synced", handleCloudUpdate);
+      window.removeEventListener("noxderma-monitors-synced", handleCloudUpdate);
       clearInterval(pollInterval);
     };
   }, [loadAndAutoFetchStaff]);

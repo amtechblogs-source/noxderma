@@ -86,7 +86,7 @@ export default function SyncReconciliationPage() {
   }, []);
 
   const handleSyncNow = async () => {
-    const res = await syncManager.syncNow();
+    const res = await syncManager.syncNow({ fullReconcile: true });
     setLastResult(res);
     await refreshData();
   };

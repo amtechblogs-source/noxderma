@@ -52,6 +52,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize Auth state from storage / offlineDb & keep permissions synced in real-time
   useEffect(() => {
+    // Fast-path synchronous session restore (<1ms) so UI renders immediately without waiting on IndexedDB
+    if (typeof window !== "undefined") {
+      const fastRaw =
+        localStorage.getItem(ACTIVE_USER_STORAGE_KEY) ||
+        sessionStorage.getItem(ACTIVE_USER_STORAGE_KEY);
+      if (fastRaw) {
+        try {
+          const fastParsed = JSON.parse(fastRaw) as AuthenticatedUser;
+          if (fastParsed && fastParsed.email) {
+            setCurrentUser((prev) => prev || fastParsed);
+            setLoading(false);
+          }
+        } catch {}
+      }
+    }
+
     async function initAuth() {
       try {
         // Ensure default owner user is seeded into offlineDb.users if not present,
@@ -136,11 +152,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   permissions: perms,
                 };
 
-                setCurrentUser(syncedSession);
+                setCurrentUser((prev) => {
+                  if (prev && JSON.stringify(prev) === JSON.stringify(syncedSession)) {
+                    return prev;
+                  }
+                  return syncedSession;
+                });
+                const serializedSession = JSON.stringify(syncedSession);
                 if (localStorage.getItem(ACTIVE_USER_STORAGE_KEY)) {
-                  localStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(syncedSession));
-                } else {
-                  sessionStorage.setItem(ACTIVE_USER_STORAGE_KEY, JSON.stringify(syncedSession));
+                  if (localStorage.getItem(ACTIVE_USER_STORAGE_KEY) !== serializedSession) {
+                    localStorage.setItem(ACTIVE_USER_STORAGE_KEY, serializedSession);
+                  }
+                } else if (sessionStorage.getItem(ACTIVE_USER_STORAGE_KEY) !== serializedSession) {
+                  sessionStorage.setItem(ACTIVE_USER_STORAGE_KEY, serializedSession);
                 }
                 setLoading(false);
                 return;
@@ -164,14 +188,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initAuth();
 
-    const handleLiveUserSync = () => {
+    const handleLiveCloudSync = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (Array.isArray(detail?.tables) && !detail.tables.includes("users")) {
+        return;
+      }
       initAuth();
     };
-    window.addEventListener("noxderma-cloud-synced", handleLiveUserSync);
-    window.addEventListener("noxderma-users-updated", handleLiveUserSync);
+    const handleDirectUserUpdate = () => {
+      initAuth();
+    };
+    window.addEventListener("noxderma-cloud-synced", handleLiveCloudSync);
+    window.addEventListener("noxderma-users-updated", handleDirectUserUpdate);
     return () => {
-      window.removeEventListener("noxderma-cloud-synced", handleLiveUserSync);
-      window.removeEventListener("noxderma-users-updated", handleLiveUserSync);
+      window.removeEventListener("noxderma-cloud-synced", handleLiveCloudSync);
+      window.removeEventListener("noxderma-users-updated", handleDirectUserUpdate);
     };
   }, []);
 

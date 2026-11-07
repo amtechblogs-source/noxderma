@@ -306,13 +306,86 @@ export function attachDexieCloudHooks(dexieDb: NoxdermaDexieDB) {
   }
 }
 
+const MONITOR_ONLY_TABLES = new Set([
+  "staffMonitors",
+  "liveMapPins",
+  "geoVerifiedPhotos",
+  "dailyBeatPlans",
+]);
+
 let notifyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-function dispatchCloudSyncUpdate() {
+let monitorsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingChangedTables = new Set<string>();
+let pendingWildcardNotify = false;
+
+function dispatchCloudSyncUpdate(tableName?: string) {
   if (typeof window === "undefined") return;
+
+  // High-frequency GPS/battery telemetry tables ONLY notify the Staff Monitoring view
+  // so they never trigger full-app IndexedDB re-queries or React re-renders!
+  if (tableName && MONITOR_ONLY_TABLES.has(tableName)) {
+    if (monitorsDebounceTimer) clearTimeout(monitorsDebounceTimer);
+    monitorsDebounceTimer = setTimeout(() => {
+      monitorsDebounceTimer = null;
+      window.dispatchEvent(new CustomEvent("noxderma-monitors-synced"));
+    }, 400);
+    return;
+  }
+
+  if (tableName) {
+    pendingChangedTables.add(tableName);
+  } else {
+    pendingWildcardNotify = true;
+  }
+
   if (notifyDebounceTimer) clearTimeout(notifyDebounceTimer);
   notifyDebounceTimer = setTimeout(() => {
-    window.dispatchEvent(new CustomEvent("noxderma-cloud-synced"));
-  }, 250);
+    notifyDebounceTimer = null;
+    const detail = pendingWildcardNotify
+      ? undefined
+      : { tables: Array.from(pendingChangedTables) };
+    pendingChangedTables.clear();
+    pendingWildcardNotify = false;
+    window.dispatchEvent(new CustomEvent("noxderma-cloud-synced", { detail }));
+  }, 450);
+}
+
+const mirrorSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleMirrorSync(cfg: SyncedTableConfig, table: any) {
+  if (typeof window === "undefined") return;
+  if (!cfg.localStorageMirrorKey && cfg.tableName !== "settings") return;
+
+  const existing = mirrorSyncTimers.get(cfg.tableName);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(async () => {
+    mirrorSyncTimers.delete(cfg.tableName);
+    try {
+      const latestAll = await table.toArray();
+      if (cfg.localStorageMirrorKey) {
+        const runWrite = () => {
+          try {
+            const json = JSON.stringify(latestAll);
+            // Skip oversized payloads so synchronous localStorage writes never block UI clicks
+            if (json.length <= 480_000) {
+              localStorage.setItem(cfg.localStorageMirrorKey!, json);
+            }
+          } catch {}
+        };
+        if (typeof (window as any).requestIdleCallback === "function") {
+          (window as any).requestIdleCallback(runWrite, { timeout: 1500 });
+        } else {
+          runWrite();
+        }
+      }
+      if (cfg.tableName === "settings") {
+        applyRemoteSettingsSideEffects(latestAll);
+      }
+    } catch {}
+  }, 350);
+
+  mirrorSyncTimers.set(cfg.tableName, timer);
 }
 
 function applyRemoteSettingsSideEffects(items: any[]) {
@@ -454,153 +527,156 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
     } catch {}
   }
 
-  // Step 2: Reconcile each collection (Pull remote -> local, Push un-synced local -> remote, Purge remotely deleted)
-  // and attach real-time onSnapshot listeners
-  for (const cfg of SYNCED_TABLES) {
+  // Step 2: Reconcile collections in non-blocking batches of 5 (yielding to main thread between batches
+  // so navigation clicks never stall behind 30 simultaneous IndexedDB transactions) and attach live listeners.
+  const INIT_BATCH_SIZE = 5;
+
+  const initSingleCollection = async (cfg: SyncedTableConfig) => {
     const table = (dexieDb as any)[cfg.tableName];
-    if (!table) continue;
+    if (!table) return;
 
-    // Initial reconciliation in background
-    (async () => {
-      try {
-        const initFlagKey = `noxderma_cloud_init_${cfg.tableName}`;
-        const wasAlreadyInitialized = localStorage.getItem(initFlagKey) === "true";
+    let reconciledOk = false;
 
-        // Flush any pending offline deletes for this table first
-        const pendingDeletes = loadPendingSet(PENDING_DELETES_STORAGE_KEY);
-        const tablePrefix = `${cfg.tableName}:`;
-        const tablePendingDeleteIds: string[] = [];
-        pendingDeletes.forEach((compKey) => {
-          if (compKey.startsWith(tablePrefix)) {
-            tablePendingDeleteIds.push(compKey.slice(tablePrefix.length));
-          }
-        });
+    try {
+      const initFlagKey = `noxderma_cloud_init_${cfg.tableName}`;
+      const wasAlreadyInitialized = localStorage.getItem(initFlagKey) === "true";
 
-        if (tablePendingDeleteIds.length > 0) {
-          await Promise.allSettled(
-            tablePendingDeleteIds.map(async (delId) => {
-              await withFirestoreTimeout(deleteDoc(doc(firestoreDb, cfg.tableName, delId)), 3000);
-              clearPendingDelete(`${cfg.tableName}:${delId}`);
-            })
-          );
+      // Flush any pending offline deletes for this table first
+      const pendingDeletes = loadPendingSet(PENDING_DELETES_STORAGE_KEY);
+      const tablePrefix = `${cfg.tableName}:`;
+      const tablePendingDeleteIds: string[] = [];
+      pendingDeletes.forEach((compKey) => {
+        if (compKey.startsWith(tablePrefix)) {
+          tablePendingDeleteIds.push(compKey.slice(tablePrefix.length));
         }
+      });
 
-        const colRef = collection(firestoreDb, cfg.tableName);
-        const [remoteSnap, localRecords] = await Promise.all([
-          withFirestoreTimeout(getDocs(colRef), 4500),
-          table.toArray(),
-        ]);
-
-        const isFromServer = !remoteSnap.metadata?.fromCache;
-        const pendingUpserts = loadPendingSet(PENDING_UPSERTS_STORAGE_KEY);
-        const remainingDeletes = loadPendingSet(PENDING_DELETES_STORAGE_KEY);
-
-        const remoteMap = new Map<string, any>();
-        remoteSnap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docSnap.id)) {
-            deleteDoc(doc(firestoreDb, cfg.tableName, docSnap.id)).catch(() => {});
-            return;
-          }
-          if (remainingDeletes.has(`${cfg.tableName}:${docSnap.id}`)) {
-            return;
-          }
-          remoteMap.set(docSnap.id, { ...data, [cfg.primaryKey]: docSnap.id });
-        });
-
-        // Clean any legacy ignored local staffMonitors records
-        if (cfg.tableName === "staffMonitors") {
-          const legacyLocalIds = localRecords
-            .map((item: any) => String(item?.[cfg.primaryKey] ?? ""))
-            .filter((id: string) => id && isIgnoredStaffMonitorDoc(id));
-          if (legacyLocalIds.length > 0) {
-            await withRemoteSyncFlag(async () => {
-              await table.bulkDelete(legacyLocalIds);
-            });
-          }
-        }
-
-        const localToDeleteIds: string[] = [];
-        const localToPushItems: any[] = [];
-
-        for (const localItem of localRecords) {
-          const docId = String(localItem?.[cfg.primaryKey] ?? "");
-          if (!docId) continue;
-          if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
-
-          const compKey = `${cfg.tableName}:${docId}`;
-          const isPendingUpsert = pendingUpserts.has(compKey);
-          const remoteItem = remoteMap.get(docId);
-
-          if (!remoteItem) {
-            if (isPendingUpsert || !wasAlreadyInitialized) {
-              localToPushItems.push(localItem);
-            } else if (isFromServer) {
-              // This record existed before, is not a pending offline creation, and is absent on the server:
-              // It was deleted on another device -> delete locally so it is never resurrected!
-              localToDeleteIds.push(docId);
-            }
-          } else {
-            const localTs = extractRecordTimestampMs(localItem);
-            const remoteTs = extractRecordTimestampMs(remoteItem);
-            if (isPendingUpsert || (localTs > 0 && localTs > remoteTs)) {
-              localToPushItems.push(localItem);
-              remoteMap.set(docId, localItem);
-            }
-          }
-        }
-
-        // Apply remote documents & remote deletions into local IndexedDB
-        await withRemoteSyncFlag(async () => {
-          if (localToDeleteIds.length > 0) {
-            await table.bulkDelete(localToDeleteIds);
-          }
-          if (remoteMap.size > 0) {
-            await table.bulkPut(Array.from(remoteMap.values()));
-          }
-        });
-
-        // Push any genuinely un-synced or newer local records to Cloud Firestore
-        if (localToPushItems.length > 0) {
-          await Promise.allSettled(
-            localToPushItems.map(async (localItem: any) => {
-              const docId = String(localItem[cfg.primaryKey]);
-              await withFirestoreTimeout(
-                setDoc(
-                  doc(firestoreDb, cfg.tableName, docId),
-                  sanitizeForFirestore(localItem),
-                  { merge: true }
-                ),
-                3500
-              );
-              clearPendingUpsert(`${cfg.tableName}:${docId}`);
-            })
-          );
-        }
-
-        localStorage.setItem(initFlagKey, "true");
-
-        // Update localStorage mirror if configured
-        const mergedAll = await table.toArray();
-        if (cfg.localStorageMirrorKey) {
-          localStorage.setItem(cfg.localStorageMirrorKey, JSON.stringify(mergedAll));
-        }
-        if (cfg.tableName === "settings") {
-          applyRemoteSettingsSideEffects(mergedAll);
-        }
-
-        dispatchCloudSyncUpdate();
-      } catch (err) {
-        console.warn(`[CloudSync] Initial reconciliation warning for ${cfg.tableName}:`, err);
+      if (tablePendingDeleteIds.length > 0) {
+        await Promise.allSettled(
+          tablePendingDeleteIds.map(async (delId) => {
+            await withFirestoreTimeout(deleteDoc(doc(firestoreDb, cfg.tableName, delId)), 3000);
+            clearPendingDelete(`${cfg.tableName}:${delId}`);
+          })
+        );
       }
-    })();
+
+      const colRef = collection(firestoreDb, cfg.tableName);
+      const [remoteSnap, localRecords] = await Promise.all([
+        withFirestoreTimeout(getDocs(colRef), 6500),
+        table.toArray(),
+      ]);
+
+      const isFromServer = !remoteSnap.metadata?.fromCache;
+      const pendingUpserts = loadPendingSet(PENDING_UPSERTS_STORAGE_KEY);
+      const remainingDeletes = loadPendingSet(PENDING_DELETES_STORAGE_KEY);
+
+      const remoteMap = new Map<string, any>();
+      remoteSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docSnap.id)) {
+          deleteDoc(doc(firestoreDb, cfg.tableName, docSnap.id)).catch(() => {});
+          return;
+        }
+        if (remainingDeletes.has(`${cfg.tableName}:${docSnap.id}`)) {
+          return;
+        }
+        remoteMap.set(docSnap.id, { ...data, [cfg.primaryKey]: docSnap.id });
+      });
+
+      // Clean any legacy ignored local staffMonitors records
+      if (cfg.tableName === "staffMonitors") {
+        const legacyLocalIds = localRecords
+          .map((item: any) => String(item?.[cfg.primaryKey] ?? ""))
+          .filter((id: string) => id && isIgnoredStaffMonitorDoc(id));
+        if (legacyLocalIds.length > 0) {
+          await withRemoteSyncFlag(async () => {
+            await table.bulkDelete(legacyLocalIds);
+          });
+        }
+      }
+
+      const localToDeleteIds: string[] = [];
+      const localToPushItems: any[] = [];
+
+      for (const localItem of localRecords) {
+        const docId = String(localItem?.[cfg.primaryKey] ?? "");
+        if (!docId) continue;
+        if (cfg.tableName === "staffMonitors" && isIgnoredStaffMonitorDoc(docId)) continue;
+
+        const compKey = `${cfg.tableName}:${docId}`;
+        const isPendingUpsert = pendingUpserts.has(compKey);
+        const remoteItem = remoteMap.get(docId);
+
+        if (!remoteItem) {
+          if (isPendingUpsert || !wasAlreadyInitialized) {
+            localToPushItems.push(localItem);
+          } else if (isFromServer) {
+            localToDeleteIds.push(docId);
+          }
+        } else {
+          const localTs = extractRecordTimestampMs(localItem);
+          const remoteTs = extractRecordTimestampMs(remoteItem);
+          if (isPendingUpsert || (localTs > 0 && localTs > remoteTs)) {
+            localToPushItems.push(localItem);
+            remoteMap.set(docId, localItem);
+          }
+        }
+      }
+
+      // Apply remote documents & remote deletions into local IndexedDB
+      await withRemoteSyncFlag(async () => {
+        if (localToDeleteIds.length > 0) {
+          await table.bulkDelete(localToDeleteIds);
+        }
+        if (remoteMap.size > 0) {
+          await table.bulkPut(Array.from(remoteMap.values()));
+        }
+      });
+
+      // Push any genuinely un-synced or newer local records to Cloud Firestore
+      if (localToPushItems.length > 0) {
+        await Promise.allSettled(
+          localToPushItems.map(async (localItem: any) => {
+            const docId = String(localItem[cfg.primaryKey]);
+            await withFirestoreTimeout(
+              setDoc(
+                doc(firestoreDb, cfg.tableName, docId),
+                sanitizeForFirestore(localItem),
+                { merge: true }
+              ),
+              3500
+            );
+            clearPendingUpsert(`${cfg.tableName}:${docId}`);
+          })
+        );
+      }
+
+      localStorage.setItem(initFlagKey, "true");
+      reconciledOk = true;
+
+      scheduleMirrorSync(cfg, table);
+      dispatchCloudSyncUpdate(cfg.tableName);
+    } catch (err) {
+      console.warn(`[CloudSync] Initial reconciliation warning for ${cfg.tableName}:`, err);
+    }
 
     // Real-time live listener (Cloud -> Local)
     try {
       const colRef = collection(firestoreDb, cfg.tableName);
+      let isFirstSnapshot = true;
+
       const unsub = onSnapshot(
         colRef,
         async (snapshot) => {
+          // Skip redundant full-collection initial snapshot if initial reconciliation just succeeded
+          if (isFirstSnapshot) {
+            isFirstSnapshot = false;
+            if (reconciledOk) return;
+          }
+
+          // Skip local latency-compensation echoes of our own writes (already stored in Dexie)
+          if (snapshot.metadata?.hasPendingWrites) return;
+
           const changes = snapshot.docChanges();
           if (changes.length === 0) return;
 
@@ -632,15 +708,8 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
             }
           });
 
-          const latestAll = await table.toArray();
-          if (cfg.localStorageMirrorKey) {
-            localStorage.setItem(cfg.localStorageMirrorKey, JSON.stringify(latestAll));
-          }
-          if (cfg.tableName === "settings" && toPut.length > 0) {
-            applyRemoteSettingsSideEffects(latestAll);
-          }
-
-          dispatchCloudSyncUpdate();
+          scheduleMirrorSync(cfg, table);
+          dispatchCloudSyncUpdate(cfg.tableName);
         },
         (err) => {
           console.warn(`[CloudSync] Listener error on ${cfg.tableName}:`, err);
@@ -651,7 +720,16 @@ export async function startRealtimeCloudSync(dexieDb: NoxdermaDexieDB): Promise<
     } catch (err) {
       console.warn(`[CloudSync] Could not attach listener for ${cfg.tableName}:`, err);
     }
-  }
+  };
+
+  (async () => {
+    for (let i = 0; i < SYNCED_TABLES.length; i += INIT_BATCH_SIZE) {
+      const batch = SYNCED_TABLES.slice(i, i + INIT_BATCH_SIZE);
+      await Promise.allSettled(batch.map((cfg) => initSingleCollection(cfg)));
+      // Yield 35ms to the main UI thread between batches so clicks & route transitions stay 0ms
+      await new Promise((resolve) => setTimeout(resolve, 35));
+    }
+  })();
 }
 
 /**
@@ -692,7 +770,7 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
 
       const colRef = collection(firestoreDb, cfg.tableName);
       const [remoteSnap, localRecords] = await Promise.all([
-        withFirestoreTimeout(getDocs(colRef), 3500),
+        withFirestoreTimeout(getDocs(colRef), 4500),
         table.toArray(),
       ]);
 
@@ -765,14 +843,7 @@ export async function forceFullCloudDatabaseSync(dexieDb: NoxdermaDexieDB): Prom
       });
 
       localStorage.setItem(initFlagKey, "true");
-
-      const latestAll = await table.toArray();
-      if (cfg.localStorageMirrorKey) {
-        localStorage.setItem(cfg.localStorageMirrorKey, JSON.stringify(latestAll));
-      }
-      if (cfg.tableName === "settings") {
-        applyRemoteSettingsSideEffects(latestAll);
-      }
+      scheduleMirrorSync(cfg, table);
     } catch (err) {
       console.warn(`[CloudSync] Full sync warning on ${cfg.tableName}:`, err);
     }

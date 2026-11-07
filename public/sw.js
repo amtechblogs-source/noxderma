@@ -1,4 +1,4 @@
-const CACHE_NAME = "noxderma-shell-v20";
+const CACHE_NAME = "noxderma-shell-v21";
 
 const PRECACHE_ASSETS = [
   "/",
@@ -7,7 +7,7 @@ const PRECACHE_ASSETS = [
   "/brand/logo.svg",
 ];
 
-// Helper: Fetch with a fast timeout so dead mobile data packages (0 MB on 4.5G) don't hang for 25s
+// Helper: Fetch with a fast timeout so dead mobile data packages (0 MB on 4.5G) don't hang
 function fetchWithTimeout(request, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -34,7 +34,7 @@ self.addEventListener("install", (event) => {
   );
 });
 
-// Activate Event: Purge ALL older caches (including legacy noxderma-shell-v2) so stale layouts never appear
+// Activate Event: Purge ALL older caches so stale layouts or old SW rules never linger
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -58,7 +58,7 @@ self.addEventListener("message", (event) => {
   }
 });
 
-// Fetch Event: Always keep offline cache fresh when online, and fall back fast when offline
+// Fetch Event: Instant Stale-While-Revalidate for RSC client navigation, Cache-First for immutable bundles
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" && event.request.method !== "HEAD") {
     return;
@@ -66,9 +66,11 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // 1. Never intercept cross-origin requests or API endpoints (including /api/health & /api/sync)
+  // 1. Never intercept cross-origin requests, health probes (/health.json), SW script, or API endpoints
   if (
     url.origin !== self.location.origin ||
+    url.pathname === "/health.json" ||
+    url.pathname === "/sw.js" ||
     url.pathname.startsWith("/api/") ||
     url.hostname.includes("firestore.googleapis.com") ||
     url.hostname.includes("identitytoolkit.googleapis.com") ||
@@ -86,10 +88,88 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
-  // 3. Page Navigation Requests: Network-first (10s timeout) + ALWAYS update cached HTML so offline reload gets latest UI
+  // 3. Content-hashed Next.js Static Chunks & Brand Media -> Instant Cache-First
+  if (
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.match(/\.(png|jpg|jpeg|svg|webp|ico|woff2)$/)
+  ) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetchWithTimeout(event.request, 8000)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+            }
+            return networkResponse;
+          })
+          .catch(() =>
+            caches.match(event.request).then(
+              (fallback) =>
+                fallback ||
+                new Response("", {
+                  status: 200,
+                  headers: { "x-noxderma-offline": "1" },
+                })
+            )
+          );
+      })
+    );
+    return;
+  }
+
+  // 4. Next.js RSC Flight Payloads (Client-Side Link Clicks & Prefetches) -> Instant Stale-While-Revalidate!
+  // All Noxderma pages are client-rendered from IndexedDB, so serving cached RSC immediately makes clicks 0ms!
+  const isRscRequest =
+    url.searchParams.has("_rsc") || event.request.headers.get("RSC") === "1";
+
+  if (isRscRequest) {
+    const normalizedRscKey = `${url.origin}${url.pathname}?_rsc=cached`;
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cachedExact = await cache.match(event.request);
+        const cachedNormalized = cachedExact || (await cache.match(normalizedRscKey));
+
+        const networkFetchPromise = fetchWithTimeout(event.request, 5000)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(event.request, networkResponse.clone());
+              cache.put(normalizedRscKey, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(() => null);
+
+        // If already in cache, return IMMEDIATELY (<2ms) and revalidate silently in background!
+        if (cachedNormalized) {
+          event.waitUntil(networkFetchPromise);
+          return cachedNormalized;
+        }
+
+        const liveRes = await networkFetchPromise;
+        if (liveRes) return liveRes;
+
+        return new Response("", {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "x-noxderma-offline": "1",
+          },
+        });
+      })
+    );
+    return;
+  }
+
+  // 5. Full Page Navigation Requests (Browser Reload / Direct URL): Fast Network-First (4.5s) + Cache Fallback
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetchWithTimeout(event.request, 10000)
+      fetchWithTimeout(event.request, 4500)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const cloneForRoute = networkResponse.clone();
@@ -120,80 +200,31 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 4. Content-hashed Next.js Static Chunks & Brand Media
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.match(/\.(png|jpg|jpeg|svg|webp|ico|woff2)$/)
-  ) {
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetchWithTimeout(event.request, 10000)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-            }
-            return networkResponse;
-          })
-          .catch(() =>
-            caches.match(event.request).then(
-              (fallback) =>
-                fallback ||
-                new Response("", {
-                  status: 200,
-                  headers: { "x-noxderma-offline": "1" },
-                })
-            )
-          );
-      })
-    );
-    return;
-  }
-
-  // 5. Next.js RSC flight payloads & other same-origin GET requests: Network-first with 10s timeout + normalized cache fallback
-  const isRscRequest =
-    url.searchParams.has("_rsc") || event.request.headers.get("RSC") === "1";
-  const normalizedRscKey = `${url.origin}${url.pathname}?_rsc=cached`;
-
+  // 6. Other same-origin GET requests (manifest.json, etc.): Stale-While-Revalidate
   event.respondWith(
-    fetchWithTimeout(event.request, 10000)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          const rscClone = isRscRequest ? networkResponse.clone() : null;
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clone);
-            if (rscClone) {
-              cache.put(normalizedRscKey, rscClone);
-            }
-          });
-        }
-        return networkResponse;
-      })
-      .catch(async () => {
-        const exactMatch = await caches.match(event.request);
-        if (exactMatch) return exactMatch;
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const cached = await cache.match(event.request);
+      const fetchPromise = fetchWithTimeout(event.request, 5000)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        })
+        .catch(() => null);
 
-        if (isRscRequest) {
-          const normalizedMatch = await caches.match(normalizedRscKey);
-          if (normalizedMatch) return normalizedMatch;
-        } else {
-          const pathMatch = await caches.match(url.pathname);
-          if (pathMatch) return pathMatch;
-        }
+      if (cached) {
+        event.waitUntil(fetchPromise);
+        return cached;
+      }
 
-        return new Response("", {
+      return (
+        (await fetchPromise) ||
+        new Response("", {
           status: 200,
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "x-noxderma-offline": "1",
-          },
-        });
-      })
+          headers: { "x-noxderma-offline": "1" },
+        })
+      );
+    })
   );
 });

@@ -33,7 +33,7 @@ import {
 } from "@/lib/monitoring/deviceIdentity";
 import { normalizeUserDisplayName, type StaffMonitoringProfile } from "@/types";
 
-const TELEMETRY_AUTO_SYNC_DELAY_MS = 10_000; // 10-second throttle for GPS & battery updates
+const TELEMETRY_AUTO_SYNC_DELAY_MS = 30_000; // 30-second throttle for GPS & battery updates
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -368,7 +368,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", handleVisibilityResume);
       clearInterval(heartbeat);
     };
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.role, currentUser?.email, currentUser?.displayName, currentUser?.phone]);
 
   // If on login page, render children cleanly without layout chrome
   if (pathname === "/login") {

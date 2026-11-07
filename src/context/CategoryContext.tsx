@@ -21,15 +21,20 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
   const [selectedCategoryId, setSelectedCategoryIdState] = useState<string>("all");
   const [categories, setCategories] = useState<DynamicCategory[]>([]);
 
-  const refreshCategories = async () => {
+  const refreshCategories = useCallback(async () => {
     try {
       const list = await offlineDb.categories.toArray();
       const activeList = list.filter((c) => c.active).sort((a, b) => a.displayOrder - b.displayOrder);
-      setCategories(activeList);
+      setCategories((prev) => {
+        if (prev.length === activeList.length && JSON.stringify(prev) === JSON.stringify(activeList)) {
+          return prev;
+        }
+        return activeList;
+      });
     } catch (err) {
       console.warn("Could not load categories in CategoryProvider:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Load persisted selection
@@ -49,7 +54,11 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const handleCloudSynced = () => {
+    const handleCloudSynced = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (Array.isArray(detail?.tables) && !detail.tables.includes("categories")) {
+        return;
+      }
       refreshCategories();
     };
 
@@ -59,7 +68,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("noxderma_category_changed", handleCategoryEvent);
       window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     };
-  }, []);
+  }, [refreshCategories]);
 
   const setSelectedCategoryId = useCallback((id: string) => {
     setSelectedCategoryIdState(id);
