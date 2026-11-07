@@ -176,7 +176,7 @@ export default function CustomerLedgersPage() {
     .reduce((sum, e) => sum + e.credit, 0);
 
   return (
-    <div className="space-y-6 print:space-y-4">
+    <div className="space-y-6 print:space-y-4 print-page">
       {/* Official Print-Only Header */}
       <OfficialPrintHeader
         title="Customer Khata & Balance Statement"
@@ -217,11 +217,11 @@ export default function CustomerLedgersPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3 print:gap-2">
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+          <span className="text-[11px] font-bold text-slate-400 print:text-slate-600 uppercase tracking-wider block mb-1">
             Total Money to Receive (Market Udhaar)
           </span>
-          <span className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
+          <span className="text-2xl print:text-lg font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
             {formatPKR(totalReceivables)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -229,11 +229,11 @@ export default function CustomerLedgersPage() {
           </span>
         </div>
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-1">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+          <span className="text-[11px] font-bold text-rose-600 print:text-slate-600 uppercase tracking-wider block mb-1">
             Total Bills Given (+)
           </span>
-          <span className="text-2xl font-black font-mono text-rose-600">
+          <span className="text-2xl print:text-lg font-black font-mono text-rose-600 print:text-black">
             {formatPKR(totalBillsAmount)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -241,11 +241,11 @@ export default function CustomerLedgersPage() {
           </span>
         </div>
 
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+          <span className="text-[11px] font-bold text-emerald-600 print:text-slate-600 uppercase tracking-wider block mb-1">
             Total Cash Received (-)
           </span>
-          <span className="text-2xl font-black font-mono text-emerald-600">
+          <span className="text-2xl print:text-lg font-black font-mono text-emerald-600 print:text-black">
             {formatPKR(totalCashReceived)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -363,7 +363,7 @@ export default function CustomerLedgersPage() {
             </div>
 
             {/* Desktop & Print Table */}
-            <div className="hidden md:block print:block overflow-x-auto">
+            <div className="hidden md:block print:block overflow-x-auto print:overflow-visible">
               <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
                 <tr>

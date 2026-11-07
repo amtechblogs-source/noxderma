@@ -1188,7 +1188,7 @@ export default function ReportsExportPage() {
       {/* ========================================================================= */}
       {/* DEDICATED OFFICIAL PRINTABLE REPORT (Clean A4 Document Layout)             */}
       {/* ========================================================================= */}
-      <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-6 space-y-4">
+      <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-4 print:p-1 space-y-4">
         {/* Document Header with Official Branding */}
         <OfficialPrintHeader
           title={

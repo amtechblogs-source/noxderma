@@ -277,7 +277,7 @@ export function PriceEstimatorView() {
 
   return (
     <>
-      <div className="max-w-7xl mx-auto space-y-5 pb-36 lg:pb-16 px-3 sm:px-6 no-print print:hidden">
+      <div className="max-w-7xl mx-auto space-y-5 pb-48 lg:pb-16 px-3 sm:px-6 no-print print:hidden">
       {/* Top Breadcrumb & Action Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
@@ -1493,8 +1493,8 @@ export function PriceEstimatorView() {
         </div>
       </div>
 
-      {/* Persistent Mobile Bottom Quick Summary Bar (lg:hidden) */}
-      <div className="lg:hidden fixed bottom-[62px] left-0 right-0 z-30 px-3 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-800 shadow-lg">
+      {/* Persistent Mobile Bottom Quick Summary Bar (Raised cleanly above center nav button) */}
+      <div className="lg:hidden fixed bottom-[92px] left-2.5 right-2.5 z-30 px-3.5 py-2.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md text-slate-900 dark:text-white border border-slate-200/90 dark:border-slate-700/90 shadow-2xl no-print print:hidden">
         <div className="max-w-md mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div>
@@ -1547,7 +1547,7 @@ export function PriceEstimatorView() {
     </div>
 
     {/* Dedicated A4 Printable Costing & Feasibility Sheet */}
-    <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-5">
+    <div className="hidden print:block print-page bg-white text-black font-sans text-xs w-full max-w-none m-0 p-4 print:p-1">
       {/* Document Header with Official Branding */}
       <OfficialPrintHeader
         title="COSTING SHEET"

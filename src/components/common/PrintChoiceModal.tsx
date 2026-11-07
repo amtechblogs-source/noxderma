@@ -15,6 +15,8 @@ interface PrintableDocMeta {
   filename: string;
 }
 
+const A4_CSS_WIDTH_PX = 794; // Exact 210mm at 96 DPI (210 / 25.4 * 96 = 793.7px)
+
 function sanitizeFilenamePart(input: string): string {
   return input
     .trim()
@@ -32,7 +34,6 @@ function resolvePrintableTarget(): HTMLElement {
 
   const printPages = Array.from(document.querySelectorAll<HTMLElement>(".print-page"));
   if (printPages.length > 0) {
-    // Prefer the last or active print-page
     return printPages[printPages.length - 1];
   }
 
@@ -67,9 +68,8 @@ function detectDocumentMeta(): PrintableDocMeta {
 }
 
 /**
- * Extracts all CSS rules nested inside `@media print` across active stylesheets
- * so that Tailwind `print:*` classes and custom `@media print` rules apply 1:1
- * during direct A4 PDF generation.
+ * Extracts all CSS style rules nested inside `@media print` across active stylesheets
+ * so that Tailwind `print:*` classes and custom print rules apply inside the isolated A4 iframe.
  */
 function collectPrintMediaCssRules(): string {
   const collected: string[] = [];
@@ -79,7 +79,6 @@ function collectPrintMediaCssRules(): string {
     try {
       rules = sheet.cssRules;
     } catch {
-      // Cross-origin stylesheet; skip safely
       continue;
     }
     if (!rules) continue;
@@ -87,6 +86,8 @@ function collectPrintMediaCssRules(): string {
     for (const rule of Array.from(rules)) {
       if (rule instanceof CSSMediaRule && rule.media.mediaText.includes("print")) {
         for (const innerRule of Array.from(rule.cssRules)) {
+          // Skip @page rules inside inline style blocks
+          if (innerRule.cssText.trim().startsWith("@page")) continue;
           collected.push(innerRule.cssText);
         }
       }
@@ -98,7 +99,7 @@ function collectPrintMediaCssRules(): string {
 
 /**
  * Finds a clean horizontal break row near `targetY` on the canvas by scanning
- * upward for a predominantly white row so text lines are not cut in half.
+ * upward for a predominantly white row so text lines and table borders aren't sliced mid-character.
  */
 function findSmartPageBreakY(
   ctx: CanvasRenderingContext2D,
@@ -106,14 +107,14 @@ function findSmartPageBreakY(
   targetY: number,
   minY: number
 ): number {
-  const searchHeight = Math.min(110, Math.max(0, targetY - minY));
-  if (searchHeight <= 4) return targetY;
+  const searchHeight = Math.min(140, Math.max(0, targetY - minY));
+  if (searchHeight <= 6) return targetY;
 
   const startY = targetY - searchHeight;
   try {
     const imgData = ctx.getImageData(0, startY, canvasWidth, searchHeight);
     const data = imgData.data;
-    const stepX = 4; // sample every 4th pixel for speed
+    const stepX = 4;
 
     for (let row = searchHeight - 1; row >= 0; row--) {
       let nonWhiteCount = 0;
@@ -125,9 +126,9 @@ function findSmartPageBreakY(
         const g = data[idx + 1];
         const b = data[idx + 2];
         const a = data[idx + 3];
-        if (a > 10 && (r < 245 || g < 245 || b < 245)) {
+        if (a > 10 && (r < 246 || g < 246 || b < 246)) {
           nonWhiteCount++;
-          if (nonWhiteCount > 3) break;
+          if (nonWhiteCount > 2) break;
         }
       }
 
@@ -136,10 +137,117 @@ function findSmartPageBreakY(
       }
     }
   } catch {
-    // Fallback to exact targetY if canvas read fails
+    // Fallback to targetY if canvas read fails
   }
 
   return targetY;
+}
+
+/**
+ * Checks whether a remaining vertical strip at the bottom of the canvas is completely blank/white,
+ * preventing an empty trailing page from being appended to the PDF.
+ */
+function isCanvasStripBlank(
+  ctx: CanvasRenderingContext2D | null,
+  canvasWidth: number,
+  startY: number,
+  height: number
+): boolean {
+  if (!ctx || height <= 0) return true;
+  if (height > 180) return false;
+
+  try {
+    const imgData = ctx.getImageData(0, startY, canvasWidth, height);
+    const data = imgData.data;
+    const step = 16; // sample pixels quickly
+    for (let i = 0; i < data.length; i += step) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+      if (a > 15 && (r < 242 || g < 242 || b < 242)) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForStylesheetsAndAssets(iframeDoc: Document): Promise<void> {
+  const linkEls = Array.from(iframeDoc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'));
+  await Promise.all(
+    linkEls.map(
+      (link) =>
+        new Promise<void>((resolve) => {
+          if (link.sheet) {
+            resolve();
+            return;
+          }
+          const timer = setTimeout(resolve, 2500);
+          link.addEventListener(
+            "load",
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+          link.addEventListener(
+            "error",
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+        })
+    )
+  );
+
+  // Wait for web fonts inside the iframe (with safe timeout)
+  if (iframeDoc.fonts && iframeDoc.fonts.ready) {
+    await Promise.race([
+      iframeDoc.fonts.ready.catch(() => {}),
+      new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+    ]);
+  }
+
+  // Wait for any embedded images (logos / medicine thumbnails) to settle
+  const imgs = Array.from(iframeDoc.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) {
+            if (img.naturalWidth === 0 && img.getAttribute("src")) {
+              img.style.display = "none";
+            }
+            resolve();
+            return;
+          }
+          const timer = setTimeout(() => resolve(), 2200);
+          img.addEventListener(
+            "load",
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+          img.addEventListener(
+            "error",
+            () => {
+              clearTimeout(timer);
+              img.style.display = "none";
+              resolve();
+            },
+            { once: true }
+          );
+        })
+    )
+  );
 }
 
 export function PrintChoiceModal() {
@@ -185,12 +293,7 @@ export function PrintChoiceModal() {
     if (isGeneratingPdf) return;
     setIsGeneratingPdf(true);
 
-    const htmlEl = document.documentElement;
-    const wasDark = htmlEl.classList.contains("dark");
-    const targetEl = resolvePrintableTarget();
-    const prevTargetId = targetEl.getAttribute("data-pdf-capture-target");
-
-    let tempStyleEl: HTMLStyleElement | null = null;
+    let offscreenIframe: HTMLIFrameElement | null = null;
 
     try {
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -198,61 +301,211 @@ export function PrintChoiceModal() {
         import("jspdf"),
       ]);
 
-      // Refresh metadata right before capture
       const currentMeta = detectDocumentMeta();
-      targetEl.setAttribute("data-pdf-capture-target", "active");
+      const targetEl = resolvePrintableTarget();
 
-      if (wasDark) {
-        htmlEl.classList.remove("dark");
+      // Create an isolated offscreen 794px (A4-width) iframe so mobile viewports (360px)
+      // never clip the left/right edges and sm:/md: desktop table breakpoints activate naturally!
+      offscreenIframe = document.createElement("iframe");
+      offscreenIframe.setAttribute("aria-hidden", "true");
+      offscreenIframe.style.cssText = [
+        "position: fixed",
+        "left: -10000px",
+        "top: 0",
+        `width: ${A4_CSS_WIDTH_PX}px`,
+        "height: 1123px",
+        "border: 0",
+        "margin: 0",
+        "padding: 0",
+        "opacity: 0",
+        "pointer-events: none",
+        "z-index: -9999",
+        "background: #ffffff",
+      ].join(";");
+      document.body.appendChild(offscreenIframe);
+
+      const iframeDoc = offscreenIframe.contentDocument;
+      if (!iframeDoc) {
+        throw new Error("Could not initialize PDF render frame");
       }
 
+      iframeDoc.open();
+      iframeDoc.write("<!DOCTYPE html><html lang=\"en\"><head></head><body></body></html>");
+      iframeDoc.close();
+
+      // Copy Next.js font CSS variable classes onto html & body (excluding dark mode)
+      const htmlClasses = Array.from(document.documentElement.classList).filter(
+        (c) => c !== "dark"
+      );
+      if (htmlClasses.length > 0) {
+        iframeDoc.documentElement.className = htmlClasses.join(" ");
+      }
+      const bodyFontClasses = Array.from(document.body.classList).filter(
+        (c) => c.startsWith("__") || c === "font-sans" || c === "antialiased"
+      );
+      iframeDoc.body.className = bodyFontClasses.join(" ");
+
+      // Base href ensures relative logos / fonts resolve accurately
+      const baseEl = iframeDoc.createElement("base");
+      baseEl.href = `${window.location.origin}/`;
+      iframeDoc.head.appendChild(baseEl);
+
+      // Copy active stylesheets & inline style blocks into the isolated iframe
+      const headNodes = Array.from(
+        document.head.querySelectorAll<HTMLElement>('link[rel="stylesheet"], style')
+      );
+      for (const node of headNodes) {
+        if (node.id === "active-pdf-print-styles") continue;
+        iframeDoc.head.appendChild(node.cloneNode(true));
+      }
+
+      // Append unwrapped @media print CSS rules + html2canvas baseline & A4 layout fixes
       const printRulesCss = collectPrintMediaCssRules();
-      tempStyleEl = document.createElement("style");
-      tempStyleEl.id = "active-pdf-print-styles";
-      tempStyleEl.textContent = `
+      const masterStyle = iframeDoc.createElement("style");
+      masterStyle.id = "pdf-a4-master-override";
+      masterStyle.textContent = `
         ${printRulesCss}
-        [data-pdf-capture-target="active"] {
-          display: block !important;
-          width: 794px !important;
-          min-width: 794px !important;
-          max-width: 794px !important;
-          height: auto !important;
-          max-height: none !important;
-          overflow: visible !important;
+
+        /* CRITICAL FIX for html2canvas + Tailwind CSS Preflight text vertical shift ("text uper neechy"):
+           html2canvas measures font baselines by inserting <img width="1" height="1"> next to a <span>.
+           Tailwind Preflight sets img { display: block; vertical-align: middle; height: auto; },
+           which pushes html2canvas's 1x1 probe onto a new line and shifts all PDF text downward! */
+        img {
+          display: inline-block;
+        }
+        img[width="1"][height="1"] {
+          display: inline !important;
+          width: 1px !important;
+          height: 1px !important;
+          max-width: none !important;
+        }
+
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: ${A4_CSS_WIDTH_PX}px !important;
+          min-width: ${A4_CSS_WIDTH_PX}px !important;
+          max-width: ${A4_CSS_WIDTH_PX}px !important;
           background: #ffffff !important;
           background-color: #ffffff !important;
           color: #000000 !important;
-          padding: 20px !important;
+          overflow: visible !important;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        #pdf-page-sheet {
+          width: ${A4_CSS_WIDTH_PX}px !important;
+          min-width: ${A4_CSS_WIDTH_PX}px !important;
+          max-width: ${A4_CSS_WIDTH_PX}px !important;
           margin: 0 !important;
+          padding: 4px 32px 12px 32px !important;
           box-sizing: border-box !important;
+          background: #ffffff !important;
+          background-color: #ffffff !important;
+          color: #000000 !important;
+          overflow: visible !important;
+        }
+
+        #pdf-page-sheet > [data-pdf-cloned-root="true"] {
+          display: block !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          overflow: visible !important;
+          background: #ffffff !important;
+          color: #000000 !important;
+        }
+
+        #pdf-page-sheet > .print-page[data-pdf-cloned-root="true"] {
+          padding: 0 !important;
+          border: none !important;
           border-radius: 0 !important;
           box-shadow: none !important;
         }
-        [data-pdf-capture-target="active"] .no-print {
+
+        #pdf-page-sheet > #printable-partner-voucher[data-pdf-cloned-root="true"],
+        #pdf-page-sheet > #printable-salary-slip[data-pdf-cloned-root="true"] {
+          padding: 24px !important;
+          border: 1.5px solid #0f172a !important;
+          border-radius: 12px !important;
+          box-shadow: none !important;
+          box-sizing: border-box !important;
+        }
+
+        .no-print,
+        .print\\:hidden,
+        nav,
+        header,
+        aside,
+        footer,
+        button:not(.print-allow) {
           display: none !important;
         }
-        #print-choice-modal-backdrop {
+        .print\\:block {
+          display: block !important;
+        }
+        .print\\:flex {
           display: flex !important;
         }
+        .print\\:inline-flex {
+          display: inline-flex !important;
+        }
+        .print\\:grid {
+          display: grid !important;
+        }
+        .print\\:inline {
+          display: inline !important;
+        }
+        .print\\:inline-block {
+          display: inline-block !important;
+        }
+        .print\\:table {
+          display: table !important;
+        }
+        .overflow-x-auto {
+          overflow: visible !important;
+        }
       `;
-      document.head.appendChild(tempStyleEl);
+      iframeDoc.head.appendChild(masterStyle);
 
-      // Allow browser layout to settle with A4 print rules applied
+      // Build A4 sheet wrapper and clone printable target inside
+      const sheetEl = iframeDoc.createElement("div");
+      sheetEl.id = "pdf-page-sheet";
+
+      const clonedTarget = targetEl.cloneNode(true) as HTMLElement;
+      clonedTarget.setAttribute("data-pdf-cloned-root", "true");
+      sheetEl.appendChild(clonedTarget);
+      iframeDoc.body.appendChild(sheetEl);
+
+      // Wait for stylesheets, fonts, and images inside the offscreen A4 frame
+      await waitForStylesheetsAndAssets(iframeDoc);
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       );
 
-      const canvas = await html2canvas(targetEl, {
+      const contentHeightPx = Math.max(sheetEl.scrollHeight, sheetEl.offsetHeight, 120);
+      offscreenIframe.style.height = `${contentHeightPx + 40}px`;
+
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const canvas = await html2canvas(sheetEl, {
         scale: 2,
         useCORS: true,
         allowTaint: false,
         backgroundColor: "#ffffff",
-        windowWidth: 794,
-        width: 794,
-        ignoreElements: (el) => el.id === "print-choice-modal-backdrop",
+        width: A4_CSS_WIDTH_PX,
+        windowWidth: A4_CSS_WIDTH_PX,
+        height: contentHeightPx,
+        windowHeight: contentHeightPx + 40,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false,
       });
 
-      // Standard A4 Portrait dimensions in mm: 210mm x 297mm
+      // Standard ISO A4 Portrait: 210mm x 297mm
+      // Horizontal margins (8.5mm each side) are already baked cleanly into #pdf-page-sheet (32px padding on 794px)
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -262,10 +515,9 @@ export function PrintChoiceModal() {
 
       const pageWidthMm = 210;
       const pageHeightMm = 297;
-      const marginX = 9;
-      const marginY = 9;
-      const printableWidthMm = pageWidthMm - marginX * 2; // 192mm
-      const printableHeightMm = pageHeightMm - marginY * 2; // 279mm
+      const marginY = 9; // 9mm top & bottom margin on every A4 page
+      const printableWidthMm = pageWidthMm; // 210mm full sheet width
+      const printableHeightMm = pageHeightMm - marginY * 2; // 279mm vertical content per page
 
       const pxPerMm = canvas.width / printableWidthMm;
       const maxPageHeightPx = Math.floor(printableHeightMm * pxPerMm);
@@ -274,12 +526,18 @@ export function PrintChoiceModal() {
       let yOffsetPx = 0;
       let pageIndex = 0;
 
-      while (yOffsetPx < canvas.height - 2) {
+      while (yOffsetPx < canvas.height - 4) {
+        const remainingPx = canvas.height - yOffsetPx;
+
+        // Avoid adding an extra blank page if only trailing bottom whitespace remains
+        if (pageIndex > 0 && isCanvasStripBlank(ctx, canvas.width, yOffsetPx, remainingPx)) {
+          break;
+        }
+
         if (pageIndex > 0) {
           pdf.addPage("a4", "portrait");
         }
 
-        const remainingPx = canvas.height - yOffsetPx;
         let sliceHeightPx = Math.min(maxPageHeightPx, remainingPx);
 
         if (remainingPx > maxPageHeightPx && ctx) {
@@ -287,9 +545,9 @@ export function PrintChoiceModal() {
             ctx,
             canvas.width,
             yOffsetPx + maxPageHeightPx,
-            yOffsetPx + Math.floor(maxPageHeightPx * 0.65)
+            yOffsetPx + Math.floor(maxPageHeightPx * 0.68)
           );
-          sliceHeightPx = Math.max(64, smartBreakY - yOffsetPx);
+          sliceHeightPx = Math.max(80, smartBreakY - yOffsetPx);
         }
 
         const sliceCanvas = document.createElement("canvas");
@@ -319,7 +577,7 @@ export function PrintChoiceModal() {
         pdf.addImage(
           sliceImgData,
           "JPEG",
-          marginX,
+          0,
           marginY,
           printableWidthMm,
           sliceHeightMm,
@@ -337,16 +595,8 @@ export function PrintChoiceModal() {
       console.error("Failed to generate A4 PDF:", err);
       alert("PDF generate karne mein masla aaya. Aap Print option bhi istemal kar sakte hain.");
     } finally {
-      if (tempStyleEl && tempStyleEl.parentNode) {
-        tempStyleEl.parentNode.removeChild(tempStyleEl);
-      }
-      if (prevTargetId === null) {
-        targetEl.removeAttribute("data-pdf-capture-target");
-      } else {
-        targetEl.setAttribute("data-pdf-capture-target", prevTargetId);
-      }
-      if (wasDark) {
-        htmlEl.classList.add("dark");
+      if (offscreenIframe && offscreenIframe.parentNode) {
+        offscreenIframe.parentNode.removeChild(offscreenIframe);
       }
       setIsGeneratingPdf(false);
     }
@@ -456,4 +706,3 @@ export function PrintChoiceModal() {
     </div>
   );
 }
-

@@ -925,7 +925,7 @@ export default function SalesInvoicesListPage() {
 
       {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
       {selectedInvoice && (
-        <div className="hidden print:block print-page bg-white text-black p-6 font-sans text-xs w-full max-w-none m-0">
+        <div className="hidden print:block print-page bg-white text-black p-4 print:p-1 font-sans text-xs w-full max-w-none m-0">
           {/* Official Branded Print Header */}
           <OfficialPrintHeader
             title={selectedInvoice.paymentMethod === "cash" ? "Cash Invoice" : "Sale Invoice"}

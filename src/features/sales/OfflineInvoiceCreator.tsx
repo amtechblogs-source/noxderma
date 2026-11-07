@@ -1006,7 +1006,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
   if (createdInvoice) {
     return (
       <div className="max-w-4xl mx-auto space-y-6 print:max-w-none print:w-full print:m-0 print:p-0 print:space-y-0 print:bg-white">
-        <div className="flex items-center justify-between no-print">
+        <div className="flex flex-wrap items-center justify-between gap-2 no-print print:hidden">
           <Link
             href="/sales/invoices"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -1053,7 +1053,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         </div>
 
         {/* Success Alert */}
-        <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs sm:text-sm no-print flex items-center gap-3">
+        <div className="p-4 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs sm:text-sm no-print print:hidden flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
           <div>
             <strong>
@@ -1069,7 +1069,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         </div>
 
         {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}
-        <div className="print-page p-3.5 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-5 sm:space-y-6 text-slate-900 dark:text-slate-100 overflow-hidden print:p-0 print:m-0 print:border-none print:rounded-none print:shadow-none print:bg-white print:text-black">
+        <div className="print-page p-3.5 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl space-y-5 sm:space-y-6 text-slate-900 dark:text-slate-100 overflow-hidden print:overflow-visible print:p-1 print:m-0 print:border-none print:rounded-none print:shadow-none print:bg-white print:text-black">
           {/* Header with Print Logo support */}
           <OfficialPrintHeader
             title={createdInvoice.paymentMethod === "cash" ? "Cash Invoice" : "Sale Invoice"}
@@ -1130,7 +1130,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           </div>
 
           {/* Line Items Table with Product Images & High-Contrast Typography */}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-left border-collapse">
               <thead className="border-y-2 border-slate-900 bg-slate-100 dark:bg-slate-800 print:bg-slate-100 text-slate-900 print:text-black font-black text-xs sm:text-sm uppercase">
                 <tr>
@@ -1884,8 +1884,8 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           </div>
         </div>
 
-        {/* Sticky Mobile Bottom Action Bar (Pinned above bottom nav on phones) */}
-        <div className="sticky bottom-[68px] z-30 md:hidden no-print print:hidden -mx-1 px-3 py-2.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-teal-500/30 dark:border-teal-500/40 shadow-2xl flex items-center justify-between gap-2.5">
+        {/* Sticky Mobile Bottom Action Bar (Raised cleanly above center nav button) */}
+        <div className="sticky bottom-[92px] z-30 md:hidden no-print print:hidden -mx-1 px-3 py-2.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-teal-500/30 dark:border-teal-500/40 shadow-2xl flex items-center justify-between gap-2.5">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">

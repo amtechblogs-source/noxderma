@@ -489,7 +489,7 @@ export default function ProfitAndLossPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-0 pb-28 sm:pb-16 print:max-w-none print:w-full print:m-0 print:p-0">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-0 pb-28 sm:pb-16 print:max-w-none print:w-full print:m-0 print:p-0 print-page">
       {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-2 border-b border-slate-200 dark:border-slate-800 no-print print:hidden">
         <div>
@@ -823,19 +823,19 @@ export default function ProfitAndLossPage() {
 
         {/* 4. Final Net Profit Card */}
         <div
-          className={`p-4 sm:p-5 rounded-2xl border ${
+          className={`p-4 sm:p-5 rounded-2xl border print:border-slate-800 print:bg-slate-50 ${
             netOperatingProfit >= 0
               ? "bg-gradient-to-br from-emerald-50/90 to-teal-50/90 dark:from-emerald-950/40 dark:to-teal-950/40 border-teal-200 dark:border-teal-800"
               : "bg-gradient-to-br from-rose-50/90 to-amber-50/90 dark:from-rose-950/40 dark:to-amber-950/40 border-rose-200 dark:border-rose-800"
           }`}
         >
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row print:flex-row justify-between items-start sm:items-center print:items-center gap-3">
             <div className="min-w-0">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider block text-slate-600 dark:text-slate-400">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider block text-slate-600 dark:text-slate-400 print:text-slate-700">
                 Final Net Profit (Asli Kamai / Saaf Munafa)
               </span>
               <h3
-                className={`text-xl sm:text-2xl md:text-3xl font-black font-mono mt-1 ${
+                className={`text-xl sm:text-2xl md:text-3xl font-black font-mono mt-1 print:text-black ${
                   netOperatingProfit >= 0
                     ? "text-teal-700 dark:text-teal-300"
                     : "text-rose-700 dark:text-rose-300"
@@ -843,17 +843,17 @@ export default function ProfitAndLossPage() {
               >
                 {formatPKR(netOperatingProfit)}
               </h3>
-              <p className="text-[11px] sm:text-xs text-slate-500 mt-1 max-w-md">
+              <p className="text-[11px] sm:text-xs text-slate-500 print:text-slate-700 mt-1 max-w-md">
                 Net balance in hand after deducting purchase costs, customer discounts, fuel/traveling, and salaries.
               </p>
             </div>
 
-            <div className="w-full sm:w-auto p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shrink-0 text-left sm:text-right shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+            <div className="w-full sm:w-auto print:w-auto p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 print:bg-white border border-slate-200/80 dark:border-slate-800 print:border-slate-400 shrink-0 text-left sm:text-right print:text-right shadow-sm print:shadow-none">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 print:text-slate-600 block">
                 Net Profit Margin
               </span>
               <span
-                className={`text-lg sm:text-xl font-black font-mono block mt-0.5 ${
+                className={`text-lg sm:text-xl font-black font-mono block mt-0.5 print:text-black ${
                   netOperatingProfit >= 0
                     ? "text-teal-600 dark:text-teal-400"
                     : "text-rose-600 dark:text-rose-400"
@@ -861,7 +861,7 @@ export default function ProfitAndLossPage() {
               >
                 {netProfitMargin}%
               </span>
-              <span className="text-[10px] text-slate-500 block">
+              <span className="text-[10px] text-slate-500 print:text-slate-700 block">
                 {netOperatingProfit >= 0 ? "Healthy business return" : "Operating at net loss"}
               </span>
             </div>
@@ -889,7 +889,7 @@ export default function ProfitAndLossPage() {
       </div>
 
       {/* Recorded Operating Expenses Table & Mobile Cards */}
-      <div className="p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 no-print">
+      <div className="p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 no-print print:hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2">
             <Wallet className="w-5 h-5 text-teal-600 shrink-0" />

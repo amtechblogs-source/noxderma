@@ -772,9 +772,9 @@ export default function StaffSalariesPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-0 pb-28 sm:pb-16">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-0 pb-28 sm:pb-16 print:max-w-none print:w-full print:p-0 print:m-0">
       {/* Main Ledger Content (Entirely hidden from printer when a Salary Slip is being printed) */}
-      <div className={`space-y-4 sm:space-y-6 ${slipSalary ? "print:hidden" : ""}`}>
+      <div className={`space-y-4 sm:space-y-6 print:space-y-4 ${slipSalary ? "print:hidden" : "print-page"}`}>
         {/* Official Print-Only Sheet Header (When printing entire list) */}
         <OfficialPrintHeader
           title="Staff Payroll & Salary Disbursement Ledger"
@@ -785,7 +785,7 @@ export default function StaffSalariesPage() {
         />
 
         {/* Screen Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print print:hidden border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
@@ -889,14 +889,14 @@ export default function StaffSalariesPage() {
         )}
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 no-print">
+        <div className="grid grid-cols-2 lg:grid-cols-4 print:grid-cols-4 gap-3 sm:gap-4 print:gap-2">
           {/* Card 1: Total Net Payroll */}
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-            <div className="flex items-center justify-between text-slate-400 mb-1">
+          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <div className="flex items-center justify-between text-slate-400 print:text-slate-600 mb-1">
               <span className="text-[11px] font-bold uppercase tracking-wider">Total Payroll</span>
-              <DollarSign className="w-4 h-4 text-teal-600" />
+              <DollarSign className="w-4 h-4 text-teal-600 print:hidden" />
             </div>
-            <div className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
+            <div className="text-2xl print:text-lg font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
               {formatPKR(kpis.totalPayroll)}
             </div>
             <span className="text-[10px] text-slate-500 mt-0.5 block">
@@ -905,12 +905,12 @@ export default function StaffSalariesPage() {
           </div>
 
           {/* Card 2: Disbursed / Paid */}
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-            <div className="flex items-center justify-between text-emerald-600 mb-1">
+          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <div className="flex items-center justify-between text-emerald-600 print:text-slate-600 mb-1">
               <span className="text-[11px] font-bold uppercase tracking-wider">Disbursed (Paid)</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 print:hidden" />
             </div>
-            <div className="text-2xl font-black font-mono text-emerald-600">
+            <div className="text-2xl print:text-lg font-black font-mono text-emerald-600 print:text-black">
               {formatPKR(kpis.disbursedAmount)}
             </div>
             <span className="text-[10px] text-slate-500 mt-0.5 block">
@@ -919,12 +919,12 @@ export default function StaffSalariesPage() {
           </div>
 
           {/* Card 3: Pending Disbursement */}
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-            <div className="flex items-center justify-between text-amber-600 mb-1">
+          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <div className="flex items-center justify-between text-amber-600 print:text-slate-600 mb-1">
               <span className="text-[11px] font-bold uppercase tracking-wider">Pending Payout</span>
-              <Clock className="w-4 h-4 text-amber-600" />
+              <Clock className="w-4 h-4 text-amber-600 print:hidden" />
             </div>
-            <div className="text-2xl font-black font-mono text-amber-600">
+            <div className="text-2xl print:text-lg font-black font-mono text-amber-600 print:text-black">
               {formatPKR(kpis.pendingAmount)}
             </div>
             <div className="flex items-center justify-between mt-1">
@@ -935,7 +935,7 @@ export default function StaffSalariesPage() {
                 <button
                   type="button"
                   onClick={() => setBulkDisburseModalOpen(true)}
-                  className="text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-0.5"
+                  className="text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-0.5 no-print print:hidden"
                 >
                   <Zap className="w-3 h-3" />
                   <span>Disburse All</span>
@@ -945,12 +945,12 @@ export default function StaffSalariesPage() {
           </div>
 
           {/* Card 4: Fuel & TA Allowances */}
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft">
-            <div className="flex items-center justify-between text-blue-600 mb-1">
+          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
+            <div className="flex items-center justify-between text-blue-600 print:text-slate-600 mb-1">
               <span className="text-[11px] font-bold uppercase tracking-wider">Fuel &amp; Travel</span>
-              <Fuel className="w-4 h-4 text-blue-600" />
+              <Fuel className="w-4 h-4 text-blue-600 print:hidden" />
             </div>
-            <div className="text-2xl font-black font-mono text-blue-600">
+            <div className="text-2xl print:text-lg font-black font-mono text-blue-600 print:text-black">
               {formatPKR(kpis.totalFuel)}
             </div>
             <span className="text-[10px] text-slate-500 mt-0.5 block">
@@ -960,7 +960,7 @@ export default function StaffSalariesPage() {
         </div>
 
         {/* Date & Filter Controls Bar */}
-        <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
+        <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print print:hidden">
           {/* Universal Date Range Filter Bar */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800/80">
             <DateRangeFilterBar
@@ -1012,7 +1012,7 @@ export default function StaffSalariesPage() {
         </div>
 
         {/* Main Records Container */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft overflow-hidden">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft overflow-hidden print:overflow-visible print:border-none print:shadow-none print:rounded-none">
           {loading ? (
             <div className="p-12 text-center text-slate-400 space-y-2">
               <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -1182,11 +1182,11 @@ export default function StaffSalariesPage() {
               </div>
 
               {/* 2. Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto print:block">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black">
+              <div className="hidden md:block overflow-x-auto print:block print:overflow-visible">
+                <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
                     <tr>
-                      <th className="w-10 p-3 no-print">
+                      <th className="w-10 p-3 no-print print:hidden">
                         <input
                           type="checkbox"
                           checked={selectedIds.length === filteredSalaries.length && filteredSalaries.length > 0}
@@ -1195,15 +1195,15 @@ export default function StaffSalariesPage() {
                           title="Select All"
                         />
                       </th>
-                      <th className="p-3">Staff Member</th>
-                      <th className="p-3">Month</th>
-                      <th className="p-3 text-right">Base Salary</th>
-                      <th className="p-3 text-right">Fuel (TA/DA)</th>
-                      <th className="p-3 text-right">Bonus</th>
-                      <th className="p-3 text-right">Deductions</th>
-                      <th className="p-3 text-right">Net Salary</th>
-                      <th className="p-3 text-center">Status</th>
-                      <th className="p-3 text-right no-print">Actions</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300">Staff Member</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300">Month</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300 text-right">Base Salary</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300 text-right">Fuel (TA/DA)</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300 text-right">Bonus</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300 text-right">Deductions</th>
+                      <th className="p-3 print:p-2 print:border-r print:border-slate-300 text-right">Net Salary</th>
+                      <th className="p-3 print:p-2 text-center">Status</th>
+                      <th className="p-3 text-right no-print print:hidden">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
@@ -1213,12 +1213,12 @@ export default function StaffSalariesPage() {
                       return (
                         <tr
                           key={sal.id}
-                          className={`transition-colors ${isSelected
-                              ? "bg-teal-50/40 dark:bg-teal-950/30"
+                          className={`transition-colors print:border-b print:border-slate-200 ${isSelected
+                              ? "bg-teal-50/40 dark:bg-teal-950/30 print:bg-white"
                               : "hover:bg-slate-50/60 dark:hover:bg-slate-800/40"
                             }`}
                         >
-                          <td className="w-10 p-3 no-print">
+                          <td className="w-10 p-3 no-print print:hidden">
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -1227,14 +1227,14 @@ export default function StaffSalariesPage() {
                             />
                           </td>
                           {/* Staff */}
-                          <td className="p-3 font-semibold text-slate-900 dark:text-slate-100">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 font-semibold text-slate-900 dark:text-slate-100 print:text-black">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-black text-[11px] flex items-center justify-center shrink-0">
+                              <div className="w-6 h-6 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 font-black text-[11px] flex items-center justify-center shrink-0 print:hidden">
                                 {sal.staffName.charAt(0).toUpperCase()}
                               </div>
                               <div>
                                 <span className="block font-bold">{sal.staffName}</span>
-                                <span className="text-[10px] text-slate-400 block font-normal">
+                                <span className="text-[10px] text-slate-400 print:text-slate-600 block font-normal">
                                   {sal.staffRole}
                                 </span>
                               </div>
@@ -1242,27 +1242,27 @@ export default function StaffSalariesPage() {
                           </td>
 
                           {/* Month */}
-                          <td className="p-3 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 text-slate-600 dark:text-slate-300 print:text-black font-mono text-[11px] print:text-[10px]">
                             {sal.monthLabel}
                           </td>
 
                           {/* Base */}
-                          <td className="p-3 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 text-right font-mono font-medium text-slate-700 dark:text-slate-300 print:text-black">
                             {formatPKR(sal.baseSalary)}
                           </td>
 
                           {/* Fuel */}
-                          <td className="p-3 text-right font-mono text-blue-600 font-medium">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 text-right font-mono text-blue-600 print:text-black font-medium">
                             {sal.fuelAllowance > 0 ? `+${formatPKR(sal.fuelAllowance)}` : "—"}
                           </td>
 
                           {/* Bonus */}
-                          <td className="p-3 text-right font-mono text-emerald-600 font-medium">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 text-right font-mono text-emerald-600 print:text-black font-medium">
                             {sal.bonus > 0 ? (
                               <div>
                                 <span>+{formatPKR(sal.bonus)}</span>
                                 {sal.bonusReason && (
-                                  <span className="block text-[9px] text-slate-400 truncate max-w-[120px] ml-auto">
+                                  <span className="block text-[9px] text-slate-400 print:text-slate-600 truncate max-w-[120px] ml-auto">
                                     {sal.bonusReason}
                                   </span>
                                 )}
@@ -1273,12 +1273,12 @@ export default function StaffSalariesPage() {
                           </td>
 
                           {/* Deductions */}
-                          <td className="p-3 text-right font-mono text-rose-600 font-medium">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 text-right font-mono text-rose-600 print:text-rose-800 font-medium">
                             {sal.deductions > 0 ? (
                               <div>
                                 <span>-{formatPKR(sal.deductions)}</span>
                                 {sal.deductionReason && (
-                                  <span className="block text-[9px] text-slate-400 truncate max-w-[120px] ml-auto">
+                                  <span className="block text-[9px] text-slate-400 print:text-slate-600 truncate max-w-[120px] ml-auto">
                                     {sal.deductionReason}
                                   </span>
                                 )}
@@ -1289,27 +1289,27 @@ export default function StaffSalariesPage() {
                           </td>
 
                           {/* Net Salary */}
-                          <td className="p-3 text-right font-mono font-black text-sm text-teal-600 dark:text-teal-400">
+                          <td className="p-3 print:p-2 print:border-r print:border-slate-200 text-right font-mono font-black text-sm print:text-xs text-teal-600 dark:text-teal-400 print:text-black">
                             {formatPKR(sal.netSalary)}
                           </td>
 
                           {/* Status */}
-                          <td className="p-3 text-center">
+                          <td className="p-3 print:p-2 text-center">
                             {isPaid ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                <Check className="w-3 h-3" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 print:bg-slate-100 print:text-black print:border print:border-slate-400">
+                                <Check className="w-3 h-3 print:hidden" />
                                 <span>DISBURSED</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                                <Clock className="w-3 h-3" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 print:bg-slate-50 print:text-black print:border print:border-slate-400">
+                                <Clock className="w-3 h-3 print:hidden" />
                                 <span>PENDING</span>
                               </span>
                             )}
                           </td>
 
                           {/* Actions */}
-                          <td className="p-3 text-right no-print">
+                          <td className="p-3 text-right no-print print:hidden">
                             <div className="flex items-center justify-end gap-1.5">
                               {!isPaid && (
                                 <button
@@ -1901,37 +1901,10 @@ export default function StaffSalariesPage() {
       {/* MODAL 3: OFFICIAL PRINTABLE SALARY SLIP (A4 / VOUCHER)                     */}
       {/* ========================================================================= */}
       {slipSalary && (
-        <>
-          {/* Isolated Print Stylesheet for Salary Slip (Prevents background tables/headers from bleeding through) */}
-          <style>{`
-            @media print {
-              body * {
-                visibility: hidden !important;
-              }
-              #printable-salary-slip,
-              #printable-salary-slip * {
-                visibility: visible !important;
-              }
-              #printable-salary-slip {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 24px !important;
-                background: #ffffff !important;
-                box-shadow: none !important;
-                border: 1px solid #0f172a !important;
-                border-radius: 12px !important;
-                z-index: 999999 !important;
-              }
-            }
-          `}</style>
-
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:backdrop-blur-none print:overflow-visible print:block">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:backdrop-blur-none print:overflow-visible print:block">
             <div className="w-full max-w-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden rounded-2xl sm:rounded-3xl bg-white text-slate-900 shadow-2xl p-3.5 sm:p-8 space-y-4 sm:space-y-6 my-auto print:max-w-none print:max-h-none print:w-full print:rounded-none print:shadow-none print:p-0 print:m-0 print:border-none print:space-y-4 print:overflow-visible">
               {/* Modal Controls (No print) */}
-              <div className="flex items-center justify-between gap-2 no-print border-b pb-2.5 sm:pb-3">
+              <div className="flex items-center justify-between gap-2 no-print print:hidden border-b pb-2.5 sm:pb-3">
                 <span className="text-xs font-black uppercase text-teal-700 tracking-wider truncate">
                   Official Salary Slip Preview
                 </span>
@@ -1957,7 +1930,7 @@ export default function StaffSalariesPage() {
               {/* Printable Slip Content */}
               <div
                 id="printable-salary-slip"
-                className="border border-slate-300 rounded-2xl p-3.5 sm:p-8 space-y-4 sm:space-y-6 bg-white text-slate-900 overflow-hidden print:border print:border-slate-800 print:rounded-xl print:p-6 print:space-y-4 print:m-0 print:w-full"
+                className="border border-slate-300 rounded-2xl p-3.5 sm:p-8 space-y-4 sm:space-y-5 bg-white text-slate-900 overflow-visible print:border print:border-slate-900 print:rounded-xl print:p-6 print:space-y-4 print:m-0 print:w-full print:text-black"
               >
                 {/* Slip Header */}
                 <OfficialPrintHeader
@@ -1969,23 +1942,23 @@ export default function StaffSalariesPage() {
                 />
 
                 {/* Employee Meta Info */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 print:border-slate-300 text-xs">
                   <div>
                     <span className="text-[10px] text-slate-500 font-medium block">Employee Name:</span>
-                    <strong className="text-slate-900 font-bold">{slipSalary.staffName}</strong>
+                    <strong className="text-slate-900 print:text-black font-bold">{slipSalary.staffName}</strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 font-medium block">Designation / Role:</span>
-                    <span className="font-semibold text-slate-800">{slipSalary.staffRole}</span>
+                    <span className="font-semibold text-slate-800 print:text-black">{slipSalary.staffRole}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 font-medium block">Contact Phone:</span>
-                    <span className="font-mono text-slate-800">{slipSalary.phone || "—"}</span>
+                    <span className="font-mono text-slate-800 print:text-black">{slipSalary.phone || "—"}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 font-medium block">Payment Status:</span>
                     <span
-                      className={`font-black uppercase text-[10px] px-2 py-0.5 rounded ${slipSalary.status === "paid"
+                      className={`inline-flex items-center font-black uppercase text-[10px] px-2 py-0.5 rounded leading-snug mt-0.5 ${slipSalary.status === "paid"
                           ? "bg-emerald-100 text-emerald-800"
                           : "bg-amber-100 text-amber-800"
                         }`}
@@ -1996,7 +1969,7 @@ export default function StaffSalariesPage() {
                 </div>
 
                 {/* Breakdown 2-Column Statement: Earnings vs Deductions */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-4 text-xs">
                   {/* Earnings Table */}
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 border-b border-slate-200 uppercase text-[11px] flex justify-between">
@@ -2071,16 +2044,16 @@ export default function StaffSalariesPage() {
                 </div>
 
                 {/* Net Pay Grand Box */}
-                <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="p-4 rounded-xl bg-slate-900 text-white print:bg-slate-100 print:text-black print:border print:border-slate-900 flex flex-col sm:flex-row print:flex-row sm:items-center print:items-center justify-between gap-3">
                   <div>
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 print:text-slate-600 font-bold block">
                       Net Disbursed Salary
                     </span>
-                    <span className="text-xs text-slate-300 font-medium">
+                    <span className="text-xs text-slate-300 print:text-slate-800 font-medium">
                       {numberToWordsPKR(slipSalary.netSalary)}
                     </span>
                   </div>
-                  <div className="text-2xl font-black font-mono text-teal-400">
+                  <div className="text-2xl font-black font-mono text-teal-400 print:text-black">
                     {formatPKR(slipSalary.netSalary)}
                   </div>
                 </div>
@@ -2109,14 +2082,13 @@ export default function StaffSalariesPage() {
                   </div>
                   <div>
                     <div className="border-b border-slate-400 pb-8 mb-1"></div>
-                    <p className="font-bold text-slate-900">Approved By</p>
+                    <p className="font-bold text-slate-900 print:text-black">Approved By</p>
                     <p className="text-slate-500">Owner / Director</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </>
       )}
 
       {/* Bulk Delete Modal */}

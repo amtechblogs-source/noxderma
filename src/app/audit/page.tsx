@@ -734,7 +734,7 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6 w-full max-w-7xl mx-auto pb-20 overflow-x-hidden">
+    <div className="space-y-5 sm:space-y-6 print:space-y-4 w-full max-w-7xl mx-auto pb-20 print:pb-0 overflow-x-hidden print:overflow-visible print-page">
       {/* ========================================================================= */}
       {/* OFFICIAL PRINT-ONLY HEADER (CLEAN A4 AUDIT SHEET) */}
       <OfficialPrintHeader
@@ -835,7 +835,7 @@ export default function AuditLogsPage() {
       )}
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 no-print">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 no-print print:hidden">
         <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft min-w-0">
           <div className="flex items-center justify-between gap-2 text-slate-500 mb-1.5 sm:mb-2">
             <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider truncate">
@@ -939,7 +939,7 @@ export default function AuditLogsPage() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print">
+      <div className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft space-y-3 no-print print:hidden">
         {/* Quick Date Range Filter Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex flex-wrap items-center gap-1.5 py-0.5 text-xs">
@@ -1204,7 +1204,7 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Main Audit Logs Container: Dedicated Mobile Cards + Desktop/Print Table */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft overflow-hidden min-w-0">
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft overflow-hidden print:overflow-visible print:border-none print:shadow-none print:rounded-none min-w-0">
         {loading ? (
           <div className="p-12 text-center text-slate-400 space-y-3">
             <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -1365,11 +1365,11 @@ export default function AuditLogsPage() {
             {/* =============================================================== */}
             {/* DESKTOP & PRINT TABLE VIEW (md+ and print)                      */}
             {/* =============================================================== */}
-            <div className="hidden md:block print:block overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black">
+            <div className="hidden md:block print:block overflow-x-auto print:overflow-visible">
+              <table className="w-full text-left text-xs sm:text-sm print:text-[10px] print:border-collapse print:border print:border-slate-300">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
                   <tr>
-                    <th className="p-3.5 w-10 text-center no-print">
+                    <th className="p-3.5 w-10 text-center no-print print:hidden">
                       <input
                         type="checkbox"
                         aria-label="Select all visible logs"
@@ -1378,12 +1378,12 @@ export default function AuditLogsPage() {
                         className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
                       />
                     </th>
-                    <th className="p-3.5">Action &amp; Timestamp</th>
-                    <th className="p-3.5">Staff Member</th>
-                    <th className="p-3.5">Target &amp; Module</th>
-                    <th className="p-3.5">Action Details</th>
-                    <th className="p-3.5 text-center">Status</th>
-                    <th className="p-3.5 text-right no-print">Actions</th>
+                    <th className="p-3.5 print:p-2 print:border-r print:border-slate-300">Action &amp; Timestamp</th>
+                    <th className="p-3.5 print:p-2 print:border-r print:border-slate-300">Staff Member</th>
+                    <th className="p-3.5 print:p-2 print:border-r print:border-slate-300">Target &amp; Module</th>
+                    <th className="p-3.5 print:p-2 print:border-r print:border-slate-300">Action Details</th>
+                    <th className="p-3.5 print:p-2 text-center">Status</th>
+                    <th className="p-3.5 text-right no-print print:hidden">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
@@ -1408,7 +1408,7 @@ export default function AuditLogsPage() {
                         }`}
                       >
                         {/* Checkbox */}
-                        <td className="p-3.5 w-10 text-center align-top no-print">
+                        <td className="p-3.5 w-10 text-center align-top no-print print:hidden">
                           <input
                             type="checkbox"
                             aria-label={`Select log ${log.id}`}
@@ -1419,31 +1419,31 @@ export default function AuditLogsPage() {
                         </td>
 
                         {/* Action & Date */}
-                        <td className="p-3.5 align-top whitespace-nowrap">
+                        <td className="p-3.5 print:p-2 print:border-r print:border-slate-200 align-top whitespace-nowrap">
                           <div className="flex flex-col gap-1">
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider w-max ${actionMeta.badgeClass}`}
                             >
                               {actionMeta.label}
                             </span>
-                            <span className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
+                            <span className="font-mono text-xs print:text-[10px] font-semibold text-slate-900 dark:text-slate-100 print:text-black">
                               {formatKarachiDate(log.timestamp, true)}
                             </span>
                           </div>
                         </td>
 
                         {/* Staff Member */}
-                        <td className="p-3.5 align-top">
+                        <td className="p-3.5 print:p-2 print:border-r print:border-slate-200 align-top">
                           <div className="flex items-start gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 shrink-0">
+                            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 shrink-0 print:hidden">
                               {cleanLogName.charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <span className="font-bold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 print:text-black block text-xs sm:text-sm print:text-[10px]">
                                 {cleanLogName}
                               </span>
                               {!isRoleRedundantForName(cleanLogName, cleanLogRole) && (
-                                <span className="text-[10px] font-mono uppercase text-slate-400 block">
+                                <span className="text-[10px] font-mono uppercase text-slate-400 print:text-slate-600 block">
                                   {cleanLogRole}
                                 </span>
                               )}
@@ -1452,26 +1452,26 @@ export default function AuditLogsPage() {
                         </td>
 
                         {/* Target Item & Module */}
-                        <td className="p-3.5 align-top">
-                          <div className="space-y-1 max-w-[220px]">
+                        <td className="p-3.5 print:p-2 print:border-r print:border-slate-200 align-top">
+                          <div className="space-y-1 max-w-[220px] print:max-w-[140px]">
                             <span
                               className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${entityMeta.badgeClass}`}
                             >
                               {entityMeta.label}
                             </span>
-                            <span className="font-extrabold text-slate-900 dark:text-slate-100 block text-xs sm:text-sm break-words">
+                            <span className="font-extrabold text-slate-900 dark:text-slate-100 print:text-black block text-xs sm:text-sm print:text-[10px] break-words">
                               {log.entityTitle || log.entityId}
                             </span>
                           </div>
                         </td>
 
                         {/* Details of action */}
-                        <td className="p-3.5 align-top">
-                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed max-w-md break-words whitespace-pre-line">
+                        <td className="p-3.5 print:p-2 print:border-r print:border-slate-200 align-top">
+                          <p className="text-xs print:text-[10px] text-slate-700 dark:text-slate-300 print:text-black font-medium leading-relaxed max-w-md break-words whitespace-pre-line">
                             {log.details}
                           </p>
                           {isUndone && log.undoneBy && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 mt-1">
+                            <span className="inline-flex items-center gap-1 text-[11px] print:text-[9px] font-bold text-purple-700 dark:text-purple-300 print:text-black mt-1">
                               <RotateCcw className="w-3 h-3 shrink-0" />
                               <span>
                                 Undone by {normalizeUserDisplayName(log.undoneBy, "Owner")} on{" "}
@@ -1482,7 +1482,7 @@ export default function AuditLogsPage() {
                         </td>
 
                         {/* Status */}
-                        <td className="p-3.5 text-center align-top whitespace-nowrap">
+                        <td className="p-3.5 print:p-2 text-center align-top whitespace-nowrap">
                           {isUndone ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
                               <Check className="w-3 h-3" />
@@ -1496,7 +1496,7 @@ export default function AuditLogsPage() {
                         </td>
 
                         {/* Undo / Inspect Actions */}
-                        <td className="p-3.5 text-right align-top no-print whitespace-nowrap">
+                        <td className="p-3.5 text-right align-top no-print print:hidden whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"

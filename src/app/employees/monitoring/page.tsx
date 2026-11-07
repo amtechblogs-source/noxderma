@@ -407,7 +407,7 @@ export default function StaffLocationAndPhoneStatusPage() {
     <div className="space-y-6 pb-10">
       {/* Notification Toast */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-xl bg-slate-900 text-white border border-teal-500/40 shadow-xl flex items-center justify-between gap-3 text-xs font-bold">
+        <div className="fixed bottom-24 lg:bottom-5 right-3 sm:right-5 z-50 max-w-md px-4 py-3 rounded-xl bg-slate-900 text-white border border-teal-500/40 shadow-xl flex items-center justify-between gap-3 text-xs font-bold no-print print:hidden">
           <span>{toastMessage}</span>
           <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white">
             ✕

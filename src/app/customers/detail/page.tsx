@@ -505,7 +505,7 @@ function CustomerDetailContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-4 print-page">
       {/* Official Print-Only Header */}
       <OfficialPrintHeader
         title="Customer Statement"
@@ -515,7 +515,7 @@ function CustomerDetailContent() {
       />
 
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print print:hidden">
         <div className="flex items-center gap-3">
           <Link
             href="/customers"
@@ -928,7 +928,7 @@ function CustomerDetailContent() {
             />
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
                 <tr>

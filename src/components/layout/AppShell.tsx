@@ -76,7 +76,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       if (saved === "true") {
         setIsSidebarCollapsed(true);
       }
-    } catch {}
+    } catch { }
 
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target;
@@ -121,7 +121,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       const next = !prev;
       try {
         localStorage.setItem("noxderma_sidebar_collapsed", String(next));
-      } catch {}
+      } catch { }
       return next;
     });
   };
@@ -155,7 +155,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     };
 
     // Remove legacy single-key record (`user_<id>`) if present so it never glitches across devices
-    offlineDb.staffMonitors.delete(`user_${currentUser.id}`).catch(() => {});
+    offlineDb.staffMonitors.delete(`user_${currentUser.id}`).catch(() => { });
 
     const flushTelemetryNow = async (
       coordsOverride?: { lat: number; lng: number; acc: number; speedKmh: number }
@@ -183,18 +183,18 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         const signal: StaffMonitoringProfile["gpsSignal"] = !hasRealGps
           ? "GPS Disabled"
           : acc <= 18
-          ? "High Accuracy Active"
-          : acc <= 45
-          ? "Moderate Signal"
-          : "Weak Signal";
+            ? "High Accuracy Active"
+            : acc <= 45
+              ? "Moderate Signal"
+              : "Weak Signal";
 
         const locationLabel = coords
           ? `Live GPS (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`
           : existing?.hasRealGpsFix && existing.currentRoadOrLocation
-          ? existing.currentRoadOrLocation
-          : meta.deviceCategory === "desktop"
-          ? `Computer Session (${meta.deviceModel})`
-          : `Mobile Session (${meta.deviceModel})`;
+            ? existing.currentRoadOrLocation
+            : meta.deviceCategory === "desktop"
+              ? `Computer Session (${meta.deviceModel})`
+              : `Mobile Session (${meta.deviceModel})`;
 
         const now = new Date();
         const profile: StaffMonitoringProfile = {
@@ -248,7 +248,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         };
 
         await offlineDb.staffMonitors.put(profile);
-      } catch {}
+      } catch { }
     };
 
     const scheduleThrottledTelemetrySync = (
@@ -297,7 +297,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               true
             );
           },
-          () => {},
+          () => { },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
         );
 
@@ -313,10 +313,10 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   : 0,
             });
           },
-          () => {},
+          () => { },
           { enableHighAccuracy: true, maximumAge: 10000 }
         );
-      } catch {}
+      } catch { }
     }
 
     // 3. Real-time battery & charging listeners (throttled to 10-second cadence)
@@ -332,7 +332,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           bat.addEventListener("levelchange", handleBatteryChange);
           bat.addEventListener("chargingchange", handleBatteryChange);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     // 4. Periodic 10-second heartbeat while app is visible so online status & battery stay accurate
@@ -363,7 +363,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
         try {
           batteryObj.removeEventListener("levelchange", handleBatteryChange);
           batteryObj.removeEventListener("chargingchange", handleBatteryChange);
-        } catch {}
+        } catch { }
       }
       document.removeEventListener("visibilitychange", handleVisibilityResume);
       clearInterval(heartbeat);
@@ -602,20 +602,20 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const SecondaryLeftIcon = secondaryLeftTab?.Icon;
 
   return (
-    <div className="min-h-screen w-full max-w-[100vw] [overflow-x:clip] bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:bg-white print:min-h-0 print:text-black">
+    <div className="min-h-screen w-full max-w-[100vw] [overflow-x:clip] bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white print:block print:max-w-none print:overflow-visible print:bg-white print:min-h-0 print:text-black">
       {/* Instant Ultra-Slim Top Route Progress Bar */}
       {isNavigating && (
         <div
           role="progressbar"
           aria-label="Loading page"
-          className="fixed top-0 left-0 right-0 h-[2.5px] z-[9999] bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-500 animate-pulse shadow-sm shadow-teal-500/50"
+          className="fixed top-0 left-0 right-0 h-[2.5px] z-[9999] bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-500 animate-pulse shadow-sm shadow-teal-500/50 no-print print:hidden"
         />
       )}
 
       {/* Offline and Sync Coordinator */}
       <OfflineBanner />
 
-      <div className="flex flex-1 min-h-[calc(100vh-theme(spacing.10))] print:min-h-0 print:bg-white">
+      <div className="flex flex-1 min-h-[calc(100vh-theme(spacing.10))] print:block print:min-h-0 print:bg-white print:overflow-visible">
         {/* Navigation Sidebar */}
         <Sidebar
           isOpen={sidebarOpen}
@@ -626,9 +626,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Main Content Area */}
         <div
-          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-            isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
-          } print:pl-0 print:bg-white print:min-h-0`}
+          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
+            } print:block print:pl-0 print:bg-white print:min-h-0 print:overflow-visible`}
         >
           <Header
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -636,7 +635,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             onLogout={logout}
           />
 
-          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-28 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0 print:bg-white print:min-h-0">
+          <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-28 lg:pb-8 print:block print:space-y-0 print:p-0 print:m-0 print:max-w-none print:w-full print:pb-0 print:bg-white print:min-h-0 print:overflow-visible">
             {isRouteAllowed ? (
               children
             ) : (
@@ -671,25 +670,22 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       {/* Modern Ergonomic Mobile Bottom Navigation Bar (Strictly Filtered by User Permissions) */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className={`no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-1 sm:px-2 pt-1 pb-1.5 transition-all duration-300 ease-in-out ${
-          sidebarOpen ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
-        }`}
+        className={`no-print print:hidden lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-2xl px-1 sm:px-2 pt-1 pb-1.5 transition-all duration-300 ease-in-out ${sidebarOpen ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
+          }`}
       >
         <div className="max-w-md mx-auto flex items-end justify-around">
           {/* 1. Home / Dashboard */}
           <Link
             href="/"
             prefetch={true}
-            className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-              isExactActive("/")
+            className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
+              }`}
           >
             <div
-              className={`p-1 rounded-lg transition-transform ${
-                isExactActive("/") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
-              }`}
+              className={`p-1 rounded-lg transition-transform ${isExactActive("/") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                }`}
             >
               <LayoutDashboard className="w-5 h-5" />
             </div>
@@ -701,16 +697,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <Link
               href={secondaryLeftTab.href}
               prefetch={true}
-              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                secondaryLeftTab.isActive
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${secondaryLeftTab.isActive
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
+                }`}
             >
               <div
-                className={`p-1 rounded-lg transition-transform ${
-                  secondaryLeftTab.isActive ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
-                }`}
+                className={`p-1 rounded-lg transition-transform ${secondaryLeftTab.isActive ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                  }`}
               >
                 <SecondaryLeftIcon className="w-5 h-5" />
               </div>
@@ -725,16 +719,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <Link
               href="/sales/invoices"
               prefetch={true}
-              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                isExactActive("/sales/invoices")
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isExactActive("/sales/invoices")
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
+                }`}
             >
               <div
-                className={`p-1 rounded-lg transition-transform ${
-                  isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
-                }`}
+                className={`p-1 rounded-lg transition-transform ${isExactActive("/sales/invoices") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                  }`}
               >
                 <Receipt className="w-5 h-5" />
               </div>
@@ -746,18 +738,16 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               <Link
                 href="/sales/invoices/new"
                 prefetch={true}
-                className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                  isExactActive("/sales/invoices/new")
+                className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isExactActive("/sales/invoices/new")
                     ? "text-teal-600 dark:text-teal-400 font-bold"
                     : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-                }`}
+                  }`}
               >
                 <div
-                  className={`p-1 rounded-lg transition-transform ${
-                    isExactActive("/sales/invoices/new")
+                  className={`p-1 rounded-lg transition-transform ${isExactActive("/sales/invoices/new")
                       ? "bg-teal-50 dark:bg-teal-950/60 scale-105"
                       : ""
-                  }`}
+                    }`}
                 >
                   <Receipt className="w-5 h-5" />
                 </div>
@@ -775,11 +765,10 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               className="flex flex-col items-center justify-end flex-1 py-0.5 group btn-interactive"
             >
               <div
-                className={`-mt-8 mb-2.5 w-12 h-12 rounded-full text-white shadow-lg flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 ${
-                  centerCircleAction.isActive
+                className={`-mt-8 mb-2.5 w-12 h-12 rounded-full text-white shadow-lg flex items-center justify-center transition-all transform group-active:scale-95 group-hover:scale-105 ring-4 ring-white dark:ring-slate-900 ${centerCircleAction.isActive
                     ? "bg-gradient-to-tr from-teal-700 to-emerald-500 shadow-teal-600/40"
                     : "bg-gradient-to-tr from-teal-600 to-teal-500 shadow-teal-600/30"
-                }`}
+                  }`}
               >
                 <CenterIcon className="w-5 h-5 stroke-[2.3]" />
               </div>
@@ -794,16 +783,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <Link
               href="/inventory/batches"
               prefetch={true}
-              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                isPrefixActive("/inventory")
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isPrefixActive("/inventory")
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
+                }`}
             >
               <div
-                className={`p-1 rounded-lg transition-transform ${
-                  isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
-                }`}
+                className={`p-1 rounded-lg transition-transform ${isPrefixActive("/inventory") ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                  }`}
               >
                 <Barcode className="w-5 h-5" />
               </div>
@@ -816,16 +803,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <Link
               href={financeTab.href}
               prefetch={true}
-              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${
-                financeTab.isActive
+              className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${financeTab.isActive
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
+                }`}
             >
               <div
-                className={`p-1 rounded-lg transition-transform ${
-                  financeTab.isActive ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
-                }`}
+                className={`p-1 rounded-lg transition-transform ${financeTab.isActive ? "bg-teal-50 dark:bg-teal-950/60 scale-105" : ""
+                  }`}
               >
                 <CreditCard className="w-5 h-5" />
               </div>
@@ -871,7 +856,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         navigator.serviceWorker
           .register("/sw.js", { updateViaCache: "none" })
           .then((reg) => {
-            reg.update().catch(() => {});
+            reg.update().catch(() => { });
             if (reg.waiting) {
               reg.waiting.postMessage({ type: "SKIP_WAITING" });
             }

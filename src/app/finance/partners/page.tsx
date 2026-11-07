@@ -1190,7 +1190,7 @@ export default function PartnersKhataPage() {
       {/* ============================================================== */}
       {/* 1. DEDICATED PRINTABLE INVOICE / STATEMENT (Print Only View)  */}
       {/* ============================================================== */}
-      <div className={`hidden ${!slipTx ? "print:block" : ""} text-black bg-white p-4 font-sans text-xs print-page`}>
+      <div className={`hidden ${!slipTx ? "print:block print-page" : ""} text-black bg-white p-4 print:p-1 font-sans text-xs`}>
         {/* Official Branded Header */}
         <OfficialPrintHeader
           title="PARTNERSHIP INVESTMENT & PROFIT AUDIT STATEMENT"
@@ -1327,7 +1327,7 @@ export default function PartnersKhataPage() {
         </div>
 
         {/* Official Sign-off Signatures Block */}
-        <div className="pt-10 mt-8 border-t-2 border-black grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6 text-center text-[10px]">
+        <div className="pt-10 mt-8 border-t-2 border-black grid grid-cols-2 sm:grid-cols-3 print:grid-cols-3 md:grid-cols-4 gap-6 text-center text-[10px]">
           {partners.map((p) => (
             <div key={p.id}>
               <div className="border-b border-black pb-8 mb-1"></div>
@@ -2647,9 +2647,9 @@ export default function PartnersKhataPage() {
       {/* 9. INDIVIDUAL TRANSACTION VOUCHER SLIP MODAL                   */}
       {/* ============================================================== */}
       {slipTx && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto print:fixed print:inset-0 print:bg-white print:p-6 print:m-0 print:z-[9999] print:block print:overflow-visible">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto print:static print:inset-auto print:bg-white print:p-0 print:m-0 print:block print:overflow-visible">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 space-y-3.5 sm:space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl animate-scale-in print:shadow-none print:border-none print:p-0 print:m-0 print:max-w-none print:max-h-none print:w-full print:bg-white print:text-black print:overflow-visible">
-            <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100 dark:border-slate-800 print:hidden">
+            <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100 dark:border-slate-800 no-print print:hidden">
               <h3 className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5 sm:gap-2 min-w-0">
                 <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-teal-600 shrink-0" />
                 <span className="truncate">Transaction Slip Voucher</span>
@@ -2676,7 +2676,7 @@ export default function PartnersKhataPage() {
             {/* Printable Slip Container */}
             <div
               id="printable-partner-voucher"
-              className="p-3 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3 sm:space-y-3.5 text-xs text-slate-800 dark:text-slate-200 overflow-hidden print:bg-white print:border-black print:text-black print:p-0"
+              className="p-3.5 sm:p-6 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3.5 sm:space-y-4 text-xs text-slate-800 dark:text-slate-200 overflow-visible print:bg-white print:border print:border-slate-900 print:rounded-xl print:text-black print:p-6 print:space-y-4"
             >
               <OfficialPrintHeader
                 title={
@@ -2690,13 +2690,13 @@ export default function PartnersKhataPage() {
                 period={`Transaction Date: ${slipTx.date}`}
                 settings={businessSettings}
                 showInPreview={true}
-                className="pb-3 border-b border-slate-200 dark:border-slate-700 print:border-black"
+                className="pb-3.5 border-b-2 border-slate-900 dark:border-slate-700 print:border-black"
               />
 
-              <div className="grid grid-cols-2 gap-2 p-2.5 sm:p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 print:border-black print:bg-white">
+              <div className="grid grid-cols-2 gap-3 p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 print:border-slate-800 print:bg-white">
                 <div className="min-w-0">
                   <span className="text-[10px] text-slate-500 print:text-slate-700 block">Partner Name:</span>
-                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 print:text-black break-words block">
+                  <strong className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 print:text-black break-words block mt-0.5">
                     {getPartnerName(slipTx.partnerId, slipTx.partnerName)}
                   </strong>
                   <span className="text-[10px] text-teal-600 print:text-black font-bold block mt-0.5">
@@ -2705,7 +2705,7 @@ export default function PartnersKhataPage() {
                 </div>
                 <div className="text-right min-w-0">
                   <span className="text-[10px] text-slate-500 print:text-slate-700 block">Transaction Type:</span>
-                  <span className="inline-block font-extrabold uppercase text-[10px] sm:text-[11px] print:text-black break-words">
+                  <span className="inline-block font-extrabold uppercase text-[10px] sm:text-[11px] print:text-black break-words mt-0.5">
                     {slipTx.type === "investment" || slipTx.type === "in"
                       ? "💰 Capital Investment"
                       : slipTx.type === "profit_payout"
@@ -2719,22 +2719,22 @@ export default function PartnersKhataPage() {
               </div>
 
               {/* Amount Box */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-center space-y-1 print:border-black print:bg-white">
-                <span className="text-[10px] font-bold text-slate-500 print:text-slate-700 uppercase tracking-wider block">
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-center print:border-slate-800 print:bg-white">
+                <span className="text-[10px] font-bold text-slate-500 print:text-slate-700 uppercase tracking-wider block mb-1.5">
                   Voucher Net Amount
                 </span>
-                <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
+                <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100 print:text-black leading-tight py-1">
                   {formatPKR(slipTx.amount)}
                 </div>
-                <div className="text-[10px] font-medium italic text-slate-500 print:text-slate-700 pt-1 border-t border-slate-100 dark:border-slate-800 print:border-black">
+                <div className="text-[10px] font-medium italic text-slate-500 print:text-slate-700 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 print:border-slate-700">
                   {numberToWordsPKR(slipTx.amount)}
                 </div>
               </div>
 
               {/* Description */}
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1 print:border-black print:bg-white">
+              <div className="p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1 print:border-slate-800 print:bg-white">
                 <span className="text-[10px] font-bold text-slate-500 print:text-slate-700 uppercase block">Description / Purpose</span>
-                <p className="font-medium text-slate-800 dark:text-slate-200 print:text-black">{slipTx.description}</p>
+                <p className="font-medium text-slate-800 dark:text-slate-200 print:text-black leading-relaxed">{slipTx.description}</p>
                 {slipTx.reference && (
                   <p className="text-[10px] font-mono text-slate-400 print:text-slate-600 pt-1">
                     Reference #: <strong className="text-slate-700 dark:text-slate-300 print:text-black">{slipTx.reference}</strong>
@@ -2743,14 +2743,14 @@ export default function PartnersKhataPage() {
               </div>
 
               {/* Signatures */}
-              <div className="pt-6 grid grid-cols-2 gap-4 text-center text-[10px]">
+              <div className="pt-7 pb-1 grid grid-cols-2 gap-6 text-center text-[10px]">
                 <div>
-                  <div className="border-b border-slate-300 dark:border-slate-600 print:border-black pb-6 mb-1"></div>
+                  <div className="border-b border-slate-300 dark:border-slate-600 print:border-black pb-6 mb-1.5"></div>
                   <p className="font-bold print:text-black">{getPartnerName(slipTx.partnerId, slipTx.partnerName)}</p>
                   <p className="text-slate-400 print:text-slate-600 text-[9px]">Partner Signature</p>
                 </div>
                 <div>
-                  <div className="border-b border-slate-300 dark:border-slate-600 print:border-black pb-6 mb-1"></div>
+                  <div className="border-b border-slate-300 dark:border-slate-600 print:border-black pb-6 mb-1.5"></div>
                   <p className="font-bold print:text-black">{slipTx.createdByName || "Authorized Admin"}</p>
                   <p className="text-slate-400 print:text-slate-600 text-[9px]">Auditor / Accountant</p>
                 </div>

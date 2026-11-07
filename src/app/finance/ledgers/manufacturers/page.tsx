@@ -227,7 +227,7 @@ export default function ManufacturerLedgersPage() {
         ];
 
   return (
-    <div className="space-y-6 print:space-y-4">
+    <div className="space-y-6 print:space-y-4 print-page">
       {/* Official Print-Only Company Header */}
       <OfficialPrintHeader
         title="Company Khata Statement"
@@ -405,7 +405,7 @@ export default function ManufacturerLedgersPage() {
         </div>
 
         {/* Desktop & Print Table */}
-        <div className="hidden md:block print:block overflow-x-auto">
+        <div className="hidden md:block print:block overflow-x-auto print:overflow-visible">
           <table className="w-full text-left text-xs print:text-[10px] print:border-collapse print:border print:border-slate-300">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-100 print:text-black print:border-slate-300">
               <tr>
