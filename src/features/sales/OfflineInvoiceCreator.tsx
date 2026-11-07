@@ -28,6 +28,7 @@ import {
   MapPin,
   Mail,
   Pencil,
+  Minus,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -389,111 +390,129 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
     );
   });
 
-  // Add line item from modal selection
-  const handleSelectProduct = (prod: Product, specificBatch?: InventoryBatch) => {
-    // 0. Prevent duplicate product in the same invoice
-    const existingIndex = lines.findIndex((l) => l.productId === prod.id);
-    if (existingIndex !== -1) {
-      setDuplicateWarning(
-        `"${prod.name}" pehle se is invoice mein shamil hai! Duplicate row add nahi ki ja sakti. Quantity barhane ke liye maujuda line item ko update karein.`
-      );
-      setHighlightedLineIndex(existingIndex);
-      setTimeout(() => {
-        setHighlightedLineIndex(null);
-      }, 5000);
-      return;
-    }
-
-    // 1. Find batches for this product (FEFO)
-    const prodBatches = batches
-      .filter((b) => {
-        if (b.productId !== prod.id) return false;
-        const eff = getBatchEffectiveAvailable(b.id, Number(b.remainingQuantity || 0));
-        return eff > 0;
-      })
-      .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-
-    const chosenBatch = specificBatch || prodBatches[0];
-
-    // 2. Auto-fetch product's pricing & image with comprehensive fallbacks
-    const defaultPrice = getProductDefaultPrice(prod, pricings, chosenBatch);
-    const primaryImg = getProductImageUrl(prod);
-
-    const batchId = chosenBatch ? chosenBatch.id : `bch_gen_${prod.id}`;
-    const batchNumber = chosenBatch ? chosenBatch.batchNumber : "GEN-STOCK";
-    const expiryDate = chosenBatch
-      ? chosenBatch.expiryDate
-      : new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10);
-    const availableQty = chosenBatch
-      ? getBatchEffectiveAvailable(chosenBatch.id, Number(chosenBatch.remainingQuantity || 0))
-      : 999;
-
-    setLines([
-      ...lines,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        imageUrl: primaryImg,
-        packSize: prod.packSize || "1 Pack",
-        batchId,
-        batchNumber,
-        expiryDate,
-        availableQuantity: availableQty,
-        quantity: 1,
-        bonusQuantity: 0,
-        extraDiscountPercent: 0,
-        unitPrice: defaultPrice,
-        discountPercent: 0,
-      },
-    ]);
-
-    setDuplicateWarning(null);
+  // Close Medicine Selection Modal cleanly
+  const handleCloseProductModal = () => {
+    setLines((prevLines) =>
+      prevLines.map((l) => (Number(l.quantity) <= 0 ? { ...l, quantity: 1 } : l))
+    );
     setIsProductModalOpen(false);
     setProductSearch("");
+    setDuplicateWarning(null);
+  };
+
+  // Multi-select toggle from modal selection (keeps modal open so multiple medicines can be picked at once)
+  const handleSelectProduct = (prod: Product, specificBatch?: InventoryBatch) => {
+    setDuplicateWarning(null);
+
+    setLines((prevLines) => {
+      // Toggle off if already selected in bill
+      const existingIndex = prevLines.findIndex((l) => l.productId === prod.id);
+      if (existingIndex !== -1) {
+        return prevLines.filter((_, idx) => idx !== existingIndex);
+      }
+
+      // 1. Find batches for this product (FEFO)
+      const prodBatches = batches
+        .filter((b) => {
+          if (b.productId !== prod.id) return false;
+          const eff = getBatchEffectiveAvailable(b.id, Number(b.remainingQuantity || 0));
+          return eff > 0;
+        })
+        .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
+      const chosenBatch = specificBatch || prodBatches[0];
+
+      // 2. Auto-fetch product's pricing & image with comprehensive fallbacks
+      const defaultPrice = getProductDefaultPrice(prod, pricings, chosenBatch);
+      const primaryImg = getProductImageUrl(prod);
+
+      const batchId = chosenBatch ? chosenBatch.id : `bch_gen_${prod.id}`;
+      const batchNumber = chosenBatch ? chosenBatch.batchNumber : "GEN-STOCK";
+      const expiryDate = chosenBatch
+        ? chosenBatch.expiryDate
+        : new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10);
+      const availableQty = chosenBatch
+        ? getBatchEffectiveAvailable(chosenBatch.id, Number(chosenBatch.remainingQuantity || 0))
+        : 999;
+
+      return [
+        ...prevLines,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          imageUrl: primaryImg,
+          packSize: prod.packSize || "1 Pack",
+          batchId,
+          batchNumber,
+          expiryDate,
+          availableQuantity: availableQty,
+          quantity: 1,
+          bonusQuantity: 0,
+          extraDiscountPercent: 0,
+          unitPrice: defaultPrice,
+          discountPercent: 0,
+        },
+      ];
+    });
+  };
+
+  // Update quantity directly inside the multi-select medicine modal
+  const handleModalUpdateProductQty = (productId: string, nextQty: number) => {
+    setLines((prevLines) => {
+      if (nextQty <= 0) {
+        return prevLines.filter((l) => l.productId !== productId);
+      }
+      return prevLines.map((l) =>
+        l.productId === productId ? { ...l, quantity: Math.max(1, Math.floor(nextQty)) } : l
+      );
+    });
   };
 
   const handleRemoveLine = (index: number) => {
-    setLines(lines.filter((_, i) => i !== index));
+    setLines((prevLines) => prevLines.filter((_, i) => i !== index));
   };
 
   const handleUpdateLine = (index: number, field: string, value: unknown) => {
-    const updated = [...lines];
-    const current = { ...updated[index] };
+    setLines((prevLines) => {
+      if (!prevLines[index]) return prevLines;
+      const updated = [...prevLines];
+      const current = { ...updated[index] };
 
-    if (field === "batchId") {
-      const selectedBatch = batches.find((b) => b.id === value);
-      if (selectedBatch) {
-        const effAvail = getBatchEffectiveAvailable(selectedBatch.id, Number(selectedBatch.remainingQuantity || 0));
-        current.batchId = selectedBatch.id;
-        current.batchNumber = selectedBatch.batchNumber;
-        current.expiryDate = selectedBatch.expiryDate;
-        current.availableQuantity = effAvail;
-        if (current.quantity > current.availableQuantity && effAvail > 0) {
-          current.quantity = Math.max(1, current.availableQuantity);
+      if (field === "batchId") {
+        const selectedBatch = batches.find((b) => b.id === value);
+        if (selectedBatch) {
+          const effAvail = getBatchEffectiveAvailable(selectedBatch.id, Number(selectedBatch.remainingQuantity || 0));
+          current.batchId = selectedBatch.id;
+          current.batchNumber = selectedBatch.batchNumber;
+          current.expiryDate = selectedBatch.expiryDate;
+          current.availableQuantity = effAvail;
+          if (current.quantity > current.availableQuantity && effAvail > 0) {
+            current.quantity = Math.max(1, current.availableQuantity);
+          }
         }
+      } else if (field === "quantity") {
+        const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+        const qty = raw === "" ? 0 : Number(raw);
+        current.quantity = isNaN(qty) ? 0 : Math.max(0, qty);
+      } else if (field === "bonusQuantity") {
+        const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+        const bQty = raw === "" ? 0 : Number(raw);
+        current.bonusQuantity = isNaN(bQty) ? 0 : Math.max(0, bQty);
+      } else if (field === "extraDiscountPercent" || field === "discountPercent") {
+        const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+        const pct = raw === "" ? 0 : Number(raw);
+        const cleanPct = isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
+        current.extraDiscountPercent = cleanPct;
+        current.discountPercent = cleanPct;
+      } else if (field === "unitPrice") {
+        const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
+        const price = raw === "" ? 0 : Number(raw);
+        current.unitPrice = isNaN(price) ? 0 : Math.max(0, price);
       }
-    } else if (field === "quantity") {
-      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
-      const qty = raw === "" ? 0 : Number(raw);
-      current.quantity = isNaN(qty) ? 0 : Math.max(0, qty);
-    } else if (field === "bonusQuantity") {
-      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
-      const bQty = raw === "" ? 0 : Number(raw);
-      current.bonusQuantity = isNaN(bQty) ? 0 : Math.max(0, bQty);
-    } else if (field === "extraDiscountPercent" || field === "discountPercent") {
-      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
-      const pct = raw === "" ? 0 : Number(raw);
-      const cleanPct = isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
-      current.extraDiscountPercent = cleanPct;
-      current.discountPercent = cleanPct;
-    } else if (field === "unitPrice") {
-      const raw = typeof value === "string" ? value.replace(/^0+(?=\d)/, "") : value;
-      const price = raw === "" ? 0 : Number(raw);
-      current.unitPrice = isNaN(price) ? 0 : Math.max(0, price);
-    }
 
-    updated[index] = current;
-    setLines(updated);
+      updated[index] = current;
+      return updated;
+    });
   };
 
   // Calculations
@@ -1956,28 +1975,43 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         </div>
       </form>
 
-      {/* Product & Stock Selector Modal */}
+      {/* Multi-Select Product & Stock Selector Modal */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 !mt-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95">
+        <div
+          onClick={handleCloseProductModal}
+          className="fixed inset-0 !mt-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[88dvh] sm:max-h-[86vh] animate-in fade-in zoom-in-95"
+          >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center">
-                  <PackageCheck className="w-4 h-4" />
+            <div className="flex items-center justify-between gap-2 p-3.5 sm:p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                  <PackageCheck className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                    Select Medicine to Add to Bill
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Click any product to add with FEFO oldest-expiry batch and trade price.
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">
+                      Select Medicines for Bill
+                    </h3>
+                    {lines.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-teal-600 text-white shadow-sm">
+                        {lines.length} Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    Tap multiple medicines to add or adjust qty, then tap Done
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsProductModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                type="button"
+                onClick={handleCloseProductModal}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+                aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1985,7 +2019,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
 
             {/* Category Filter Notice inside modal */}
             {selectedCategoryId !== "all" && (
-              <div className="px-4 py-2 bg-teal-50 dark:bg-teal-950/40 border-b border-teal-200/60 dark:border-teal-900 flex items-center justify-between text-xs">
+              <div className="px-4 py-2 bg-teal-50 dark:bg-teal-950/40 border-b border-teal-200/60 dark:border-teal-900 flex items-center justify-between text-xs shrink-0">
                 <span className="text-teal-800 dark:text-teal-200">
                   Showing category: <strong>{activeCategoryObj?.name}</strong>
                 </span>
@@ -2000,36 +2034,28 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
             )}
 
             {/* Search Box */}
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div className="relative">
-                <Search className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
-                  autoFocus
                   type="text"
                   placeholder="Search medicine name, formula, SKU, or barcode..."
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 min-h-[46px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full pl-10 sm:pl-11 pr-10 py-2.5 sm:py-3 min-h-[44px] text-sm sm:text-base rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
+                {productSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setProductSearch("")}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
-
-            {/* In-Modal Duplicate Product Warning */}
-            {duplicateWarning && (
-              <div className="mx-4 mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-bold flex items-center justify-between gap-2.5 animate-in fade-in">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-                  <span>{duplicateWarning}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDuplicateWarning(null)}
-                  className="p-1 text-amber-600 hover:text-amber-800"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
 
             {/* Products List */}
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5">
@@ -2046,32 +2072,48 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                 </div>
               ) : (
                 modalProducts.map((prod) => {
-                  // Find in-stock batches
-                  const prodBatches = batches.filter(
-                    (b) => b.productId === prod.id && Number(b.remainingQuantity || 0) > 0
-                  );
+                  // Find in-stock batches (FEFO sorted, edit-mode aware)
+                  const prodBatches = batches
+                    .filter((b) => {
+                      if (b.productId !== prod.id) return false;
+                      return getBatchEffectiveAvailable(b.id, Number(b.remainingQuantity || 0)) > 0;
+                    })
+                    .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
                   const totalStock = prodBatches.reduce(
-                    (sum, b) => sum + Number(b.remainingQuantity || 0),
+                    (sum, b) => sum + getBatchEffectiveAvailable(b.id, Number(b.remainingQuantity || 0)),
                     0
                   );
 
                   const price = getProductDefaultPrice(prod, pricings, prodBatches[0]);
                   const prodImage = getProductImageUrl(prod);
-                  const isAlreadyInInvoice = lines.some((l) => l.productId === prod.id);
+                  const selectedLine = lines.find((l) => l.productId === prod.id);
+                  const isSelected = Boolean(selectedLine);
 
                   return (
                     <div
                       key={prod.id}
                       onClick={() => handleSelectProduct(prod)}
-                      className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs sm:text-sm card-interactive active:scale-[0.99] min-h-[64px] ${
-                        isAlreadyInInvoice
-                          ? "border-amber-300 dark:border-amber-700/80 bg-amber-50/30 dark:bg-amber-950/20 hover:border-amber-400"
-                          : "border-slate-200/90 dark:border-slate-800 hover:border-teal-500 hover:bg-teal-50/20 dark:hover:bg-teal-950/20"
+                      className={`p-3 sm:p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs sm:text-sm select-none active:scale-[0.99] ${
+                        isSelected
+                          ? "border-teal-500 bg-teal-50/50 dark:bg-teal-950/35 shadow-sm shadow-teal-500/10"
+                          : "border-slate-200/90 dark:border-slate-800 hover:border-teal-400 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                       }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                        {/* Multi-Select Checkbox Indicator */}
+                        <div
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                            isSelected
+                              ? "bg-teal-600 border-2 border-teal-600 text-white shadow-sm shadow-teal-600/30"
+                              : "border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-transparent"
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+
                         {/* Product Image Thumbnail */}
-                        <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
+                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
                           {prodImage ? (
                             <img
                               src={prodImage}
@@ -2079,55 +2121,133 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                               className="w-full h-full object-contain p-0.5"
                             />
                           ) : (
-                            <Pill className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                            <Pill className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600 dark:text-teal-400" />
                           )}
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-base text-slate-900 dark:text-slate-100">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 break-words leading-tight">
                               {prod.name}
                             </span>
-                            <span className="text-xs text-slate-400 font-mono font-medium">
-                              {prod.packSize || "1 Pack"}
+                            <span className="text-[11px] text-slate-400 font-mono font-semibold">
+                              ({prod.packSize || "1 Pack"})
                             </span>
-                            {isAlreadyInInvoice && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-amber-600" />
-                                Pehle se Shamil Hai (In Bill)
+                          </div>
+                          <div className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">
+                            {prod.genericName || prod.categoryName} &bull; SKU: {prod.sku}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap mt-1">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold font-mono ${
+                                totalStock > 0
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                              }`}
+                            >
+                              {totalStock > 0 ? `${totalStock} in Stock` : "Custom Batch"}
+                            </span>
+                            {prodBatches.length > 0 && (
+                              <span className="text-[11px] text-teal-600 dark:text-teal-400 font-mono font-semibold truncate">
+                                Batch: {prodBatches[0].batchNumber} &bull; Exp:{" "}
+                                {formatKarachiDate(prodBatches[0].expiryDate)}
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
-                            {prod.genericName || prod.categoryName} &bull; SKU: {prod.sku}
-                          </div>
-                          {prodBatches.length > 0 && (
-                            <div className="text-xs text-teal-600 dark:text-teal-400 mt-1 font-mono font-semibold">
-                              Earliest Batch: {prodBatches[0].batchNumber} (Exp:{" "}
-                              {formatKarachiDate(prodBatches[0].expiryDate)})
-                            </div>
-                          )}
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <div className="font-mono font-extrabold text-base text-slate-900 dark:text-slate-100">
-                          {formatPKR(price)}
+                      {/* Right Side: Price + Inline Qty Stepper when selected */}
+                      <div className="flex items-center sm:flex-col sm:items-end justify-between sm:justify-center gap-2 pl-8 sm:pl-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 dark:border-slate-800 shrink-0">
+                        <div className="font-mono font-black text-sm sm:text-base text-slate-900 dark:text-slate-100">
+                          {formatPKR(selectedLine ? selectedLine.unitPrice : price)}
                         </div>
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold font-mono mt-1 ${
-                            totalStock > 0
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                          }`}
-                        >
-                          {totalStock > 0 ? `${totalStock} in Stock` : "Add Custom Batch"}
-                        </span>
+
+                        {isSelected && selectedLine ? (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 bg-white dark:bg-slate-900 border border-teal-500/60 rounded-xl p-0.5 shadow-sm"
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleModalUpdateProductQty(prod.id, (selectedLine.quantity || 1) - 1)
+                              }
+                              className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/60 hover:text-rose-600 text-slate-700 dark:text-slate-200 flex items-center justify-center font-black transition-colors"
+                              title={selectedLine.quantity <= 1 ? "Remove from bill" : "Decrease quantity"}
+                            >
+                              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+                            <input
+                              type="number"
+                              min={1}
+                              value={selectedLine.quantity === 0 ? "" : selectedLine.quantity}
+                              onClick={(e) => e.stopPropagation()}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                                if (raw === "") {
+                                  handleUpdateLine(
+                                    lines.findIndex((l) => l.productId === prod.id),
+                                    "quantity",
+                                    ""
+                                  );
+                                  return;
+                                }
+                                const parsed = parseInt(raw, 10);
+                                if (!isNaN(parsed)) {
+                                  handleModalUpdateProductQty(prod.id, parsed);
+                                }
+                              }}
+                              className="w-11 min-h-[28px] h-7 text-center font-mono font-black text-xs sm:text-sm bg-transparent text-teal-700 dark:text-teal-300 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleModalUpdateProductQty(prod.id, (selectedLine.quantity || 0) + 1)
+                              }
+                              className="w-7 h-7 rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center font-black transition-colors"
+                              title="Increase quantity"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/70 dark:border-teal-800/70">
+                            <Plus className="w-3 h-3 stroke-[2.5]" />
+                            Select
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
                 })
               )}
+            </div>
+
+            {/* Sticky Bottom Multi-Select Summary & Done Bar */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 flex items-center justify-between gap-3 shrink-0 rounded-b-none sm:rounded-b-2xl">
+              <div className="min-w-0">
+                <div className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate">
+                  {lines.length === 0
+                    ? "No medicine selected yet"
+                    : `${lines.length} ${lines.length === 1 ? "Medicine" : "Medicines"} (${totalPaidUnits} packs)`}
+                </div>
+                <div className="text-[11px] sm:text-xs font-mono font-bold text-teal-600 dark:text-teal-400 truncate">
+                  Subtotal: {formatPKR(subtotal)}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseProductModal}
+                className="px-5 sm:px-7 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-teal-600/25 transition-all btn-interactive inline-flex items-center gap-1.5 shrink-0"
+              >
+                <Check className="w-4 h-4 stroke-[2.75]" />
+                <span>
+                  {lines.length > 0 ? `Done (${lines.length} Selected)` : "Done"}
+                </span>
+              </button>
             </div>
           </div>
         </div>
