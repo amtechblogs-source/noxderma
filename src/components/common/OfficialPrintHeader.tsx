@@ -2,8 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import { MapPin, Phone, Mail } from "lucide-react";
-import { offlineDb } from "@/lib/offline/db";
 import { formatKarachiDate } from "@/lib/formatting";
+import {
+  getCachedBusinessSettings,
+  loadAuthoritativeBusinessSettings,
+  mergeBusinessSettings,
+  resolvePrintLogoUrl,
+} from "@/lib/settings";
 import type { BusinessSettings } from "@/types";
 
 export interface PrintMetaItem {
@@ -52,22 +57,35 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
   className = "",
   children,
 }) => {
-  const [internalSettings, setInternalSettings] = useState<BusinessSettings | null>(null);
+  const [internalSettings, setInternalSettings] = useState<BusinessSettings | null>(() =>
+    getCachedBusinessSettings()
+  );
 
   useEffect(() => {
-    if (propSettings) return;
     let isMounted = true;
     const loadSavedSettings = () => {
-      offlineDb.settings
-        .get("primary")
+      const cached = getCachedBusinessSettings();
+      if (isMounted && cached) {
+        setInternalSettings((prev) => mergeBusinessSettings(prev, cached));
+      }
+      loadAuthoritativeBusinessSettings()
         .then((saved) => {
           if (isMounted && saved) {
-            setInternalSettings(saved as BusinessSettings);
+            setInternalSettings(saved);
           }
         })
         .catch(() => {});
     };
     loadSavedSettings();
+
+    const handleSettingsUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && isMounted) {
+        setInternalSettings((prev) => mergeBusinessSettings(prev, detail));
+      } else {
+        loadSavedSettings();
+      }
+    };
 
     const handleCloudSynced = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
@@ -77,23 +95,23 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
       loadSavedSettings();
     };
 
-    window.addEventListener("noxderma_settings_updated", loadSavedSettings);
+    window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
     window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
     return () => {
       isMounted = false;
-      window.removeEventListener("noxderma_settings_updated", loadSavedSettings);
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
       window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
     };
-  }, [propSettings]);
+  }, []);
 
-  const activeSettings = propSettings || internalSettings;
+  const activeSettings = mergeBusinessSettings(propSettings, internalSettings);
 
   const brandName = activeSettings?.brandName || activeSettings?.legalName || "NOXDERMA PHARMACEUTICALS";
   const address = activeSettings?.address || "Plot 42, Industrial Area, Sector 7, Karachi, Pakistan";
   const phone = activeSettings?.contactPhone || "+92 300 1234567";
   const email = activeSettings?.email || "info@noxderma.com";
   const ntn = activeSettings?.ntnNumber;
-  const logoUrl = activeSettings?.invoiceLogoUrl || activeSettings?.appLogoUrl;
+  const logoUrl = resolvePrintLogoUrl(activeSettings);
 
   return (
     <div
@@ -110,7 +128,10 @@ export const OfficialPrintHeader: React.FC<OfficialPrintHeaderProps> = ({
           <img
             src={logoUrl}
             alt="Official Logo"
-            className="h-12 sm:h-16 print:h-16 w-auto max-w-[110px] sm:max-w-[150px] print:max-w-[150px] object-contain shrink-0 rounded-lg"
+            loading="eager"
+            decoding="sync"
+            data-print-logo="true"
+            className="h-12 sm:h-16 print:h-16 w-auto min-w-[44px] max-w-[110px] sm:max-w-[150px] print:max-w-[150px] object-contain shrink-0 rounded-lg"
           />
         ) : (
           <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-sm sm:text-base shrink-0">
