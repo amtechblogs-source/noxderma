@@ -20,6 +20,7 @@ import {
   Users2,
   PackageCheck,
   Award,
+  Wallet,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,6 +47,9 @@ import {
   type StockMovement,
   type OutboxOperation,
   type Product,
+  type ProductPricing,
+  type OperatingExpense,
+  type StaffSalary,
   type Permission,
   type PartnerTransaction,
   type PartnerConfig,
@@ -58,6 +62,10 @@ export function DashboardView() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productPricings, setProductPricings] = useState<ProductPricing[]>([]);
+  const [operatingExpenses, setOperatingExpenses] = useState<OperatingExpense[]>([]);
+  const [salaryRecords, setSalaryRecords] = useState<StaffSalary[]>([]);
+  const [allMovements, setAllMovements] = useState<StockMovement[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [outbox, setOutbox] = useState<OutboxOperation[]>([]);
   const [manufacturers, setManufacturers] = useState<any[]>([]);
@@ -70,25 +78,48 @@ export function DashboardView() {
   // Load live data from IndexedDB
   const refreshDashboardData = async () => {
     try {
-      const [invList, batchList, movList, outList, prodList, mfrList, poList, partList] = await Promise.all([
+      const [
+        invList,
+        batchList,
+        movList,
+        outList,
+        prodList,
+        mfrList,
+        poList,
+        partList,
+        pricingList,
+        expList,
+        salList,
+      ] = await Promise.all([
         offlineDb.invoices.toArray(),
         offlineDb.inventoryBatches.toArray(),
-        offlineDb.stockMovements.orderBy("timestamp").reverse().limit(10).toArray(),
+        offlineDb.stockMovements.toArray(),
         offlineDb.outboxQueue.where("status").anyOf(["pending", "processing", "conflict", "failed"]).toArray(),
         offlineDb.products.toArray(),
         offlineDb.manufacturers.toArray(),
         offlineDb.purchaseOrders.toArray(),
         offlineDb.partnerTransactions ? offlineDb.partnerTransactions.toArray() : Promise.resolve([]),
+        offlineDb.productPricing ? offlineDb.productPricing.toArray() : Promise.resolve([]),
+        offlineDb.operatingExpenses ? offlineDb.operatingExpenses.toArray() : Promise.resolve([]),
+        offlineDb.staffSalaries ? offlineDb.staffSalaries.toArray() : Promise.resolve([]),
       ]);
+
+      const sortedMovs = [...(movList || [])].sort((a, b) =>
+        String(b.timestamp || "").localeCompare(String(a.timestamp || ""))
+      );
 
       setInvoices(invList);
       setBatches(batchList);
-      setMovements(movList);
+      setAllMovements(sortedMovs);
+      setMovements(sortedMovs.slice(0, 10));
       setOutbox(outList);
       setProducts(prodList);
       setManufacturers(mfrList);
       setPurchaseOrders(poList);
       setPartnerTransactions(partList || []);
+      setProductPricings(pricingList || []);
+      setOperatingExpenses(expList || []);
+      setSalaryRecords(salList || []);
       setPartnerConfigRefreshTick((t) => t + 1);
     } catch (err) {
       console.warn("Failed to query IndexedDB dashboard metrics:", err);
@@ -134,8 +165,65 @@ export function DashboardView() {
 
   const displayInvoices =
     selectedCategoryId === "all"
-      ? invoices
-      : invoices.filter((inv) => inv.lines?.some((l) => categoryProductIds.has(l.productId)));
+      ? invoices.filter((inv) => (inv as any).status !== "cancelled")
+      : invoices.filter(
+          (inv) =>
+            (inv as any).status !== "cancelled" &&
+            inv.lines?.some((l) => categoryProductIds.has(l.productId))
+        );
+
+  const displayAllMovements =
+    selectedCategoryId === "all"
+      ? allMovements
+      : allMovements.filter((m) => categoryProductIds.has(m.productId));
+
+  // Fast Lookup Maps for COGS & Profit Calculation (matches /finance/pnl 1-to-1)
+  const pricingMap = useMemo(() => {
+    const map = new Map<string, ProductPricing>();
+    for (const p of productPricings) {
+      map.set(String(p.productId), p);
+    }
+    return map;
+  }, [productPricings]);
+
+  const productMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const p of products) {
+      map.set(String(p.id), p);
+    }
+    return map;
+  }, [products]);
+
+  const batchMap = useMemo(() => {
+    const map = new Map<string, InventoryBatch>();
+    for (const b of batches) {
+      map.set(String(b.id), b);
+    }
+    return map;
+  }, [batches]);
+
+  const resolveLineUnitCost = (l: any): number => {
+    const pricing = pricingMap.get(String(l.productId));
+    const prod = productMap.get(String(l.productId));
+    const batch = l.batchAllocations?.[0]?.batchId
+      ? batchMap.get(String(l.batchAllocations[0].batchId))
+      : undefined;
+
+    const allocCost = l.batchAllocations?.[0]?.unitCostAtAllocation;
+    if (typeof allocCost === "number" && allocCost > 0) {
+      return allocCost;
+    }
+    if (pricing && Number(pricing.purchaseCostPerPack) > 0) {
+      return Number(pricing.purchaseCostPerPack);
+    }
+    if (batch && Number((batch as any).purchasePrice || (batch as any).unitCost) > 0) {
+      return Number((batch as any).purchasePrice || (batch as any).unitCost);
+    }
+    if (prod && Number((prod as any).purchaseCostPerPack || (prod as any).costPrice) > 0) {
+      return Number((prod as any).purchaseCostPerPack || (prod as any).costPrice);
+    }
+    return 0;
+  };
 
   // Dynamic Month & Today calculations (whichever month is currently running)
   const now = new Date();
@@ -156,6 +244,168 @@ export function DashboardView() {
   const todayInvoices = displayInvoices.filter((inv) => inv.invoiceDate?.startsWith(todayStr));
   const todaySalesTotal = todayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
   const todayPaymentsCollected = todayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+
+  // Profit Calculation Engine (Net Profit, Gross Profit, COGS, Expenses & Margin %)
+  const computeProfitMetrics = useMemo(() => {
+    return (
+      targetInvoices: Invoice[],
+      targetExpenses: OperatingExpense[],
+      targetSalaries: StaffSalary[],
+      targetMovements: StockMovement[]
+    ) => {
+      let grossSales = 0;
+      let discountsGiven = 0;
+      let cogs = 0;
+      let invoiceDeliveryCharges = 0;
+
+      for (const inv of targetInvoices) {
+        if ((inv as any).status === "cancelled") continue;
+
+        if (selectedCategoryId === "all") {
+          const linesGross = (inv.lines || []).reduce(
+            (lSum, l) => lSum + (l.quantity || 0) * (l.unitPrice || 0),
+            0
+          );
+          grossSales += inv.grossTotal || linesGross || inv.netTotal || 0;
+
+          const linesDiscount = (inv.lines || []).reduce(
+            (lSum, l) => lSum + (l.lineDiscountAmount || 0),
+            0
+          );
+          discountsGiven += inv.invoiceDiscountAmount || linesDiscount || 0;
+          invoiceDeliveryCharges += inv.deliveryCharge || 0;
+
+          for (const l of inv.lines || []) {
+            cogs += (l.quantity || 0) * resolveLineUnitCost(l);
+          }
+        } else {
+          // Category-scoped revenue & COGS
+          for (const l of inv.lines || []) {
+            if (!categoryProductIds.has(l.productId)) continue;
+            const lineGross = (l.quantity || 0) * (l.unitPrice || 0);
+            const lineDisc = l.lineDiscountAmount || 0;
+            grossSales += lineGross || l.lineTotal || 0;
+            discountsGiven += lineDisc;
+            cogs += (l.quantity || 0) * resolveLineUnitCost(l);
+          }
+        }
+      }
+
+      const netSales = Math.max(0, grossSales - discountsGiven);
+      const grossProfit = netSales - cogs;
+
+      // Damaged & Sample stock losses
+      let damagedAndSampleLoss = 0;
+      for (const m of targetMovements) {
+        if (m.type === "damaged_stock" || m.type === "sample_issue") {
+          const pricing = pricingMap.get(String(m.productId));
+          const unitCost = pricing?.purchaseCostPerPack || 350;
+          damagedAndSampleLoss += Math.abs(m.quantityChange || 0) * unitCost;
+        }
+      }
+
+      let generalExpenses = 0;
+      let paidPayrollCost = 0;
+
+      if (selectedCategoryId === "all") {
+        generalExpenses = targetExpenses.reduce(
+          (sum, e) => sum + (Number(e.amount) || 0),
+          0
+        );
+        paidPayrollCost = targetSalaries.reduce((sum, s) => {
+          if (s.status !== "paid") return sum;
+          const fuel = Number(s.fuelAllowance) || 0;
+          const netBase = Math.max(
+            0,
+            (Number(s.baseSalary) || 0) +
+              (Number(s.bonus) || 0) +
+              (Number(s.otherAllowances) || 0) -
+              (Number(s.deductions) || 0)
+          );
+          return sum + fuel + netBase;
+        }, 0);
+      }
+
+      const totalOperatingExpenses =
+        generalExpenses + paidPayrollCost + invoiceDeliveryCharges + damagedAndSampleLoss;
+      const netProfit = grossProfit - totalOperatingExpenses;
+      const grossMarginPct =
+        netSales > 0 ? ((grossProfit / netSales) * 100).toFixed(1) : "0.0";
+      const netMarginPct =
+        netSales > 0 ? ((netProfit / netSales) * 100).toFixed(1) : "0.0";
+
+      return {
+        netSales,
+        cogs,
+        grossProfit,
+        totalOperatingExpenses,
+        netProfit,
+        grossMarginPct,
+        netMarginPct,
+      };
+    };
+  }, [pricingMap, productMap, batchMap, selectedCategoryId, categoryProductIds]);
+
+  const monthProfit = useMemo(() => {
+    const mExpenses = operatingExpenses.filter((e) =>
+      String(e.date || (e as any).expenseDate || e.createdAt || "").startsWith(currentMonthPrefix)
+    );
+    const mSalaries = salaryRecords.filter((s) => {
+      if (s.status !== "paid") return false;
+      const targetDate = s.month ? `${s.month}-15` : String(s.disbursedAt || s.createdAt || "");
+      return targetDate.startsWith(currentMonthPrefix);
+    });
+    const mMovements = displayAllMovements.filter((m) =>
+      String(m.timestamp || "").startsWith(currentMonthPrefix)
+    );
+    return computeProfitMetrics(monthInvoices, mExpenses, mSalaries, mMovements);
+  }, [
+    computeProfitMetrics,
+    monthInvoices,
+    operatingExpenses,
+    salaryRecords,
+    displayAllMovements,
+    currentMonthPrefix,
+  ]);
+
+  const todayProfit = useMemo(() => {
+    const tExpenses = operatingExpenses.filter((e) =>
+      String(e.date || (e as any).expenseDate || e.createdAt || "").startsWith(todayStr)
+    );
+    const tSalaries = salaryRecords.filter((s) => {
+      if (s.status !== "paid") return false;
+      return String(s.disbursedAt || "").startsWith(todayStr);
+    });
+    const tMovements = displayAllMovements.filter((m) =>
+      String(m.timestamp || "").startsWith(todayStr)
+    );
+    return computeProfitMetrics(todayInvoices, tExpenses, tSalaries, tMovements);
+  }, [
+    computeProfitMetrics,
+    todayInvoices,
+    operatingExpenses,
+    salaryRecords,
+    displayAllMovements,
+    todayStr,
+  ]);
+
+  const allTimeProfit = useMemo(() => {
+    const paidSalaries = salaryRecords.filter((s) => s.status === "paid");
+    return computeProfitMetrics(
+      displayInvoices,
+      operatingExpenses,
+      paidSalaries,
+      displayAllMovements
+    );
+  }, [
+    computeProfitMetrics,
+    displayInvoices,
+    operatingExpenses,
+    salaryRecords,
+    displayAllMovements,
+  ]);
+
+  const activeProfit = viewPeriod === "month" ? monthProfit : todayProfit;
 
   // Top Selling Medicines Aggregation (with Product Pictures)
   const [topMedicinesRange, setTopMedicinesRange] = useState<"month" | "today" | "all">("month");
@@ -183,6 +433,7 @@ export function DashboardView() {
         quantitySold: number;
         bonusQuantity: number;
         revenue: number;
+        profit: number;
         invoiceIds: Set<string>;
       }
     >();
@@ -207,11 +458,14 @@ export function DashboardView() {
         const qty = Number(line.quantity) || 0;
         const bonus = Number(line.bonusQuantity) || 0;
         const rev = Number(line.lineTotal) || qty * (Number(line.unitPrice) || 0);
+        const lineCogs = qty * resolveLineUnitCost(line);
+        const lineProfit = rev - lineCogs;
 
         if (existing) {
           existing.quantitySold += qty;
           existing.bonusQuantity += bonus;
           existing.revenue += rev;
+          existing.profit += lineProfit;
           existing.invoiceIds.add(inv.id);
           if (!existing.imageUrl && resolvedImg) existing.imageUrl = resolvedImg;
         } else {
@@ -225,6 +479,7 @@ export function DashboardView() {
             quantitySold: qty,
             bonusQuantity: bonus,
             revenue: rev,
+            profit: lineProfit,
             invoiceIds: new Set([inv.id]),
           });
         }
@@ -256,6 +511,7 @@ export function DashboardView() {
           quantitySold: 0,
           bonusQuantity: 0,
           revenue: 0,
+          profit: 0,
           invoiceIds: new Set<string>(),
           billsCount: 0,
         };
@@ -271,6 +527,9 @@ export function DashboardView() {
     topMedicinesRange,
     selectedCategoryId,
     categoryProductIds,
+    pricingMap,
+    productMap,
+    batchMap,
   ]);
 
   const totalReceivables = displayInvoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
@@ -301,8 +560,12 @@ export function DashboardView() {
     return expTime <= nowTime && b.remainingQuantity > 0;
   });
 
-  // Dynamic Sales & Payments Trend (Default: Current Month day-by-day)
+  // Dynamic Sales, Profit & Payments Trend (Default: Current Month day-by-day)
   const salesChartData = useMemo(() => {
+    const computeDayProfit = (dayInvs: Invoice[]) => {
+      return computeProfitMetrics(dayInvs, [], [], []).grossProfit;
+    };
+
     if (selectedRange === "month") {
       const daysCount = Math.max(now.getDate(), 7);
       return Array.from({ length: daysCount }, (_, i) => {
@@ -311,9 +574,11 @@ export function DashboardView() {
         const dayInvoices = displayInvoices.filter((inv) => inv.invoiceDate?.startsWith(dayStr));
         const sales = dayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
         const collected = dayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+        const profit = computeDayProfit(dayInvoices);
         return {
           day: `${dayNum} ${currentMonthShort}`,
           sales,
+          profit,
           collected,
         };
       });
@@ -325,9 +590,11 @@ export function DashboardView() {
         const dayInvoices = displayInvoices.filter((inv) => inv.invoiceDate?.startsWith(dateStr));
         const sales = dayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
         const collected = dayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+        const profit = computeDayProfit(dayInvoices);
         return {
           day: `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}`,
           sales,
+          profit,
           collected,
         };
       });
@@ -341,14 +608,16 @@ export function DashboardView() {
         const dayInvoices = displayInvoices.filter((inv) => inv.invoiceDate?.startsWith(dateStr));
         const sales = dayInvoices.reduce((sum, inv) => sum + (inv.netTotal || 0), 0);
         const collected = dayInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+        const profit = computeDayProfit(dayInvoices);
         return {
           day: i === 6 ? "Today" : dayName,
           sales,
+          profit,
           collected,
         };
       });
     }
-  }, [displayInvoices, selectedRange, currentMonthPrefix, currentMonthShort]);
+  }, [displayInvoices, selectedRange, currentMonthPrefix, currentMonthShort, computeProfitMetrics]);
 
   // Dynamic Category Share computed from actual catalog products
   const categoryShareData = categories
@@ -522,7 +791,7 @@ export function DashboardView() {
 
       {/* KPI Cards Grid (Only renders cards permitted for this role/user) */}
       {(canViewSalesSummary || canViewFinanceSummary || canViewInventory) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
           {/* Card 1: Monthly / Today Sales (Owner / Accountant / dashboard:sales only) */}
           {canViewSalesSummary && (
             <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
@@ -567,7 +836,84 @@ export function DashboardView() {
             </div>
           )}
 
-          {/* Card 2: 3-Way Receivables (Owner / Accountant / dashboard:finance only) */}
+          {/* Card 2: Total Profit / Net Profit (Owner / Accountant / dashboard:finance / finance:pnl) */}
+          {(canViewFinanceSummary || canViewSalesSummary) && (
+            <Link
+              href="/finance/pnl"
+              className="p-3.5 sm:p-5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-white via-white to-emerald-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 shadow-soft card-interactive relative overflow-hidden group hover:border-emerald-500/60 block"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                  {viewPeriod === "month"
+                    ? `${currentMonthName}'s Total Profit`
+                    : "Today's Total Profit"}
+                </span>
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm shrink-0">
+                  <Wallet className="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+              </div>
+              <div className="mt-2 sm:mt-3 flex items-baseline gap-2 flex-wrap">
+                <span
+                  className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${
+                    activeProfit.netProfit >= 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
+                  }`}
+                >
+                  {formatPKR(activeProfit.netProfit)}
+                </span>
+                <span
+                  className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded-md flex items-center ${
+                    activeProfit.netProfit >= 0
+                      ? "bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300"
+                      : "bg-rose-100/80 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300"
+                  }`}
+                >
+                  {activeProfit.netProfit >= 0 ? (
+                    <ArrowUpRight className="w-3 h-3 mr-0.5" />
+                  ) : (
+                    <ArrowDownRight className="w-3 h-3 mr-0.5" />
+                  )}
+                  {activeProfit.netMarginPct}%
+                </span>
+              </div>
+              <div className="text-[11px] sm:text-xs text-slate-500 mt-1.5 space-y-0.5">
+                <p>
+                  Gross Margin:{" "}
+                  <strong className="text-slate-700 dark:text-slate-300">
+                    {formatPKR(activeProfit.grossProfit)}
+                  </strong>
+                  {activeProfit.totalOperatingExpenses > 0 && (
+                    <>
+                      {" "}&bull; Exp:{" "}
+                      <span className="font-semibold text-rose-600 dark:text-rose-400">
+                        {formatPKR(activeProfit.totalOperatingExpenses)}
+                      </span>
+                    </>
+                  )}
+                </p>
+                <p className="text-[11px] text-slate-400 flex items-center justify-between gap-1">
+                  <span>
+                    All-Time Profit:{" "}
+                    <strong
+                      className={
+                        allTimeProfit.netProfit >= 0
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-rose-600 dark:text-rose-400"
+                      }
+                    >
+                      {formatPKR(allTimeProfit.netProfit)}
+                    </strong>
+                  </span>
+                  <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 group-hover:underline shrink-0">
+                    P&amp;L &rarr;
+                  </span>
+                </p>
+              </div>
+            </Link>
+          )}
+
+          {/* Card 3: 3-Way Receivables (Owner / Accountant / dashboard:finance only) */}
           {canViewFinanceSummary && (
             <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
               <div className="flex items-center justify-between">
@@ -799,14 +1145,30 @@ export function DashboardView() {
                       </div>
 
                       {canViewSalesSummary && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-500 font-medium">
-                            Sales ({item.billsCount} bill{item.billsCount !== 1 ? "s" : ""}):
-                          </span>
-                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
-                            {formatPKR(item.revenue)}
-                          </span>
-                        </div>
+                        <>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium">
+                              Sales ({item.billsCount} bill{item.billsCount !== 1 ? "s" : ""}):
+                            </span>
+                            <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                              {formatPKR(item.revenue)}
+                            </span>
+                          </div>
+                          {canViewFinanceSummary && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-500 font-medium">Profit:</span>
+                              <span
+                                className={`font-mono font-bold ${
+                                  item.profit >= 0
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-rose-600 dark:text-rose-400"
+                                }`}
+                              >
+                                {formatPKR(item.profit)}
+                              </span>
+                            </div>
+                          )}
+                        </>
                       )}
 
                       <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
@@ -832,10 +1194,10 @@ export function DashboardView() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-5">
             <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                Sales & Cash Collected Trend
+                Sales, Profit &amp; Cash Collected Trend
               </h2>
               <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                Day-by-day sales & cash received for {currentMonthName} {currentYear} (PKR)
+                Day-by-day sales, profit &amp; cash received for {currentMonthName} {currentYear} (PKR)
               </p>
             </div>
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto text-xs font-bold">
@@ -874,6 +1236,10 @@ export function DashboardView() {
                     <stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#0d9488" stopOpacity={0} />
                   </linearGradient>
+                  <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
                   <linearGradient id="collGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#0284c7" stopOpacity={0.2} />
                     <stop offset="95%" stopColor="#0284c7" stopOpacity={0} />
@@ -904,6 +1270,15 @@ export function DashboardView() {
                   strokeWidth={2}
                   fillOpacity={1}
                   fill="url(#salesGrad)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="profit"
+                  name="Gross Profit"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#profitGrad)"
                 />
                 <Area
                   type="monotone"
