@@ -39,6 +39,11 @@ import { recordActivity } from "@/lib/audit/auditTracker";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
+import {
+  getCachedBusinessSettings,
+  loadAuthoritativeBusinessSettings,
+  mergeBusinessSettings,
+} from "@/lib/settings";
 import type {
   Customer,
   InventoryBatch,
@@ -158,7 +163,9 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [pricings, setPricings] = useState<ProductPricing[]>([]);
-  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(() =>
+    getCachedBusinessSettings()
+  );
 
   // Invoice Form State
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
@@ -226,7 +233,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         offlineDb.inventoryBatches.toArray(),
         offlineDb.products.toArray(),
         offlineDb.productPricing.toArray(),
-        offlineDb.settings.get("primary"),
+        loadAuthoritativeBusinessSettings(),
       ]);
 
       setCustomers(custList || []);
@@ -312,20 +319,7 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
       setBatches(validBatches);
 
       if (settingsRecord) {
-        setBusinessSettings(settingsRecord);
-      } else {
-        try {
-          const res = await fetch("/api/settings");
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.settings) {
-              setBusinessSettings(data.settings);
-              if (!data.isDefaultFallback) {
-                await offlineDb.settings.put(data.settings);
-              }
-            }
-          }
-        } catch {}
+        setBusinessSettings((prev) => mergeBusinessSettings(prev, settingsRecord));
       }
     } catch (err) {
       console.error("Failed to load master data in OfflineInvoiceCreator:", err);
@@ -342,20 +336,36 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           offlineDb.inventoryBatches.toArray(),
           offlineDb.products.toArray(),
           offlineDb.productPricing.toArray(),
-          offlineDb.settings.get("primary"),
+          loadAuthoritativeBusinessSettings(),
         ]);
         setCustomers(custList || []);
         setProducts(prodList || []);
         setPricings(pricingList || []);
-        if (settingsRecord) setBusinessSettings(settingsRecord);
+        if (settingsRecord) {
+          setBusinessSettings((prev) => mergeBusinessSettings(prev, settingsRecord));
+        }
         const validBatches = (allBatches || []).filter(
           (b) => Number(b.remainingQuantity || 0) > 0
         );
         setBatches(validBatches);
       } catch {}
     };
+    const handleSettingsUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail) {
+        setBusinessSettings((prev) => mergeBusinessSettings(prev, detail));
+      } else {
+        loadAuthoritativeBusinessSettings().then((s) =>
+          setBusinessSettings((prev) => mergeBusinessSettings(prev, s))
+        );
+      }
+    };
     window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
-    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
+    window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    return () => {
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    };
   }, [editInvoiceId]);
 
   // Category isolation
@@ -1257,19 +1267,33 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
             </div>
           </div>
 
+          {/* Payment Instructions / Bank Account Details */}
+          {(businessSettings?.paymentInstructions || getCachedBusinessSettings()?.paymentInstructions)?.trim() && (
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 print:bg-white border border-slate-200 dark:border-slate-700 print:border-slate-300 text-[10px] text-slate-600 dark:text-slate-300 print:text-slate-800">
+              <span className="font-black uppercase tracking-wider text-slate-500 print:text-slate-700 block mb-0.5">
+                Bank / Payment Details:
+              </span>
+              <p className="font-mono whitespace-pre-wrap leading-snug">
+                {businessSettings?.paymentInstructions || getCachedBusinessSettings()?.paymentInstructions}
+              </p>
+            </div>
+          )}
+
           {/* Official Signatures Section */}
           <div className="pt-8 pb-3 grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-6 sm:gap-10 text-xs font-bold text-slate-700 print:text-black">
             <div className="border-t-2 border-slate-400 pt-2 text-center">
               <span>Received By (Customer Signature & Stamp)</span>
             </div>
             <div className="border-t-2 border-slate-400 pt-2 text-center">
-              <span>Authorized Signature & Stamp ({businessSettings?.brandName || "Noxderma Pharma"})</span>
+              <span>Authorized Signature & Stamp ({businessSettings?.brandName || getCachedBusinessSettings()?.brandName || "Noxderma Pharma"})</span>
             </div>
           </div>
 
           {/* Footer note */}
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 text-center font-medium">
-            {businessSettings?.invoiceFooter || "Thank you for partnering with Noxderma. Quality healthcare distributed with integrity."}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 print:text-slate-800 text-center font-semibold">
+            {businessSettings?.invoiceFooter ||
+              getCachedBusinessSettings()?.invoiceFooter ||
+              "Thank you for partnering with Noxderma. Quality healthcare distributed with integrity."}
           </div>
         </div>
       </div>

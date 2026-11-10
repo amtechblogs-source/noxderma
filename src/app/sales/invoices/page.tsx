@@ -33,6 +33,11 @@ import { recordActivity } from "@/lib/audit/auditTracker";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
 import {
+  getCachedBusinessSettings,
+  loadAuthoritativeBusinessSettings,
+  mergeBusinessSettings,
+} from "@/lib/settings";
+import {
   isRecordInDateRange,
   createDefaultDateFilter,
   type DateFilterState,
@@ -47,7 +52,9 @@ export default function SalesInvoicesListPage() {
   const canViewCustomers = hasPermission("crm:customers");
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(() =>
+    getCachedBusinessSettings()
+  );
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -67,7 +74,7 @@ export default function SalesInvoicesListPage() {
       const [invList, prodList, settingsRecord] = await Promise.all([
         offlineDb.invoices.toArray(),
         offlineDb.products.toArray(),
-        offlineDb.settings.get("primary"),
+        loadAuthoritativeBusinessSettings(),
       ]);
       // Sort newest first
       const sorted = (invList || []).sort(
@@ -75,7 +82,7 @@ export default function SalesInvoicesListPage() {
       );
       setInvoices(sorted);
       setProducts(prodList || []);
-      setBusinessSettings(settingsRecord || null);
+      setBusinessSettings((prev) => mergeBusinessSettings(prev, settingsRecord));
     } finally {
       setLoading(false);
     }
@@ -86,8 +93,22 @@ export default function SalesInvoicesListPage() {
     const handleCloudSynced = () => {
       loadData();
     };
+    const handleSettingsUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail) {
+        setBusinessSettings((prev) => mergeBusinessSettings(prev, detail));
+      } else {
+        loadAuthoritativeBusinessSettings().then((s) =>
+          setBusinessSettings((prev) => mergeBusinessSettings(prev, s))
+        );
+      }
+    };
     window.addEventListener("noxderma-cloud-synced", handleCloudSynced);
-    return () => window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
+    window.addEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    return () => {
+      window.removeEventListener("noxderma-cloud-synced", handleCloudSynced);
+      window.removeEventListener("noxderma_settings_updated", handleSettingsUpdated);
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -290,19 +311,32 @@ export default function SalesInvoicesListPage() {
     }
   };
 
-  const handlePrint = (inv: Invoice) => {
+  const handlePrint = async (inv: Invoice) => {
+    const cached = getCachedBusinessSettings();
+    if (cached) {
+      setBusinessSettings((prev) => mergeBusinessSettings(prev, cached));
+    }
+    try {
+      const latest = await loadAuthoritativeBusinessSettings();
+      if (latest) {
+        setBusinessSettings((prev) => mergeBusinessSettings(prev, latest));
+      }
+    } catch {}
     setSelectedInvoice(inv);
     setTimeout(() => {
       window.print();
-    }, 200);
+    }, 150);
   };
 
   const handleShareInvoiceWhatsApp = (inv: Invoice) => {
-    const message = `*NOXDERMA PHARMA - BILL RECEIPT*\nBill No: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nTotal Bill: ${formatPKR(
+    const activeBrand = businessSettings?.brandName || "NOXDERMA PHARMA";
+    const activeFooter =
+      businessSettings?.invoiceFooter || "Thank you for partnering with Noxderma!";
+    const message = `*${activeBrand} - BILL RECEIPT*\nBill No: ${inv.provisionalReference}\nCustomer: ${inv.customerName}\nTotal Bill: ${formatPKR(
       inv.netTotal
     )}\nRemaining Baqaya: ${formatPKR(
       inv.outstandingBalance
-    )}\nDue Date: ${inv.dueDate || "30 Days"}\n\nThank you for your business!`;
+    )}\nDue Date: ${inv.dueDate || "30 Days"}\n\n${activeFooter}`;
 
     openWhatsAppShare({
       phone: inv.customerPhone,
@@ -1087,6 +1121,16 @@ export default function SalesInvoicesListPage() {
             </div>
           </div>
 
+          {/* Bank / Payment Instructions if configured */}
+          {businessSettings?.paymentInstructions && (
+            <div className="mt-4 p-2.5 rounded-lg border border-slate-300 bg-slate-50 text-[11px] font-mono text-slate-800">
+              <strong className="font-sans font-bold text-black uppercase mr-1.5">
+                Payment / Bank Details:
+              </strong>
+              <span>{businessSettings.paymentInstructions}</span>
+            </div>
+          )}
+
           {/* Official Signatures Section */}
           <div className="pt-8 pb-3 grid grid-cols-2 gap-10 text-xs font-bold text-black">
             <div className="border-t-2 border-slate-400 pt-2 text-center">
@@ -1097,8 +1141,12 @@ export default function SalesInvoicesListPage() {
             </div>
           </div>
 
-          <div className="mt-4 border-t border-slate-300 pt-3 text-center text-xs text-slate-600 font-medium">
-            <p>{businessSettings?.invoiceFooter || "Computer generated bill. Thank you for your business!"}</p>
+          <div className="mt-4 border-t border-slate-300 pt-3 text-center text-xs text-slate-700 font-semibold">
+            <p>
+              {businessSettings?.invoiceFooter ||
+                getCachedBusinessSettings()?.invoiceFooter ||
+                "Thank you for partnering with Noxderma. Quality healthcare distributed with integrity."}
+            </p>
           </div>
         </div>
       )}

@@ -300,11 +300,15 @@ async function waitForStylesheetsAndAssets(iframeDoc: Document): Promise<void> {
     imgs.map(
       (img) =>
         new Promise<void>((resolve) => {
-          if (img.complete) {
-            if (img.naturalWidth === 0 && img.getAttribute("src")) {
-              img.style.display = "none";
-            }
+          if (img.complete && img.naturalWidth > 0) {
             resolve();
+            return;
+          }
+          if (img.decode) {
+            img
+              .decode()
+              .then(() => resolve())
+              .catch(() => resolve());
             return;
           }
           const timer = setTimeout(() => resolve(), 2200);
@@ -320,7 +324,6 @@ async function waitForStylesheetsAndAssets(iframeDoc: Document): Promise<void> {
             "error",
             () => {
               clearTimeout(timer);
-              img.style.display = "none";
               resolve();
             },
             { once: true }
@@ -515,9 +518,6 @@ async function normalizeImagesForPdf(iframeDoc: Document, sheetEl: HTMLElement):
         if (img.getAttribute("data-pdf-svg-icon") === "true") return;
         if (img.getAttribute("width") === "1" && img.getAttribute("height") === "1") return;
 
-        const rect = img.getBoundingClientRect();
-        if (rect.width <= 2 || rect.height <= 2) return;
-
         const computed = iframeWin.getComputedStyle(img);
         if (computed.display === "none" || computed.visibility === "hidden") return;
 
@@ -532,10 +532,12 @@ async function normalizeImagesForPdf(iframeDoc: Document, sheetEl: HTMLElement):
         const isSameOrigin =
           isDataOrBlob || src.startsWith("/") || src.startsWith(window.location.origin);
 
-        // Load CORS-clean source image so canvas export never taints
-        const sourceImg = isDataOrBlob
-          ? img
-          : (await loadImageElement(src, !isSameOrigin, 2200)) || (img.complete ? img : null);
+        // Load CORS-clean source image so canvas export never taints, and decode data: URLs reliably
+        const sourceImg =
+          img.complete && img.naturalWidth > 0 && isSameOrigin
+            ? img
+            : (await loadImageElement(src, !isSameOrigin, 2500)) ||
+              (img.complete && img.naturalWidth > 0 ? img : null);
 
         const natW = sourceImg?.naturalWidth || img.naturalWidth;
         const natH = sourceImg?.naturalHeight || img.naturalHeight;
@@ -543,6 +545,14 @@ async function normalizeImagesForPdf(iframeDoc: Document, sheetEl: HTMLElement):
           img.style.display = "none";
           return;
         }
+
+        const rect = img.getBoundingClientRect();
+        const resolvedHeight = rect.height > 2 ? rect.height : parseFloat(computed.height) || 56;
+        const maxAllowedW = parseFloat(computed.maxWidth) || 150;
+        const resolvedWidth =
+          rect.width > 4
+            ? rect.width
+            : Math.min(maxAllowedW, Math.max(44, Math.round((resolvedHeight * natW) / natH)));
 
         const padL = parseFloat(computed.paddingLeft) || 0;
         const padR = parseFloat(computed.paddingRight) || 0;
@@ -553,8 +563,8 @@ async function normalizeImagesForPdf(iframeDoc: Document, sheetEl: HTMLElement):
         const borderT = parseFloat(computed.borderTopWidth) || 0;
         const borderB = parseFloat(computed.borderBottomWidth) || 0;
 
-        const contentW = Math.max(4, rect.width - padL - padR - borderL - borderR);
-        const contentH = Math.max(4, rect.height - padT - padB - borderT - borderB);
+        const contentW = Math.max(4, resolvedWidth - padL - padR - borderL - borderR);
+        const contentH = Math.max(4, resolvedHeight - padT - padB - borderT - borderB);
 
         if (objectFit !== "contain" && objectFit !== "cover" && objectFit !== "scale-down") {
           return;
@@ -592,8 +602,8 @@ async function normalizeImagesForPdf(iframeDoc: Document, sheetEl: HTMLElement):
 
           const bakedUrl = outCanvas.toDataURL("image/png");
           img.src = bakedUrl;
-          img.style.width = `${rect.width}px`;
-          img.style.height = `${rect.height}px`;
+          img.style.width = `${resolvedWidth}px`;
+          img.style.height = `${resolvedHeight}px`;
           if (img.decode) {
             await img.decode().catch(() => {});
           }

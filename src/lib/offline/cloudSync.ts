@@ -177,6 +177,16 @@ export function sanitizeForFirestore(record: any): Record<string, any> {
     JSON.stringify(record, (_key, value) => (value === undefined ? null : value))
   );
 
+  // Deduplicate legacy businessLogoUrl when it is an identical base64 copy of appLogoUrl
+  if (
+    cleaned.businessLogoUrl &&
+    cleaned.businessLogoUrl === cleaned.appLogoUrl &&
+    typeof cleaned.businessLogoUrl === "string" &&
+    cleaned.businessLogoUrl.startsWith("data:")
+  ) {
+    cleaned.businessLogoUrl = "";
+  }
+
   // Guard against oversized base64 images exceeding Firestore's 1MB document limit
   const serialized = JSON.stringify(cleaned);
   if (serialized.length > 850_000 && Array.isArray(cleaned.images)) {
@@ -367,8 +377,9 @@ function scheduleMirrorSync(cfg: SyncedTableConfig, table: any) {
         const runWrite = () => {
           try {
             const json = JSON.stringify(latestAll);
-            // Skip oversized payloads so synchronous localStorage writes never block UI clicks
-            if (json.length <= 480_000) {
+            // Allow larger mirror size for settings so base64 brand/print logos are always cached in localStorage
+            const maxLen = cfg.tableName === "settings" ? 1_800_000 : 480_000;
+            if (json.length <= maxLen) {
               localStorage.setItem(cfg.localStorageMirrorKey!, json);
             }
           } catch {}

@@ -104,7 +104,136 @@ export function mergeBusinessSettings(
     merged.invoiceFooter = secondary.invoiceFooter;
   }
 
+  // Preserve custom paymentInstructions if primary has empty or default text while secondary has custom text
+  const defaultBank = DEFAULT_BUSINESS_SETTINGS.paymentInstructions;
+  if (
+    (!primary.paymentInstructions || primary.paymentInstructions === defaultBank) &&
+    secondary.paymentInstructions &&
+    secondary.paymentInstructions !== defaultBank
+  ) {
+    merged.paymentInstructions = secondary.paymentInstructions;
+  }
+
+  // Deduplicate legacy businessLogoUrl when it is an identical base64 copy of appLogoUrl
+  if (
+    merged.businessLogoUrl &&
+    merged.businessLogoUrl === merged.appLogoUrl &&
+    merged.businessLogoUrl.startsWith("data:")
+  ) {
+    merged.businessLogoUrl = "";
+  }
+
   return merged;
+}
+
+/**
+ * Compresses an oversized data:image/... URL in the browser so it always fits
+ * comfortably in localStorage (<480KB) and Cloud Firestore (<1MB).
+ */
+export async function compactDataUrl(
+  dataUrl: string,
+  maxDim = 340
+): Promise<string> {
+  if (
+    typeof window === "undefined" ||
+    !dataUrl ||
+    !dataUrl.startsWith("data:image/") ||
+    dataUrl.length <= 130_000
+  ) {
+    return dataUrl;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        if (width <= 0 || height <= 0) {
+          resolve(dataUrl);
+          return;
+        }
+        const ratio = Math.min(1, maxDim / width, maxDim / height);
+        width = Math.max(1, Math.round(width * ratio));
+        height = Math.max(1, Math.round(height * ratio));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        let result = canvas.toDataURL("image/png");
+        if (result.length > 130_000) {
+          // Try smaller PNG preserving transparency first
+          const smallRatio = Math.min(1, 240 / width, 240 / height);
+          const sw = Math.max(1, Math.round(width * smallRatio));
+          const sh = Math.max(1, Math.round(height * smallRatio));
+          canvas.width = sw;
+          canvas.height = sh;
+          const sctx = canvas.getContext("2d");
+          if (sctx) {
+            sctx.drawImage(img, 0, 0, sw, sh);
+            result = canvas.toDataURL("image/png");
+          }
+        }
+        if (result.length > 140_000) {
+          // Fallback to high-quality JPEG on white background so size is guaranteed < 60KB
+          const jctx = canvas.getContext("2d");
+          if (jctx) {
+            jctx.fillStyle = "#ffffff";
+            jctx.fillRect(0, 0, canvas.width, canvas.height);
+            jctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            result = canvas.toDataURL("image/jpeg", 0.88);
+          }
+        }
+        resolve(result);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+export async function compactBusinessSettingsLogos(
+  settings: BusinessSettings
+): Promise<{ settings: BusinessSettings; changed: boolean }> {
+  let changed = false;
+  const next: BusinessSettings = { ...settings, id: "primary" };
+
+  if (
+    next.businessLogoUrl &&
+    next.businessLogoUrl === next.appLogoUrl &&
+    next.businessLogoUrl.startsWith("data:")
+  ) {
+    next.businessLogoUrl = "";
+    changed = true;
+  }
+
+  if (next.appLogoUrl?.startsWith("data:image/") && next.appLogoUrl.length > 130_000) {
+    const compacted = await compactDataUrl(next.appLogoUrl, 320);
+    if (compacted !== next.appLogoUrl) {
+      next.appLogoUrl = compacted;
+      changed = true;
+    }
+  }
+
+  if (
+    next.invoiceLogoUrl?.startsWith("data:image/") &&
+    next.invoiceLogoUrl.length > 130_000
+  ) {
+    const compacted = await compactDataUrl(next.invoiceLogoUrl, 360);
+    if (compacted !== next.invoiceLogoUrl) {
+      next.invoiceLogoUrl = compacted;
+      changed = true;
+    }
+  }
+
+  return { settings: next, changed };
 }
 
 /**
@@ -148,22 +277,53 @@ export async function loadAuthoritativeBusinessSettings(): Promise<BusinessSetti
 
   let bestLocal = mergeBusinessSettings(fromMirror, fromDexie);
 
-  // Sync merged bestLocal back to both local stores if they diverged
+  // Sync merged bestLocal back to both local stores if they diverged, and compact any legacy oversized base64 logos
   if (bestLocal) {
+    const { settings: compacted, changed } = await compactBusinessSettingsLogos(bestLocal);
+    bestLocal = compacted;
+
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(SETTINGS_MIRROR_KEY, JSON.stringify([bestLocal]));
       } catch {}
     }
-    if (!fromDexie || fromDexie.updatedAt !== bestLocal.updatedAt || fromDexie.invoiceFooter !== bestLocal.invoiceFooter || fromDexie.invoiceLogoUrl !== bestLocal.invoiceLogoUrl) {
+    if (
+      changed ||
+      !fromDexie ||
+      fromDexie.updatedAt !== bestLocal.updatedAt ||
+      fromDexie.invoiceFooter !== bestLocal.invoiceFooter ||
+      fromDexie.invoiceLogoUrl !== bestLocal.invoiceLogoUrl
+    ) {
       try {
         await offlineDb.settings.put(bestLocal);
       } catch {}
     }
+    if (changed) {
+      // Push newly-compacted settings to Cloud Firestore so previously-rejected >1MB documents now sync
+      (async () => {
+        try {
+          const { db } = await import("@/lib/firebase/config");
+          const { doc, setDoc } = await import("firebase/firestore");
+          const clean = JSON.parse(
+            JSON.stringify(bestLocal, (_k, v) => (v === undefined ? null : v))
+          );
+          await Promise.allSettled([
+            setDoc(doc(db, "settings", "primary"), clean, { merge: true }),
+            setDoc(doc(db, "organizationSettings", "primary"), clean, { merge: true }),
+          ]);
+        } catch {}
+      })();
+    }
   }
 
-  // If we don't have user-configured settings locally yet, check /api/settings
-  if (!bestLocal || bestLocal.updatedBy === "system") {
+  // If we don't have user-configured settings locally yet (or local is missing custom logo/footer), check /api/settings
+  const needsRemoteCheck =
+    !bestLocal ||
+    bestLocal.updatedBy === "system" ||
+    isDefaultLogoPlaceholder(bestLocal.invoiceLogoUrl) ||
+    bestLocal.invoiceFooter === DEFAULT_BUSINESS_SETTINGS.invoiceFooter;
+
+  if (needsRemoteCheck) {
     try {
       const res = await fetch("/api/settings");
       if (res.ok) {
@@ -171,11 +331,12 @@ export async function loadAuthoritativeBusinessSettings(): Promise<BusinessSetti
         if (data?.settings && !data.isDefaultFallback) {
           const mergedWithRemote = mergeBusinessSettings(bestLocal, data.settings);
           if (mergedWithRemote) {
-            bestLocal = mergedWithRemote;
-            await offlineDb.settings.put(mergedWithRemote).catch(() => {});
+            const { settings: compactedRemote } = await compactBusinessSettingsLogos(mergedWithRemote);
+            bestLocal = compactedRemote;
+            await offlineDb.settings.put(compactedRemote).catch(() => {});
             if (typeof window !== "undefined") {
               try {
-                localStorage.setItem(SETTINGS_MIRROR_KEY, JSON.stringify([mergedWithRemote]));
+                localStorage.setItem(SETTINGS_MIRROR_KEY, JSON.stringify([compactedRemote]));
               } catch {}
             }
           }

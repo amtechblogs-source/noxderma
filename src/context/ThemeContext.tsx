@@ -291,15 +291,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     applyThemeToDOM(id);
 
-    // Persist locally in Dexie
+    // Persist locally in Dexie and localStorage mirror, then sync full settings record
+    let fullUpdatedRecord: Record<string, any> = { id: "primary", colorTheme: id, updatedAt: new Date().toISOString() };
     try {
       const stored = await offlineDb.settings.get("primary");
       if (stored) {
-        await offlineDb.settings.put({
+        fullUpdatedRecord = {
           ...stored,
+          id: "primary",
           colorTheme: id,
           updatedAt: new Date().toISOString(),
-        } as any);
+        };
+        await offlineDb.settings.put(fullUpdatedRecord as any);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("noxderma_business_settings", JSON.stringify([fullUpdatedRecord]));
+          } catch {}
+        }
       }
     } catch (err) {
       console.warn("Could not persist theme to offlineDb:", err);
@@ -310,7 +318,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ colorTheme: id }),
+        body: JSON.stringify(fullUpdatedRecord),
       }).catch(() => {});
     } catch {}
   }, []);

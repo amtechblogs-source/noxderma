@@ -26,16 +26,23 @@ import {
 } from "lucide-react";
 import { DEFAULT_BUSINESS_SETTINGS, type BusinessSettings } from "@/types";
 import { offlineDb } from "@/lib/offline/db";
-import { enqueueOperation } from "@/lib/offline/outbox";
-import { imageStorage } from "@/lib/image-storage/service";
 import { useTheme, type ThemeId } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import { recordActivity } from "@/lib/audit/auditTracker";
+import {
+  getCachedBusinessSettings,
+  loadAuthoritativeBusinessSettings,
+  mergeBusinessSettings,
+  isDefaultLogoPlaceholder,
+  resolvePrintLogoUrl,
+} from "@/lib/settings";
 
 export default function BusinessSettingsPage() {
   const { currentTheme, themeId, setTheme, availableThemes } = useTheme();
   const { currentUser, updateCurrentUser } = useAuth();
-  const [settings, setSettings] = useState<BusinessSettings>(DEFAULT_BUSINESS_SETTINGS);
+  const [settings, setSettings] = useState<BusinessSettings>(
+    () => getCachedBusinessSettings() || DEFAULT_BUSINESS_SETTINGS
+  );
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -111,16 +118,30 @@ export default function BusinessSettingsPage() {
 
   // Helper to persist settings across all layers instantly and reliably
   const persistBusinessSettings = async (
-    nextSettings: BusinessSettings,
+    rawNextSettings: BusinessSettings,
     successMessage?: string
   ) => {
+    const nextSettings: BusinessSettings = {
+      ...DEFAULT_BUSINESS_SETTINGS,
+      ...rawNextSettings,
+      id: "primary",
+      businessLogoUrl:
+        rawNextSettings.businessLogoUrl &&
+        rawNextSettings.businessLogoUrl === rawNextSettings.appLogoUrl &&
+        rawNextSettings.businessLogoUrl.startsWith("data:")
+          ? ""
+          : rawNextSettings.businessLogoUrl || "",
+    };
+
     setSettings(nextSettings);
 
     // 1. Instant synchronous write to localStorage mirror for zero-flicker reload
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem("noxderma_business_settings", JSON.stringify([nextSettings]));
-      } catch {}
+      } catch (e) {
+        console.warn("Could not write settings to localStorage mirror:", e);
+      }
     }
 
     // 2. Persist to Dexie IndexedDB
@@ -130,7 +151,7 @@ export default function BusinessSettingsPage() {
       console.warn("Could not put settings in offlineDb:", dbErr);
     }
 
-    // 3. Immediately broadcast to Sidebar, Header, Reports, etc.
+    // 3. Immediately broadcast to Sidebar, Header, Reports, Invoices, etc.
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("noxderma_settings_updated", { detail: nextSettings }));
     }
@@ -164,62 +185,28 @@ export default function BusinessSettingsPage() {
     }
   };
 
+  const autoSaveFieldOnBlur = (override?: Partial<BusinessSettings>) => {
+    const updated: BusinessSettings = {
+      ...settings,
+      ...(override || {}),
+      id: "primary",
+      colorTheme: themeId,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.id || "usr_admin",
+    };
+    void persistBusinessSettings(updated);
+  };
+
   useEffect(() => {
+    let mounted = true;
     async function loadSettings() {
-      let localFound: BusinessSettings | null = null;
-
-      // 1. Check fast localStorage mirror first
-      if (typeof window !== "undefined") {
-        try {
-          const raw = localStorage.getItem("noxderma_business_settings");
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            const item = Array.isArray(parsed) ? parsed[0] : parsed;
-            if (item && item.id === "primary") {
-              localFound = item;
-              setSettings(item);
-            }
-          }
-        } catch {}
-      }
-
-      // 2. Try local offline storage
       try {
-        const stored = await offlineDb.settings.get("primary");
-        if (stored) {
-          localFound = stored;
-          setSettings(stored);
+        const loaded = await loadAuthoritativeBusinessSettings();
+        if (mounted && loaded) {
+          setSettings((prev) => mergeBusinessSettings(loaded, prev) || loaded);
         }
       } catch (err) {
-        console.warn("Could not load stored business settings:", err);
-      }
-
-      // 3. Fetch authoritative database settings from server (/api/settings)
-      // Only apply if remote is valid and NOT an unconfigured default fallback
-      try {
-        const res = await fetch("/api/settings");
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.settings && !data.isDefaultFallback) {
-            const isRemoteNewer =
-              !localFound ||
-              localFound.updatedBy === "system" ||
-              new Date(data.settings.updatedAt || 0) >= new Date(localFound.updatedAt || 0);
-
-            if (isRemoteNewer) {
-              setSettings(data.settings);
-              await offlineDb.settings.put(data.settings);
-              if (typeof window !== "undefined") {
-                localStorage.setItem(
-                  "noxderma_business_settings",
-                  JSON.stringify([data.settings])
-                );
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Could not fetch remote settings:", err);
+        console.warn("Could not load business settings:", err);
       }
     }
 
@@ -227,11 +214,19 @@ export default function BusinessSettingsPage() {
 
     const handleSync = () => loadSettings();
     window.addEventListener("noxderma-cloud-synced", handleSync);
-    return () => window.removeEventListener("noxderma-cloud-synced", handleSync);
+    return () => {
+      mounted = false;
+      window.removeEventListener("noxderma-cloud-synced", handleSync);
+    };
   }, []);
 
-  // Helper to compress logo image on client-side canvas so it fits smoothly in any database
-  const compressImage = (file: File, maxWidth = 500, maxHeight = 500): Promise<string> => {
+  // Helper to compress logo image on client-side canvas so it stays compact (<90KB)
+  // and fits smoothly in localStorage, IndexedDB, and Cloud Firestore (<1MB)
+  const compressImage = (
+    file: File,
+    maxWidth = 360,
+    maxHeight = 360
+  ): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -240,8 +235,8 @@ export default function BusinessSettingsPage() {
           let { width, height } = img;
           if (width > maxWidth || height > maxHeight) {
             const ratio = Math.min(maxWidth / width, maxHeight / height);
-            width = Math.round(width * ratio);
-            height = Math.round(height * ratio);
+            width = Math.max(1, Math.round(width * ratio));
+            height = Math.max(1, Math.round(height * ratio));
           }
           const canvas = document.createElement("canvas");
           canvas.width = width;
@@ -252,7 +247,34 @@ export default function BusinessSettingsPage() {
             return;
           }
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/png", 0.9));
+          let dataUrl = canvas.toDataURL("image/png");
+
+          // If PNG is still large (> ~90KB), scale down to 250px max dimension
+          if (dataUrl.length > 120_000) {
+            const smallRatio = Math.min(1, 250 / width, 250 / height);
+            const sw = Math.max(1, Math.round(width * smallRatio));
+            const sh = Math.max(1, Math.round(height * smallRatio));
+            canvas.width = sw;
+            canvas.height = sh;
+            const sctx = canvas.getContext("2d");
+            if (sctx) {
+              sctx.drawImage(img, 0, 0, sw, sh);
+              dataUrl = canvas.toDataURL("image/png");
+            }
+          }
+
+          // If still > 135KB, encode as high-quality JPEG on white background (< 55KB)
+          if (dataUrl.length > 135_000) {
+            const jctx = canvas.getContext("2d");
+            if (jctx) {
+              jctx.fillStyle = "#ffffff";
+              jctx.fillRect(0, 0, canvas.width, canvas.height);
+              jctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+            }
+          }
+
+          resolve(dataUrl);
         };
         img.onerror = () => resolve(e.target?.result as string);
         img.src = e.target?.result as string;
@@ -262,7 +284,7 @@ export default function BusinessSettingsPage() {
     });
   };
 
-  // Handle image upload with dual-storage: compressed local data URL + permanent cloud upload
+  // Handle logo upload using compact local data URL for instant offline + online + PDF rendering
   const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     field: "appLogoUrl" | "invoiceLogoUrl"
@@ -277,48 +299,30 @@ export default function BusinessSettingsPage() {
 
     setIsUploadingLogo(true);
     try {
-      // 1. Immediately compress for zero-lag UI display and database safety
+      // Compress for zero-lag UI/Print/PDF display and guaranteed database & Firestore persistence
       const compressedDataUrl = await compressImage(file);
+      const latestStored = (await offlineDb.settings.get("primary")) || settings;
+      const mergedBase = mergeBusinessSettings(settings, latestStored) || settings;
+
       const updatedWithLogo: BusinessSettings = {
-        ...settings,
+        ...mergedBase,
         [field]: compressedDataUrl,
-        businessLogoUrl: field === "appLogoUrl" ? compressedDataUrl : settings.businessLogoUrl,
+        businessLogoUrl: "",
         colorTheme: themeId,
         updatedAt: new Date().toISOString(),
-        updatedBy: "usr_admin",
+        updatedBy: currentUser?.id || "usr_admin",
       };
 
-      // Auto-save immediately to localStorage, IndexedDB & Cloud Firestore
       await persistBusinessSettings(
         updatedWithLogo,
         field === "appLogoUrl" ? "UI Brand Logo Saved!" : "Invoice Print Logo Saved!"
       );
-
-      // 2. Also attempt permanent cloud upload via ImageKit provider
-      try {
-        const cloudUrl = await imageStorage.uploadLogo(file, "/logos");
-        if (cloudUrl) {
-          const updatedWithCloudUrl: BusinessSettings = {
-            ...updatedWithLogo,
-            [field]: cloudUrl,
-            businessLogoUrl: field === "appLogoUrl" ? cloudUrl : updatedWithLogo.businessLogoUrl,
-            updatedAt: new Date().toISOString(),
-          };
-          await persistBusinessSettings(
-            updatedWithCloudUrl,
-            field === "appLogoUrl"
-              ? "UI Brand Logo Uploaded & Saved to Cloud!"
-              : "Invoice Print Logo Uploaded & Saved to Cloud!"
-          );
-        }
-      } catch (cloudErr) {
-        console.log("ImageKit upload bypassed, using high-resolution compressed data URL:", cloudErr);
-      }
     } catch (err) {
       console.error("Failed to process image:", err);
       alert("Error reading image file.");
     } finally {
       setIsUploadingLogo(false);
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -697,14 +701,21 @@ export default function BusinessSettingsPage() {
 
               <input
                 type="text"
-                placeholder="Or paste image URL (e.g. https://...)"
-                value={settings.appLogoUrl || ""}
+                placeholder={
+                  settings.appLogoUrl?.startsWith("data:")
+                    ? "Custom uploaded UI logo active (or paste https:// URL)"
+                    : "Or paste image URL (e.g. https://...)"
+                }
+                value={settings.appLogoUrl?.startsWith("data:") ? "" : settings.appLogoUrl || ""}
                 onChange={(e) => setSettings({ ...settings, appLogoUrl: e.target.value })}
                 onBlur={() => {
-                  if (settings.appLogoUrl !== undefined) {
+                  if (
+                    settings.appLogoUrl !== undefined &&
+                    !settings.appLogoUrl.startsWith("data:")
+                  ) {
                     const updated = {
                       ...settings,
-                      businessLogoUrl: settings.appLogoUrl,
+                      businessLogoUrl: "",
                       updatedAt: new Date().toISOString(),
                     };
                     persistBusinessSettings(updated, "UI Logo URL Saved");
@@ -727,9 +738,9 @@ export default function BusinessSettingsPage() {
 
               {/* Preview Box */}
               <div className="h-24 rounded-lg bg-white border border-slate-300 flex items-center justify-center p-3">
-                {settings.invoiceLogoUrl ? (
+                {resolvePrintLogoUrl(settings) ? (
                   <img
-                    src={settings.invoiceLogoUrl}
+                    src={resolvePrintLogoUrl(settings)}
                     alt="Invoice Print Logo Preview"
                     className="max-h-16 max-w-full object-contain"
                   />
@@ -765,7 +776,7 @@ export default function BusinessSettingsPage() {
                   />
                 </label>
 
-                {settings.invoiceLogoUrl && (
+                {!isDefaultLogoPlaceholder(settings.invoiceLogoUrl) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -786,11 +797,22 @@ export default function BusinessSettingsPage() {
 
               <input
                 type="text"
-                placeholder="Or paste invoice logo image URL..."
-                value={settings.invoiceLogoUrl || ""}
+                placeholder={
+                  settings.invoiceLogoUrl?.startsWith("data:")
+                    ? "Custom uploaded print logo active (or paste https:// URL)"
+                    : "Or paste invoice logo image URL..."
+                }
+                value={
+                  settings.invoiceLogoUrl?.startsWith("data:")
+                    ? ""
+                    : settings.invoiceLogoUrl || ""
+                }
                 onChange={(e) => setSettings({ ...settings, invoiceLogoUrl: e.target.value })}
                 onBlur={() => {
-                  if (settings.invoiceLogoUrl !== undefined) {
+                  if (
+                    settings.invoiceLogoUrl !== undefined &&
+                    !settings.invoiceLogoUrl.startsWith("data:")
+                  ) {
                     const updated = {
                       ...settings,
                       updatedAt: new Date().toISOString(),
@@ -820,6 +842,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.legalName}
                 onChange={(e) => setSettings({ ...settings, legalName: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
               />
             </div>
@@ -832,6 +855,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.brandName}
                 onChange={(e) => setSettings({ ...settings, brandName: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
               />
             </div>
@@ -846,6 +870,7 @@ export default function BusinessSettingsPage() {
                 placeholder="e.g. Muhammad Farhan"
                 value={settings.ownerName || ""}
                 onChange={(e) => setSettings({ ...settings, ownerName: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
               />
               <span className="text-[10px] text-slate-400 mt-1 block">
@@ -862,6 +887,7 @@ export default function BusinessSettingsPage() {
                 placeholder="Owner"
                 value={settings.ownerRole || "Owner"}
                 onChange={(e) => setSettings({ ...settings, ownerRole: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
               />
             </div>
@@ -875,6 +901,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.address}
                 onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
               />
             </div>
@@ -888,6 +915,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.contactPhone}
                 onChange={(e) => setSettings({ ...settings, contactPhone: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
               />
             </div>
@@ -901,6 +929,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.whatsappNumber}
                 onChange={(e) => setSettings({ ...settings, whatsappNumber: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
               />
             </div>
@@ -914,6 +943,7 @@ export default function BusinessSettingsPage() {
                 type="email"
                 value={settings.email}
                 onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
               />
             </div>
@@ -927,6 +957,7 @@ export default function BusinessSettingsPage() {
                 type="url"
                 value={settings.website}
                 onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
               />
             </div>
@@ -947,6 +978,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.invoicePrefix}
                 onChange={(e) => setSettings({ ...settings, invoicePrefix: e.target.value.toUpperCase() })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono font-bold"
               />
             </div>
@@ -961,6 +993,7 @@ export default function BusinessSettingsPage() {
                   const raw = e.target.value;
                   setSettings({ ...settings, defaultCreditTermsDays: raw === "" ? 0 : Number(raw) || 0 });
                 }}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
               />
             </div>
@@ -971,6 +1004,7 @@ export default function BusinessSettingsPage() {
                 rows={2}
                 value={settings.paymentInstructions}
                 onChange={(e) => setSettings({ ...settings, paymentInstructions: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-[11px]"
               />
             </div>
@@ -981,6 +1015,7 @@ export default function BusinessSettingsPage() {
                 type="text"
                 value={settings.invoiceFooter}
                 onChange={(e) => setSettings({ ...settings, invoiceFooter: e.target.value })}
+                onBlur={() => autoSaveFieldOnBlur()}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
               />
             </div>

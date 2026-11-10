@@ -137,18 +137,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid settings payload" }, { status: 400 });
     }
 
-    // Merge onto existing Cloud Firestore settings first to prevent overwriting other fields
-    const existing = (await fetchFirestoreSettings()) || readLocalSettings() || DEFAULT_BUSINESS_SETTINGS;
+    // Merge onto existing Cloud Firestore or local disk settings first (never spread DEFAULT_BUSINESS_SETTINGS over partial updates)
+    const existing = (await fetchFirestoreSettings()) || readLocalSettings();
+    const isFullPayload = Boolean(payload.legalName && payload.brandName);
 
     const updated: BusinessSettings = {
-      ...existing,
+      ...(isFullPayload ? DEFAULT_BUSINESS_SETTINGS : {}),
+      ...(existing || {}),
       ...payload,
       id: "primary",
       updatedAt: new Date().toISOString(),
-      updatedBy: payload.updatedBy || "usr_admin",
-    };
+      updatedBy: payload.updatedBy || existing?.updatedBy || "usr_admin",
+    } as BusinessSettings;
 
-    // 1. Persist to Cloud Firestore (both collections) and wait so Vercel does not terminate early
+    if (
+      updated.businessLogoUrl &&
+      updated.businessLogoUrl === updated.appLogoUrl &&
+      typeof updated.businessLogoUrl === "string" &&
+      updated.businessLogoUrl.startsWith("data:")
+    ) {
+      updated.businessLogoUrl = "";
+    }
+
+    // 1. Persist to Cloud Firestore (both collections) and wait so serverless does not terminate early
     await persistToFirestore(updated);
 
     // 2. Persist to local disk if writable
