@@ -794,9 +794,12 @@ export function DashboardView() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
           {/* Card 1: Monthly / Today Sales (Owner / Accountant / dashboard:sales only) */}
           {canViewSalesSummary && (
-            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/50">
+            <Link
+              href="/sales/invoices"
+              className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/60 block cursor-pointer"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
                   {viewPeriod === "month"
                     ? `${currentMonthName}'s Total Sales`
                     : "Today's Total Sales"}
@@ -823,24 +826,29 @@ export function DashboardView() {
                     {formatPKR(viewPeriod === "month" ? monthPaymentsCollected : todayPaymentsCollected)}
                   </strong>
                 </p>
-                {viewPeriod === "month" ? (
-                  <p className="text-[11px] text-slate-400">
-                    Today: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatPKR(todaySalesTotal)}</span> ({todayInvoices.length} bills &bull; {formatPKR(todayPaymentsCollected)} cash)
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-slate-400">
-                    This Month ({currentMonthShort}): <span className="font-semibold text-slate-600 dark:text-slate-300">{formatPKR(monthSalesTotal)}</span> ({monthInvoices.length} bills)
-                  </p>
-                )}
+                <div className="text-[11px] text-slate-400 flex items-center justify-between gap-1">
+                  {viewPeriod === "month" ? (
+                    <span className="truncate">
+                      Today: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatPKR(todaySalesTotal)}</span> ({todayInvoices.length} bills)
+                    </span>
+                  ) : (
+                    <span className="truncate">
+                      This Month ({currentMonthShort}): <span className="font-semibold text-slate-600 dark:text-slate-300">{formatPKR(monthSalesTotal)}</span> ({monthInvoices.length} bills)
+                    </span>
+                  )}
+                  <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 group-hover:underline shrink-0">
+                    Bills &rarr;
+                  </span>
+                </div>
               </div>
-            </div>
+            </Link>
           )}
 
           {/* Card 2: Total Profit / Net Profit (Owner / Accountant / dashboard:finance / finance:pnl) */}
           {(canViewFinanceSummary || canViewSalesSummary) && (
             <Link
               href="/finance/pnl"
-              className="p-3.5 sm:p-5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-white via-white to-emerald-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 shadow-soft card-interactive relative overflow-hidden group hover:border-emerald-500/60 block"
+              className="p-3.5 sm:p-5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-white via-white to-emerald-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 shadow-soft card-interactive relative overflow-hidden group hover:border-emerald-500/60 block cursor-pointer"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
@@ -915,9 +923,12 @@ export function DashboardView() {
 
           {/* Card 3: 3-Way Receivables (Owner / Accountant / dashboard:finance only) */}
           {canViewFinanceSummary && (
-            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/50">
+            <Link
+              href="/finance/ledgers/customers"
+              className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/60 block cursor-pointer"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                   Money to Receive (Udhaar)
                 </span>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 flex items-center justify-center shadow-sm shrink-0">
@@ -933,18 +944,26 @@ export function DashboardView() {
                 <p>
                   Stores: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(storeReceivables)}</strong> &bull; Dist: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(distributorReceivables)}</strong>
                 </p>
-                <p className="text-[11px] text-slate-400">
-                  This Month New Udhaar: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatPKR(monthReceivablesCreated)}</span>
-                </p>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between gap-1">
+                  <span className="truncate">
+                    This Month New Udhaar: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatPKR(monthReceivablesCreated)}</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 group-hover:underline shrink-0">
+                    Khata &rarr;
+                  </span>
+                </div>
               </div>
-            </div>
+            </Link>
           )}
 
-          {/* Card 3: Manufacturer Payables (Owner / Accountant / dashboard:finance only) */}
+          {/* Card 4: Manufacturer Payables (Owner / Accountant / dashboard:finance only) */}
           {canViewFinanceSummary && (
-            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/50">
+            <Link
+              href="/finance/ledgers/manufacturers"
+              className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/60 block cursor-pointer"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                   Money We Owe Companies
                 </span>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-sm shrink-0">
@@ -956,17 +975,25 @@ export function DashboardView() {
                   {formatPKR(totalManufacturerPayables)}
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-500 mt-1.5">
-                Open POs: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(pendingPoPayables)}</strong>
-              </p>
-            </div>
+              <div className="text-[11px] sm:text-xs text-slate-500 mt-1.5 flex items-center justify-between gap-1">
+                <span>
+                  Open POs: <strong className="text-slate-700 dark:text-slate-300">{formatPKR(pendingPoPayables)}</strong>
+                </span>
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline shrink-0">
+                  Suppliers &rarr;
+                </span>
+              </div>
+            </Link>
           )}
 
-          {/* Card 4: FEFO Expiry / Low Stock Alerts (Only if inventory access permitted) */}
+          {/* Card 5: FEFO Expiry / Low Stock Alerts (Only if inventory access permitted) */}
           {canViewInventory && (
-            <div className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/50">
+            <Link
+              href="/inventory/batches"
+              className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/60 block cursor-pointer"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                   Medicines Expiring Soon
                 </span>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shadow-sm shrink-0">
@@ -979,14 +1006,17 @@ export function DashboardView() {
                 </span>
                 <span className="text-xs font-medium text-slate-500">batches within 90 days</span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+              <div className="text-[11px] sm:text-xs text-slate-500 mt-1.5 flex items-center justify-between gap-1">
                 {expiredBatches.length > 0 ? (
-                  <span className="text-red-600 font-bold">{expiredBatches.length} Expired (Blocked from sale)</span>
+                  <span className="text-red-600 font-bold truncate">{expiredBatches.length} Expired (Blocked from sale)</span>
                 ) : (
-                  <span className="text-emerald-600 font-semibold">0 Expired Medicines (Stock Safe)</span>
+                  <span className="text-emerald-600 font-semibold truncate">0 Expired Medicines (Stock Safe)</span>
                 )}
-              </p>
-            </div>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 group-hover:underline shrink-0">
+                  Batches &rarr;
+                </span>
+              </div>
+            </Link>
           )}
         </div>
       )}
