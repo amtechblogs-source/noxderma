@@ -519,7 +519,7 @@ export default function SalesInvoicesListPage() {
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 min-h-[36px] rounded-xl font-bold capitalize transition-all btn-interactive text-xs sm:text-sm ${
+              className={`px-3 py-1.5 min-h-[36px] rounded-xl font-bold capitalize transition-all btn-interactive text-xs sm:text-sm whitespace-nowrap ${
                 statusFilter === st
                   ? "bg-teal-600 text-white shadow-sm"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
@@ -555,26 +555,26 @@ export default function SalesInvoicesListPage() {
 
       {/* Bulk Selection Actions Floating Toolbar */}
       {canDeleteInvoice && selectedInvoiceIds.length > 0 && (
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-900 text-white shadow-xl border border-teal-700 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-teal-800 text-teal-200 flex items-center justify-center font-bold text-sm">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-900 text-white shadow-xl border border-teal-700 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-teal-800 text-teal-200 flex items-center justify-center font-bold text-sm shrink-0">
               {selectedInvoiceIds.length}
             </div>
-            <div>
-              <span className="font-extrabold text-sm block">
+            <div className="min-w-0">
+              <span className="font-extrabold text-sm block leading-tight">
                 {selectedInvoiceIds.length} {selectedInvoiceIds.length === 1 ? "Bill Selected" : "Bills Selected"}
               </span>
-              <span className="text-xs text-teal-200">
+              <span className="text-xs text-teal-200 block">
                 Total Value: <strong className="font-mono text-white">{formatPKR(selectedInvoicesTotal)}</strong>
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setSelectedInvoiceIds([])}
-              className="px-3.5 py-2 min-h-[38px] rounded-xl bg-teal-800 hover:bg-teal-700 active:bg-teal-800 text-teal-100 font-bold text-xs sm:text-sm btn-interactive"
+              className="px-3.5 py-2 min-h-[40px] rounded-xl bg-teal-800 hover:bg-teal-700 active:bg-teal-800 text-teal-100 font-bold text-xs sm:text-sm flex items-center justify-center whitespace-nowrap btn-interactive"
             >
               Deselect All
             </button>
@@ -582,10 +582,11 @@ export default function SalesInvoicesListPage() {
             <button
               type="button"
               onClick={() => setIsBulkDeleting(true)}
-              className="px-4 py-2 min-h-[38px] rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm btn-interactive"
+              className="px-3.5 sm:px-4 py-2 min-h-[40px] rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap btn-interactive"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>Delete Selected ({selectedInvoiceIds.length})</span>
+              <Trash2 className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">Delete Selected ({selectedInvoiceIds.length})</span>
+              <span className="sm:hidden">Delete ({selectedInvoiceIds.length})</span>
             </button>
           </div>
         </div>
@@ -610,8 +611,30 @@ export default function SalesInvoicesListPage() {
           <>
             {/* Mobile View: High Ergonomics Touch Cards */}
             <div className="grid grid-cols-1 gap-3 md:hidden">
+              {canDeleteInvoice && (
+                <div className="flex items-center justify-between px-1 text-xs">
+                  <label className="inline-flex items-center gap-2 font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && selectedInvoiceIds.length === filtered.length}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                    />
+                    <span>
+                      {filtered.length > 0 && selectedInvoiceIds.length === filtered.length
+                        ? `Deselect All (${filtered.length})`
+                        : `Select All (${filtered.length})`}
+                    </span>
+                  </label>
+                  <span className="font-mono text-[11px] text-slate-400 font-semibold">
+                    {filtered.length} {filtered.length === 1 ? "bill" : "bills"}
+                  </span>
+                </div>
+              )}
+
               {filtered.map((inv) => {
                 const isSelected = selectedInvoiceIds.includes(inv.id);
+                const hasBalance = inv.outstandingBalance > 0;
                 return (
                   <div
                     key={inv.id}
@@ -621,12 +644,12 @@ export default function SalesInvoicesListPage() {
                         : "border-slate-200/80 dark:border-slate-800"
                     }`}
                   >
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                      <div className="flex items-center gap-2.5">
+                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
                         {canDeleteInvoice && (
                           <label
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-2 cursor-pointer select-none"
+                            className="inline-flex items-center pt-0.5 cursor-pointer select-none shrink-0"
                           >
                             <input
                               type="checkbox"
@@ -636,20 +659,20 @@ export default function SalesInvoicesListPage() {
                             />
                           </label>
                         )}
-                        <div>
-                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400 text-sm block">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-mono font-bold text-teal-600 dark:text-teal-400 text-sm block leading-tight truncate">
                             {inv.provisionalReference || inv.id}
                           </span>
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-slate-400 block leading-snug mt-0.5">
                             {formatKarachiDate(inv.invoiceDate || inv.createdAt)} &bull; {inv.lines?.length || 1} item(s)
                             {inv.dueDate && inv.paymentStatus !== "paid" ? ` • Due: ${formatKarachiDate(inv.dueDate)}` : ""}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1 shrink-0">
                         <span
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap ${
                             inv.paymentStatus === "paid"
                               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                               : inv.paymentStatus === "partially_paid"
@@ -678,7 +701,7 @@ export default function SalesInvoicesListPage() {
                       </div>
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       {canViewCustomers ? (
                         <Link
                           href={`/customers/detail?id=${encodeURIComponent(inv.customerId)}`}
@@ -691,35 +714,53 @@ export default function SalesInvoicesListPage() {
                           {inv.customerName}
                         </span>
                       )}
-                      <span className="text-xs text-slate-400">{inv.customerPhone}</span>
+                      <span className="text-xs text-slate-400 block truncate">{inv.customerPhone}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                      <div>
+                    <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                      <div className="min-w-0">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Total Bill</span>
-                        <span className="text-base font-extrabold font-mono text-slate-900 dark:text-slate-100">
+                        <span className="text-base font-extrabold font-mono tabular-nums text-slate-900 dark:text-slate-100">
                           {formatPKR(inv.netTotal)}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-rose-500 block">Baqaya (Udhaar)</span>
-                        <span className="text-base font-extrabold font-mono text-rose-600">
+                      <div className="min-w-0">
+                        <span
+                          className={`text-[11px] font-bold uppercase tracking-wider block ${
+                            hasBalance ? "text-rose-500" : "text-slate-400"
+                          }`}
+                        >
+                          Baqaya (Udhaar)
+                        </span>
+                        <span
+                          className={`text-base font-extrabold font-mono tabular-nums ${
+                            hasBalance ? "text-rose-600" : "text-emerald-600 dark:text-emerald-400"
+                          }`}
+                        >
                           {formatPKR(inv.outstandingBalance)}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 gap-1.5 flex-wrap">
-                      {inv.outstandingBalance > 0 && (
+                    <div
+                      className={`pt-1.5 border-t border-slate-100 dark:border-slate-800/80 gap-2 ${
+                        hasBalance || !canEditInvoice
+                          ? "grid grid-cols-2"
+                          : "flex flex-wrap items-center"
+                      }`}
+                    >
+                      {hasBalance && (
                         <button
                           type="button"
                           onClick={() => {
                             setReceivingInvoice(inv);
                             setIsReceiveCashOpen(true);
                           }}
-                          className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs min-h-[40px] shadow-sm shadow-emerald-600/20 btn-interactive"
+                          className={`${
+                            !canEditInvoice ? "col-span-2" : ""
+                          } inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs min-h-[40px] whitespace-nowrap shadow-sm shadow-emerald-600/20 btn-interactive`}
                         >
-                          <Wallet className="w-3.5 h-3.5" />
+                          <Wallet className="w-3.5 h-3.5 shrink-0" />
                           <span>Receive Cash</span>
                         </button>
                       )}
@@ -727,27 +768,34 @@ export default function SalesInvoicesListPage() {
                       {canEditInvoice && (
                         <Link
                           href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
-                          className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold text-xs min-h-[40px] hover:bg-amber-100 dark:hover:bg-amber-900/50 btn-interactive"
+                          className={`${
+                            !hasBalance ? "flex-1 min-w-[92px]" : ""
+                          } inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold text-xs min-h-[40px] whitespace-nowrap hover:bg-amber-100 dark:hover:bg-amber-900/50 btn-interactive`}
                         >
-                          <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                          <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                           <span>Edit Bill</span>
                         </Link>
                       )}
 
                       <button
+                        type="button"
                         onClick={() => handlePrint(inv)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs min-h-[40px] hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive"
+                        className={`${
+                          !hasBalance && canEditInvoice ? "flex-1 min-w-[92px]" : ""
+                        } inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs min-h-[40px] whitespace-nowrap hover:bg-slate-50 dark:hover:bg-slate-800 btn-interactive`}
                       >
-                        <Printer className="w-4 h-4 text-slate-500" />
+                        <Printer className="w-4 h-4 text-slate-500 shrink-0" />
                         <span>Print Bill</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleShareInvoiceWhatsApp(inv)}
-                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs min-h-[40px] btn-interactive"
+                        className={`${
+                          !hasBalance && canEditInvoice ? "flex-1 min-w-[92px]" : ""
+                        } inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs min-h-[40px] whitespace-nowrap btn-interactive`}
                       >
-                        <Share2 className="w-4 h-4 text-emerald-600" />
+                        <Share2 className="w-4 h-4 text-emerald-600 shrink-0" />
                         <span>WhatsApp</span>
                       </button>
                     </div>

@@ -138,11 +138,29 @@ export function DateRangeFilterBar({
   }
 
   // Full Rich Pills & Date Bar
+  const inactiveChipClass =
+    "bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700";
+  const activeChipClass =
+    "bg-teal-600 border border-teal-600 text-white shadow-sm shadow-teal-600/30";
+
   return (
-    <div className={`space-y-2.5 ${className}`}>
+    <div className={`space-y-2 ${className}`}>
+      {/* Mobile Micro Header: keeps label & count aligned instead of stranded at end of wrapped pills */}
+      <div className="flex items-center justify-between gap-2 sm:hidden">
+        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+          <Filter className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+          <span>{label}</span>
+        </span>
+        {typeof count === "number" && (
+          <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold shrink-0">
+            {count} found
+          </span>
+        )}
+      </div>
+
       {/* Preset Buttons Bar (Mobile Optimized Wrapping - No horizontal scroll) */}
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+        <span className="hidden sm:flex text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 items-center gap-1">
           <Filter className="w-3.5 h-3.5 text-teal-600 shrink-0" />
           <span>{label}:</span>
         </span>
@@ -150,10 +168,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("all")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
-            filter.preset === "all"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs whitespace-nowrap ${
+            filter.preset === "all" ? activeChipClass : inactiveChipClass
           }`}
         >
           All Time
@@ -162,10 +178,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("today")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
-            filter.preset === "today"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs whitespace-nowrap ${
+            filter.preset === "today" ? activeChipClass : inactiveChipClass
           }`}
         >
           Today <span className="hidden sm:inline">(Daily)</span>
@@ -174,10 +188,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("weekly")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
-            filter.preset === "weekly"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs whitespace-nowrap ${
+            filter.preset === "weekly" ? activeChipClass : inactiveChipClass
           }`}
         >
           Weekly
@@ -186,10 +198,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("monthly")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
-            filter.preset === "monthly"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs whitespace-nowrap ${
+            filter.preset === "monthly" ? activeChipClass : inactiveChipClass
           }`}
         >
           This Month
@@ -198,10 +208,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("last_month")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs ${
-            filter.preset === "last_month"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs whitespace-nowrap ${
+            filter.preset === "last_month" ? activeChipClass : inactiveChipClass
           }`}
         >
           Last Month
@@ -210,10 +218,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("custom_month")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 ${
-            filter.preset === "custom_month"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 whitespace-nowrap ${
+            filter.preset === "custom_month" ? activeChipClass : inactiveChipClass
           }`}
         >
           <Calendar className="w-3.5 h-3.5 shrink-0" />
@@ -223,10 +229,8 @@ export function DateRangeFilterBar({
         <button
           type="button"
           onClick={() => setPreset("custom_range")}
-          className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 ${
-            filter.preset === "custom_range"
-              ? "bg-teal-600 text-white shadow-sm shadow-teal-600/30"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+          className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs flex items-center gap-1.5 whitespace-nowrap ${
+            filter.preset === "custom_range" ? activeChipClass : inactiveChipClass
           }`}
         >
           <Calendar className="w-3.5 h-3.5 shrink-0" />
@@ -234,7 +238,7 @@ export function DateRangeFilterBar({
         </button>
 
         {typeof count === "number" && (
-          <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold ml-auto shrink-0 self-center">
+          <span className="hidden sm:inline-flex font-mono text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold ml-auto shrink-0 self-center">
             {count} found
           </span>
         )}
