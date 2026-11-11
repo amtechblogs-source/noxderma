@@ -22,6 +22,7 @@ import {
   X,
   AlertCircle,
   Pencil,
+  Wallet,
 } from "lucide-react";
 import { formatPKR, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
@@ -32,6 +33,7 @@ import { useAuth } from "@/context/AuthContext";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
+import { ReceivePaymentModal } from "@/components/finance/ReceivePaymentModal";
 import {
   getCachedBusinessSettings,
   loadAuthoritativeBusinessSettings,
@@ -68,6 +70,8 @@ export default function SalesInvoicesListPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
   const [isDeletingLoading, setIsDeletingLoading] = useState<boolean>(false);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [receivingInvoice, setReceivingInvoice] = useState<Invoice | null>(null);
+  const [isReceiveCashOpen, setIsReceiveCashOpen] = useState<boolean>(false);
 
   const loadData = async () => {
     try {
@@ -362,14 +366,27 @@ export default function SalesInvoicesListPage() {
           </h1>
         </div>
 
-        {canCreateInvoice && (
-          <Link
-            href="/sales/invoices/new"
-            className="px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all btn-interactive self-stretch sm:self-auto"
+        <div className="flex flex-wrap items-center gap-2.5 self-stretch sm:self-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setReceivingInvoice(null);
+              setIsReceiveCashOpen(true);
+            }}
+            className="flex-1 sm:flex-none px-4 py-2.5 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all btn-interactive"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" /> Make New Bill
-          </Link>
-        )}
+            <Wallet className="w-4 h-4 stroke-[2.2]" /> + Receive Cash (وصولی)
+          </button>
+
+          {canCreateInvoice && (
+            <Link
+              href="/sales/invoices/new"
+              className="flex-1 sm:flex-none px-4 py-2.5 min-h-[44px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all btn-interactive"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" /> Make New Bill
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -628,6 +645,20 @@ export default function SalesInvoicesListPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1 gap-1.5 flex-wrap">
+                      {inv.outstandingBalance > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceivingInvoice(inv);
+                            setIsReceiveCashOpen(true);
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs min-h-[40px] shadow-sm shadow-emerald-600/20 btn-interactive"
+                        >
+                          <Wallet className="w-3.5 h-3.5" />
+                          <span>Receive Cash</span>
+                        </button>
+                      )}
+
                       {canEditInvoice && (
                         <Link
                           href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
@@ -784,6 +815,20 @@ export default function SalesInvoicesListPage() {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {inv.outstandingBalance > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReceivingInvoice(inv);
+                                  setIsReceiveCashOpen(true);
+                                }}
+                                title="Receive Udhaar Cash (ادھار وصولی)"
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs btn-interactive min-h-[34px] flex items-center gap-1 shadow-sm"
+                              >
+                                <Wallet className="w-3.5 h-3.5" />
+                                <span>Receive Cash</span>
+                              </button>
+                            )}
                             {canEditInvoice && (
                               <Link
                                 href={`/sales/invoices/edit?id=${encodeURIComponent(inv.id)}`}
@@ -955,6 +1000,22 @@ export default function SalesInvoicesListPage() {
           </div>
         </div>
       )}
+
+      <ReceivePaymentModal
+        isOpen={isReceiveCashOpen}
+        onClose={() => {
+          setIsReceiveCashOpen(false);
+          setReceivingInvoice(null);
+        }}
+        initialInvoice={receivingInvoice}
+        onSuccess={(pay) => {
+          loadData();
+          setSuccessNotice(
+            `Cash Received: ${formatPKR(pay.amount)} from ${pay.customerName} recorded in Khata!`
+          );
+          setTimeout(() => setSuccessNotice(null), 5000);
+        }}
+      />
       </div>
 
       {/* Printable Official Invoice Card - Optimized for Clean A4 Fit */}

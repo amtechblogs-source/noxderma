@@ -18,12 +18,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
+  Wallet,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { useAuth } from "@/context/AuthContext";
 import type { Customer, CustomerCategory } from "@/types";
+import { ReceivePaymentModal } from "@/components/finance/ReceivePaymentModal";
 import {
   BulkDeleteModal,
   SingleDeleteModal,
@@ -57,6 +59,8 @@ export default function CustomersDirectoryPage() {
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [receiveCashCustomerId, setReceiveCashCustomerId] = useState<string>("");
+  const [isReceiveCashOpen, setIsReceiveCashOpen] = useState<boolean>(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -595,7 +599,20 @@ export default function CustomersDirectoryPage() {
               )}
 
               {/* Contact and Direct Action Buttons */}
-              <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                {canViewFinance && c.currentOutstandingBalance > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReceiveCashCustomerId(c.id);
+                      setIsReceiveCashOpen(true);
+                    }}
+                    className="min-h-[40px] px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-soft btn-interactive shrink-0"
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span>Receive Cash</span>
+                  </button>
+                )}
                 <a
                   href={`tel:${c.phone}`}
                   className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 btn-interactive shrink-0"
@@ -716,6 +733,19 @@ export default function CustomersDirectoryPage() {
                   )}
                   <td className="py-3.5 px-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {canViewFinance && c.currentOutstandingBalance > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceiveCashCustomerId(c.id);
+                            setIsReceiveCashOpen(true);
+                          }}
+                          className="min-h-[36px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs btn-interactive inline-flex items-center gap-1 shadow-sm"
+                        >
+                          <Wallet className="w-3.5 h-3.5" />
+                          <span>Receive Cash</span>
+                        </button>
+                      )}
                       <Link
                         href={`/customers/detail?id=${encodeURIComponent(c.id)}&name=${encodeURIComponent(c.name)}`}
                         className="min-h-[36px] px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 text-xs btn-interactive inline-flex items-center"
@@ -767,6 +797,20 @@ export default function CustomersDirectoryPage() {
         title="Delete Medical Store"
         onConfirm={handleExecuteSingleDelete}
         isDeleting={isDeleting}
+      />
+
+      <ReceivePaymentModal
+        isOpen={isReceiveCashOpen}
+        onClose={() => setIsReceiveCashOpen(false)}
+        initialCustomerId={receiveCashCustomerId}
+        onSuccess={(pay) => {
+          refreshCustomers();
+          setNotice({
+            type: "success",
+            text: `Cash Received: ${formatPKR(pay.amount)} from ${pay.customerName} recorded in Khata!`,
+          });
+          setTimeout(() => setNotice(null), 4000);
+        }}
       />
     </div>
   );

@@ -14,12 +14,14 @@ import {
   Copy,
   ExternalLink,
   CheckCircle2,
+  Wallet,
 } from "lucide-react";
 import { formatPKR, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Invoice, Customer } from "@/types";
 import { openWhatsAppShare } from "@/lib/whatsapp/share";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
+import { ReceivePaymentModal } from "@/components/finance/ReceivePaymentModal";
 import {
   isRecordInDateRange,
   createDefaultDateFilter,
@@ -32,17 +34,20 @@ export default function CreditManagementPage() {
   const [mfrPayables, setMfrPayables] = useState<number>(0);
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
+  const [receivingInvoice, setReceivingInvoice] = useState<Invoice | null>(null);
+  const [isReceiveCashOpen, setIsReceiveCashOpen] = useState<boolean>(false);
+
+  const loadCreditData = async () => {
+    const [invList, mfrList] = await Promise.all([
+      offlineDb.invoices.toArray(),
+      offlineDb.manufacturers.toArray(),
+    ]);
+    setInvoices(invList);
+    const totalMfr = (mfrList || []).reduce((sum: number, m: any) => sum + (m.payableBalance || 0), 0);
+    setMfrPayables(totalMfr);
+  };
 
   useEffect(() => {
-    async function loadCreditData() {
-      const [invList, mfrList] = await Promise.all([
-        offlineDb.invoices.toArray(),
-        offlineDb.manufacturers.toArray(),
-      ]);
-      setInvoices(invList);
-      const totalMfr = (mfrList || []).reduce((sum: number, m: any) => sum + (m.payableBalance || 0), 0);
-      setMfrPayables(totalMfr);
-    }
     loadCreditData();
     const handleCloudSynced = () => {
       loadCreditData();
@@ -117,7 +122,7 @@ export default function CreditManagementPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
           <Link
             href="/"
@@ -134,6 +139,17 @@ export default function CreditManagementPage() {
             Clear view of what we owe companies, and what pharmacies and distributors owe us.
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setReceivingInvoice(null);
+            setIsReceiveCashOpen(true);
+          }}
+          className="px-4 py-2.5 min-h-[42px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 btn-interactive self-stretch sm:self-auto"
+        >
+          <Wallet className="w-4 h-4" /> + Receive Cash (ادھار وصولی)
+        </button>
       </div>
 
       <DateRangeFilterBar
@@ -293,10 +309,22 @@ export default function CreditManagementPage() {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReceivingInvoice(inv);
+                      setIsReceiveCashOpen(true);
+                    }}
+                    className="min-h-[40px] flex-1 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-soft btn-interactive"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    <span>Receive Cash</span>
+                  </button>
+
                   <button
                     onClick={() => handleCopyMessage(inv)}
-                    className="min-h-[40px] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 btn-interactive shrink-0"
+                    className="min-h-[40px] px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 btn-interactive shrink-0"
                     title="Copy reminder text"
                   >
                     {copiedInvoiceId === inv.id ? (
@@ -314,10 +342,10 @@ export default function CreditManagementPage() {
 
                   <button
                     onClick={() => handleOpenWhatsApp(inv)}
-                    className="min-h-[40px] flex-1 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-soft shadow-emerald-600/20 btn-interactive"
+                    className="min-h-[40px] flex-1 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-soft shadow-emerald-600/20 btn-interactive"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>Send WhatsApp Reminder</span>
+                    <span>WhatsApp</span>
                   </button>
                 </div>
               </div>
@@ -359,6 +387,18 @@ export default function CreditManagementPage() {
                     <td className="py-3.5 px-3 text-right">
                       <div className="inline-flex items-center justify-end gap-2">
                         <button
+                          type="button"
+                          onClick={() => {
+                            setReceivingInvoice(inv);
+                            setIsReceiveCashOpen(true);
+                          }}
+                          className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs btn-interactive shadow-sm"
+                        >
+                          <Wallet className="w-3.5 h-3.5" />
+                          Receive Cash
+                        </button>
+
+                        <button
                           onClick={() => handleCopyMessage(inv)}
                           title="Copy message text"
                           className="min-h-[36px] min-w-[36px] p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 btn-interactive inline-flex items-center justify-center"
@@ -392,6 +432,18 @@ export default function CreditManagementPage() {
           </table>
         </div>
       </div>
+
+      <ReceivePaymentModal
+        isOpen={isReceiveCashOpen}
+        onClose={() => {
+          setIsReceiveCashOpen(false);
+          setReceivingInvoice(null);
+        }}
+        initialInvoice={receivingInvoice}
+        onSuccess={() => {
+          loadCreditData();
+        }}
+      />
     </div>
   );
 }

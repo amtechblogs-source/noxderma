@@ -13,12 +13,14 @@ import {
   Share2,
   ArrowRight,
   Receipt,
+  Wallet,
 } from "lucide-react";
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import type { Customer, Invoice, Payment } from "@/types";
 import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
+import { ReceivePaymentModal } from "@/components/finance/ReceivePaymentModal";
 import {
   DateFilterState,
   createDefaultDateFilter,
@@ -34,6 +36,8 @@ export default function CustomerLedgersPage() {
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isReceiveCashOpen, setIsReceiveCashOpen] = useState(false);
+  const [modalCustomerId, setModalCustomerId] = useState<string>("all");
 
   const loadData = async () => {
     try {
@@ -200,6 +204,16 @@ export default function CustomerLedgersPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              setModalCustomerId(selectedCustomerId);
+              setIsReceiveCashOpen(true);
+            }}
+            className="flex-1 sm:flex-none justify-center px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all"
+          >
+            <Wallet className="w-4 h-4" /> + Receive Cash (ادھار وصولی)
+          </button>
           <button
             onClick={() => window.print()}
             className="flex-1 sm:flex-none justify-center px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300 transition-colors"
@@ -448,6 +462,15 @@ export default function CustomerLedgersPage() {
           </div>
         </div>
       </div>
+
+      <ReceivePaymentModal
+        isOpen={isReceiveCashOpen}
+        onClose={() => setIsReceiveCashOpen(false)}
+        initialCustomerId={modalCustomerId}
+        onSuccess={() => {
+          loadData();
+        }}
+      />
     </div>
   );
 }
