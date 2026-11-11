@@ -142,9 +142,9 @@ export default function CustomerLedgersPage() {
     return matchesCustomer && matchesSearch && matchesDate;
   });
 
-  // Calculate Running Balance (Baqaya) per customer so balances never cross-contaminate
+  // Calculate Running Balance (Baqaya) per customer chronologically, then reverse so newest entries appear at the TOP
   const customerRunningMap: Record<string, number> = {};
-  const computedLedger = filteredEntries.map((e) => {
+  const computedAsc = filteredEntries.map((e) => {
     const prev = customerRunningMap[e.customerId] || 0;
     const next = prev + (e.debit - e.credit);
     customerRunningMap[e.customerId] = next;
@@ -153,6 +153,7 @@ export default function CustomerLedgersPage() {
       runningBalance: next,
     };
   });
+  const computedLedger = [...computedAsc].reverse();
 
   const selectedCustomerObj =
     selectedCustomerId === "all" ? null : customers.find((c) => c.id === selectedCustomerId);
@@ -169,8 +170,21 @@ export default function CustomerLedgersPage() {
 
   const totalReceivables =
     selectedCustomerId === "all"
-      ? customers.reduce((sum, c) => sum + (c.currentOutstandingBalance || 0), 0)
+      ? customers.reduce((sum, c) => sum + Math.max(0, c.currentOutstandingBalance || 0), 0)
       : selectedCustomerObj?.currentOutstandingBalance || 0;
+
+  const totalCustomerAdvance =
+    selectedCustomerId === "all"
+      ? customers.reduce(
+          (sum, c) =>
+            (c.currentOutstandingBalance || 0) < 0
+              ? sum + Math.abs(c.currentOutstandingBalance || 0)
+              : sum,
+          0
+        )
+      : (selectedCustomerObj?.currentOutstandingBalance || 0) < 0
+      ? Math.abs(selectedCustomerObj?.currentOutstandingBalance || 0)
+      : 0;
 
   const totalBillsAmount = filteredEntries
     .filter((e) => e.debit > 0)
@@ -233,13 +247,29 @@ export default function CustomerLedgersPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3 print:gap-2">
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
           <span className="text-[11px] font-bold text-slate-400 print:text-slate-600 uppercase tracking-wider block mb-1">
-            Total Money to Receive (Market Udhaar)
+            {totalReceivables < 0
+              ? "Customer Advance Balance (ایڈوانس جمع)"
+              : "Total Money to Receive (Market Udhaar)"}
           </span>
-          <span className="text-2xl print:text-lg font-black font-mono text-slate-900 dark:text-slate-100 print:text-black">
-            {formatPKR(totalReceivables)}
+          <span
+            className={`text-2xl print:text-lg font-black font-mono ${
+              totalReceivables < 0
+                ? "text-sky-600 dark:text-sky-400"
+                : "text-slate-900 dark:text-slate-100"
+            } print:text-black`}
+          >
+            {totalReceivables < 0
+              ? `Adv ${formatPKR(Math.abs(totalReceivables))}`
+              : formatPKR(totalReceivables)}
           </span>
           <span className="text-[10px] text-slate-500 block mt-0.5">
-            {selectedCustomerObj ? selectedCustomerObj.name : `From ${customers.length} Customers`}
+            {selectedCustomerObj
+              ? selectedCustomerObj.name
+              : `From ${customers.length} Customers${
+                  totalCustomerAdvance > 0
+                    ? ` • Total Advance: Adv ${formatPKR(totalCustomerAdvance)}`
+                    : ""
+                }`}
           </span>
         </div>
 
@@ -331,7 +361,7 @@ export default function CustomerLedgersPage() {
                         {row.customerName}
                       </Link>
                       <span className="font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400">
-                        {row.referenceNumber} • {row.date}
+                        {row.referenceNumber} • {formatKarachiDate(row.date)}
                       </span>
                     </div>
                     <div className="text-right shrink-0">
@@ -396,7 +426,7 @@ export default function CustomerLedgersPage() {
                     key={row.id}
                     className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors print:border-b print:border-slate-200"
                   >
-                    <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{row.date}</td>
+                    <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{formatKarachiDate(row.date)}</td>
                     <td className="p-2.5 print:p-1.5 font-mono font-bold text-teal-600 dark:text-teal-400 print:text-black print:border-r print:border-slate-200">
                       {row.referenceNumber}
                     </td>

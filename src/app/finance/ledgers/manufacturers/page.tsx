@@ -109,9 +109,13 @@ export default function ManufacturerLedgersPage() {
           createdAt: po.createdAt || po.orderDate,
         }));
 
-      const combined = [...poEntries, ...manualEntries].sort((a, b) =>
-        String(a.date || "").localeCompare(String(b.date || ""))
-      );
+      const combined = [...poEntries, ...manualEntries].sort((a, b) => {
+        const cmpDate = String(a.date || "").localeCompare(String(b.date || ""));
+        if (cmpDate !== 0) return cmpDate;
+        const cmpCreated = String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+        if (cmpCreated !== 0) return cmpCreated;
+        return b.credit - a.credit;
+      });
       setEntries(combined);
     } catch (err) {
       console.warn("Could not load manufacturer ledger:", err);
@@ -196,9 +200,9 @@ export default function ManufacturerLedgersPage() {
     return matchesMfr && matchesSearch && matchesDate;
   });
 
-  // Calculate Running Balance per manufacturer
+  // Calculate Running Balance per manufacturer chronologically, then reverse so newest entries appear at the TOP
   const mfrRunningMap: Record<string, number> = {};
-  const computedList = filtered.map((e) => {
+  const computedAsc = filtered.map((e) => {
     const prev = mfrRunningMap[e.manufacturerId] || 0;
     const next = prev + (e.credit - e.debit);
     mfrRunningMap[e.manufacturerId] = next;
@@ -207,6 +211,7 @@ export default function ManufacturerLedgersPage() {
       runningBalance: next,
     };
   });
+  const computedList = [...computedAsc].reverse();
 
   const totalPayable = entries.reduce((sum, e) => sum + (e.credit - e.debit), 0);
 
@@ -366,7 +371,7 @@ export default function ManufacturerLedgersPage() {
                       {entry.manufacturerName}
                     </p>
                     <p className="font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400">
-                      {entry.referenceNumber} • {entry.date}
+                      {entry.referenceNumber} • {formatKarachiDate(entry.date)}
                     </p>
                   </div>
                   <div className="text-right">
@@ -424,7 +429,7 @@ export default function ManufacturerLedgersPage() {
                   key={entry.id}
                   className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors print:border-b print:border-slate-200"
                 >
-                  <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{entry.date}</td>
+                  <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{formatKarachiDate(entry.date)}</td>
                   <td className="p-2.5 print:p-1.5 font-mono font-bold text-teal-600 dark:text-teal-400 print:text-black print:border-r print:border-slate-200">
                     {entry.referenceNumber}
                   </td>

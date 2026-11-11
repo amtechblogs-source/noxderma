@@ -316,7 +316,9 @@ function CustomerDetailContent() {
       let remainingToAllocate = payAmount;
       const allocations: Payment["allocations"] = [];
 
-      const unpaidInvoices = [...invoices].filter((i) => i.outstandingBalance > 0);
+      const unpaidInvoices = [...invoices]
+        .filter((i) => i.outstandingBalance > 0)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       for (const inv of unpaidInvoices) {
         if (remainingToAllocate <= 0) break;
         const allocationForThis = Math.min(inv.outstandingBalance, remainingToAllocate);
@@ -359,8 +361,8 @@ function CustomerDetailContent() {
 
       await offlineDb.payments.put(paymentRecord);
 
-      // Update customer outstanding balance
-      const newBalance = Math.max(0, customer.currentOutstandingBalance - payAmount);
+      // Update customer outstanding balance (negative balance = Advance Credit / ایڈوانس جمع)
+      const newBalance = (customer.currentOutstandingBalance || 0) - payAmount;
       await offlineDb.customers.update(customer.id, {
         currentOutstandingBalance: newBalance,
         updatedAt: now,
@@ -392,14 +394,14 @@ function CustomerDetailContent() {
 
   const creditUtilization =
     customer && customer.creditLimit > 0
-      ? Math.round((customer.currentOutstandingBalance / customer.creditLimit) * 100)
+      ? Math.max(0, Math.round((customer.currentOutstandingBalance / customer.creditLimit) * 100))
       : 0;
 
   const isOverLimit = customer
     ? customer.currentOutstandingBalance > customer.creditLimit
     : false;
 
-  // Build clean ledger entries by merging Invoices & Payments chronologically
+  // Build clean ledger entries by merging Invoices & Payments chronologically (oldest-first for running balance)
   const ledgerEntries = useMemo(() => {
     return [
       ...invoices.map((i) => ({
@@ -422,19 +424,20 @@ function CustomerDetailContent() {
         credit: p.amount,
         timestamp: new Date(p.createdAt).getTime(),
       })),
-    ].sort((a, b) => a.timestamp - b.timestamp);
+    ].sort((a, b) => a.timestamp - b.timestamp || b.debit - a.debit);
   }, [invoices, payments]);
 
-  // Compute running balance
+  // Compute running balance chronologically, then reverse so recent entries appear at the TOP
   const computedLedger = useMemo(() => {
     let currentRunBal = 0;
-    return ledgerEntries.map((e) => {
+    const asc = ledgerEntries.map((e) => {
       currentRunBal += e.debit - e.credit;
       return {
         ...e,
         runningBalance: currentRunBal,
       };
     });
+    return asc.reverse();
   }, [ledgerEntries]);
 
   // Filtered lists based on dateFilter (All hooks defined at top level to obey Rules of Hooks)
@@ -561,17 +564,27 @@ function CustomerDetailContent() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3 print:gap-2">
           <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm print:border-slate-300 print:bg-slate-50 print:p-2.5 print:shadow-none">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 print:text-slate-600">
-              Total Udhaar (Baqaya)
+              {customer.currentOutstandingBalance < 0
+                ? "Advance Balance (ایڈوانس جمع)"
+                : "Total Udhaar (Baqaya)"}
             </span>
             <span
               className={`text-2xl font-black font-mono ${
-                isOverLimit ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-slate-100"
+                customer.currentOutstandingBalance < 0
+                  ? "text-sky-600 dark:text-sky-400"
+                  : isOverLimit
+                  ? "text-rose-600 dark:text-rose-400"
+                  : "text-slate-900 dark:text-slate-100"
               } print:text-black`}
             >
-              {formatPKR(customer.currentOutstandingBalance)}
+              {customer.currentOutstandingBalance < 0
+                ? `Adv ${formatPKR(Math.abs(customer.currentOutstandingBalance))}`
+                : formatPKR(customer.currentOutstandingBalance)}
             </span>
             <span className="text-[10px] text-slate-500 block mt-0.5">
-              Allowed Days: {customer.creditTermsDays} Days
+              {customer.currentOutstandingBalance < 0
+                ? "Credit available for next bills"
+                : `Allowed Days: ${customer.creditTermsDays} Days`}
             </span>
           </div>
 
@@ -768,10 +781,10 @@ function CustomerDetailContent() {
                         {inv.provisionalReference || inv.id}
                       </td>
                       <td className="p-2.5 text-slate-600 dark:text-slate-400">
-                        {inv.invoiceDate || inv.createdAt.slice(0, 10)}
+                        {formatKarachiDate(inv.invoiceDate || inv.createdAt)}
                       </td>
                       <td className="p-2.5 text-slate-600 dark:text-slate-400">
-                        {inv.dueDate || "30 Days"}
+                        {inv.dueDate ? formatKarachiDate(inv.dueDate) : "30 Days"}
                       </td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                         {formatPKR(inv.netTotal)}
@@ -946,7 +959,7 @@ function CustomerDetailContent() {
                     key={row.id}
                     className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors print:border-b print:border-slate-200"
                   >
-                    <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{row.date}</td>
+                    <td className="p-2.5 print:p-1.5 font-mono text-slate-500 print:text-slate-700 print:border-r print:border-slate-200">{formatKarachiDate(row.date)}</td>
                     <td className="p-2.5 print:p-1.5 font-mono font-bold text-teal-600 dark:text-teal-400 print:text-black print:border-r print:border-slate-200">
                       {row.reference}
                     </td>

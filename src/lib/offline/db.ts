@@ -167,6 +167,65 @@ export class NoxdermaDexieDB extends Dexie {
       manufacturerLedger: "id, manufacturerId, date, referenceType, referenceNumber",
       payments: "id, customerId, paymentDate, referenceNumber, syncStatus",
     });
+
+    this.attachNewestFirstDefaultSort();
+  }
+
+  /**
+   * Ensures all user-facing tables return newest/recent entries first (top of list)
+   * when `.toArray()` is called across any module in the application.
+   */
+  private attachNewestFirstDefaultSort() {
+    const extractRecordSortTime = (rec: any): number => {
+      if (!rec || typeof rec !== "object") return 0;
+      const dateCandidate =
+        rec.createdAt ||
+        rec.timestamp ||
+        rec.capturedAt ||
+        rec.disbursedAt ||
+        rec.invoiceDate ||
+        rec.paymentDate ||
+        rec.orderDate ||
+        rec.bookingDate ||
+        rec.returnDate ||
+        rec.visitDate ||
+        rec.date ||
+        rec.updatedAt ||
+        rec.startDate;
+
+      if (typeof dateCandidate === "number" && Number.isFinite(dateCandidate)) {
+        return dateCandidate;
+      }
+      if (typeof dateCandidate === "string" && dateCandidate.trim()) {
+        const parsed = Date.parse(dateCandidate);
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+
+      // Fallback: extract embedded epoch timestamp from IDs like "po_1794023837218" or "cust_1794..."
+      const idStr = String(rec.id || rec.productId || "");
+      const match = idStr.match(/(\d{10,15})/);
+      if (match) {
+        return Number(match[1]) || 0;
+      }
+      return 0;
+    };
+
+    const skipTables = new Set(["categories", "outboxQueue", "settings"]);
+
+    for (const table of this.tables) {
+      if (skipTables.has(table.name)) continue;
+      const origToArray = table.toArray.bind(table);
+      table.toArray = (async (...args: any[]) => {
+        const rows = await (origToArray as any)(...args);
+        if (!Array.isArray(rows) || rows.length <= 1) return rows;
+        return [...rows].sort((a, b) => {
+          const tB = extractRecordSortTime(b);
+          const tA = extractRecordSortTime(a);
+          if (tB !== tA) return tB - tA;
+          return String(b?.id || "").localeCompare(String(a?.id || ""));
+        });
+      }) as any;
+    }
   }
 }
 

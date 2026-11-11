@@ -542,8 +542,22 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
       : invoiceDiscount;
   const totalDiscount = totalLineDiscount + effectiveInvoiceDiscount;
   const netTotal = Math.max(0, subtotal - totalLineDiscount - effectiveInvoiceDiscount + deliveryCharge);
-  const effectivePaid = paymentMethod === "credit" ? paidAmount : netTotal;
+
+  const selectedCustomerObj = customers.find((c) => c.id === selectedCustomerId);
+  const existingCustomerAdvance =
+    !originalInvoice && selectedCustomerObj && (selectedCustomerObj.currentOutstandingBalance || 0) < 0
+      ? Math.abs(selectedCustomerObj.currentOutstandingBalance || 0)
+      : 0;
+
+  // Cash collected right now from customer (can exceed netTotal if customer gives extra as Advance)
+  const cashCollectedNow = paymentMethod === "credit" ? paidAmount : netTotal;
+  const advanceAppliedToBill = Math.min(
+    existingCustomerAdvance,
+    Math.max(0, netTotal - cashCollectedNow)
+  );
+  const effectivePaid = Math.min(netTotal, cashCollectedNow + advanceAppliedToBill);
   const outstandingBalance = Math.max(0, netTotal - effectivePaid);
+  const newAdvanceFromOverpayment = Math.max(0, cashCollectedNow - netTotal);
 
   // Submit invoice
   const handleCreateInvoice = async (e: React.FormEvent) => {
@@ -922,11 +936,12 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
             }
           }
 
-          // 3. Update customer outstanding balance if selected existing customer
-          if (selectedCustomerId && outstandingBalance > 0) {
+          // 3. Update customer outstanding balance if selected existing customer (handles Udhaar & Advance credit)
+          if (selectedCustomerId) {
             const custRecord = await offlineDb.customers.get(selectedCustomerId);
             if (custRecord) {
-              const updatedBal = (custRecord.currentOutstandingBalance || 0) + outstandingBalance;
+              const balanceDelta = netTotal - cashCollectedNow;
+              const updatedBal = (custRecord.currentOutstandingBalance || 0) + balanceDelta;
               await offlineDb.customers.update(selectedCustomerId, {
                 currentOutstandingBalance: updatedBal,
                 updatedAt: now.toISOString(),
@@ -935,13 +950,15 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
           }
 
           // 4. Record payment receipt if cash / bank transfer was collected immediately
-          if (effectivePaid > 0) {
+          if (cashCollectedNow > 0) {
             const payMethodMapped = paymentMethod === "credit" ? "cash" : paymentMethod;
+            const allocatedToThisBill = Math.min(netTotal, cashCollectedNow);
+            const unallocatedAdv = Math.max(0, cashCollectedNow - netTotal);
             await offlineDb.payments.add({
               id: `pay_${Date.now()}`,
               customerId: selectedCustomerId || "cust_guest",
               customerName: finalCustomerName,
-              amount: effectivePaid,
+              amount: cashCollectedNow,
               paymentDate: now.toISOString().slice(0, 10),
               paymentMethod: payMethodMapped,
               referenceNumber: provisionalRef,
@@ -949,12 +966,15 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                 {
                   invoiceId: invoiceId,
                   invoiceReference: provisionalRef,
-                  amountAllocated: effectivePaid,
+                  amountAllocated: allocatedToThisBill,
                 },
               ],
-              unallocatedAmount: 0,
+              unallocatedAmount: unallocatedAdv,
               recordedByUserId: currentUserId,
-              notes: `Immediate collection at invoice issuance (${paymentMethod})`,
+              notes:
+                unallocatedAdv > 0
+                  ? `Immediate collection at invoice issuance (${paymentMethod}) — includes Adv ${formatPKR(unallocatedAdv)}`
+                  : `Immediate collection at invoice issuance (${paymentMethod})`,
               syncStatus: "local_only",
               createdAt: now.toISOString(),
             });
@@ -1382,12 +1402,42 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} {c.phone ? `(${c.phone})` : ""}
+                      {(c.currentOutstandingBalance || 0) < 0
+                        ? ` — Adv ${formatPKR(Math.abs(c.currentOutstandingBalance || 0))}`
+                        : (c.currentOutstandingBalance || 0) > 0
+                        ? ` — Baqaya: ${formatPKR(c.currentOutstandingBalance || 0)}`
+                        : ""}
                     </option>
                   ))}
                 </select>
               </div>
             )}
           </div>
+
+          {selectedCustomerObj && (selectedCustomerObj.currentOutstandingBalance || 0) !== 0 && (
+            <div
+              className={`p-3 rounded-xl border text-xs font-bold flex flex-wrap items-center justify-between gap-2 ${
+                (selectedCustomerObj.currentOutstandingBalance || 0) < 0
+                  ? "bg-sky-50 dark:bg-sky-950/50 border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200"
+                  : "bg-rose-50/70 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-200"
+              }`}
+            >
+              <span>
+                {(selectedCustomerObj.currentOutstandingBalance || 0) < 0
+                  ? `✨ Customer Advance Available (ایڈوانس جمع ہے): Adv ${formatPKR(
+                      Math.abs(selectedCustomerObj.currentOutstandingBalance || 0)
+                    )}`
+                  : `Previous Market Udhaar (پچھلا بقایا): ${formatPKR(
+                      selectedCustomerObj.currentOutstandingBalance || 0
+                    )}`}
+              </span>
+              {(selectedCustomerObj.currentOutstandingBalance || 0) < 0 && advanceAppliedToBill > 0 && (
+                <span className="px-2 py-0.5 rounded-md bg-sky-600 text-white font-mono text-[11px]">
+                  Auto-Adjusted on this Bill: -{formatPKR(advanceAppliedToBill)}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
@@ -1914,10 +1964,22 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
               <span>Net Bill Total:</span>
               <span className="font-mono">{formatPKR(netTotal)}</span>
             </div>
+            {advanceAppliedToBill > 0 && (
+              <div className="flex justify-between text-sm font-bold text-sky-600 dark:text-sky-400">
+                <span>Adjusted from Previous Advance (ایڈوانس):</span>
+                <span className="font-mono">-{formatPKR(advanceAppliedToBill)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm font-bold text-emerald-600">
-              <span>Paid Right Now:</span>
-              <span className="font-mono">{formatPKR(effectivePaid)}</span>
+              <span>Cash Paid Right Now:</span>
+              <span className="font-mono">{formatPKR(cashCollectedNow)}</span>
             </div>
+            {newAdvanceFromOverpayment > 0 && (
+              <div className="flex justify-between text-sm font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50 p-2 rounded-lg border border-sky-200 dark:border-sky-800">
+                <span>Extra Cash Saved as Advance (ایڈوانس جمع):</span>
+                <span className="font-mono">Adv {formatPKR(newAdvanceFromOverpayment)}</span>
+              </div>
+            )}
             {outstandingBalance > 0 && (
               <div className="flex justify-between text-sm font-bold text-rose-600">
                 <span>Remaining Market Udhaar (Baqaya):</span>

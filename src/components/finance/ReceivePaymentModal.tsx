@@ -36,6 +36,7 @@ export function ReceivePaymentModal({
   const { currentUser } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("fifo");
   const [amountStr, setAmountStr] = useState<string>("");
@@ -57,12 +58,14 @@ export function ReceivePaymentModal({
     setNotes("");
 
     async function loadModalData() {
-      const [custList, invList] = await Promise.all([
+      const [custList, invList, payList] = await Promise.all([
         offlineDb.customers.toArray(),
         offlineDb.invoices.toArray(),
+        offlineDb.payments.toArray(),
       ]);
       setCustomers(custList || []);
       setInvoices(invList || []);
+      setPayments(payList || []);
 
       if (initialInvoice) {
         setSelectedCustomerId(initialInvoice.customerId);
@@ -139,10 +142,37 @@ export function ReceivePaymentModal({
     [customerUnpaidInvoices]
   );
 
-  const currentCustomerUdhaar = Math.max(
-    totalUnpaidFromBills,
-    selectedCustomer?.currentOutstandingBalance || 0
-  );
+  // Compute true net balance for any customer (positive = Udhaar owed, negative = Advance credit)
+  const getCustomerNetBalance = (c: Customer | null): number => {
+    if (!c) return totalUnpaidFromBills;
+    const cInvoices = invoices.filter(
+      (i) =>
+        (i.customerId === c.id ||
+          i.customerName?.trim().toLowerCase() === c.name.trim().toLowerCase()) &&
+        (i as any).status !== "cancelled"
+    );
+    const cPayments = payments.filter(
+      (p) =>
+        p.customerId === c.id ||
+        p.customerName?.trim().toLowerCase() === c.name.trim().toLowerCase()
+    );
+    if (cInvoices.length > 0 || cPayments.length > 0) {
+      const totalDebit = cInvoices.reduce((s, i) => s + (Number(i.netTotal) || 0), 0);
+      const totalCredit = cPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const ledgerNet = totalDebit - totalCredit;
+      const unpaidSum = cInvoices.reduce(
+        (s, i) => s + Math.max(0, Number(i.outstandingBalance) || 0),
+        0
+      );
+      if (ledgerNet < 0) return ledgerNet;
+      return Math.max(unpaidSum, ledgerNet);
+    }
+    return Number(c.currentOutstandingBalance) || 0;
+  };
+
+  const currentCustomerUdhaar = selectedCustomer
+    ? getCustomerNetBalance(selectedCustomer)
+    : totalUnpaidFromBills;
 
   const selectedSpecificInvoice = useMemo(
     () =>
@@ -153,7 +183,10 @@ export function ReceivePaymentModal({
   );
 
   const numericAmount = Math.max(0, Number(amountStr) || 0);
-  const remainingUdhaarAfter = Math.max(0, currentCustomerUdhaar - numericAmount);
+  // Can be negative when customer pays more than their Udhaar (Advance Credit / ایڈوانس)
+  const balanceAfterPayment = currentCustomerUdhaar - numericAmount;
+  const remainingUdhaarAfter = Math.max(0, balanceAfterPayment);
+  const advanceAfterPayment = balanceAfterPayment < 0 ? Math.abs(balanceAfterPayment) : 0;
 
   const handleCustomerChange = (newCustId: string) => {
     setSelectedCustomerId(newCustId);
@@ -275,26 +308,9 @@ export function ReceivePaymentModal({
 
       await offlineDb.payments.put(paymentRecord);
 
-      // Update customer's currentOutstandingBalance accurately
+      // Update customer's currentOutstandingBalance accurately (negative = Advance Credit)
       if (selectedCustomer) {
-        const updatedInvoices = await offlineDb.invoices.toArray();
-        const recalculatedDebt = updatedInvoices
-          .filter(
-            (i) =>
-              (i.customerId === selectedCustomer.id ||
-                i.customerName?.trim().toLowerCase() ===
-                  selectedCustomer.name.trim().toLowerCase()) &&
-              (i as any).status !== "cancelled" &&
-              (i.outstandingBalance || 0) > 0
-          )
-          .reduce((sum, i) => sum + (i.outstandingBalance || 0), 0);
-
-        const fallbackDebt = Math.max(
-          0,
-          (selectedCustomer.currentOutstandingBalance || 0) - numericAmount
-        );
-        const finalCustomerBalance =
-          customerUnpaidInvoices.length > 0 ? recalculatedDebt : fallbackDebt;
+        const finalCustomerBalance = currentCustomerUdhaar - numericAmount;
 
         await offlineDb.customers.update(selectedCustomer.id, {
           currentOutstandingBalance: finalCustomerBalance,
@@ -314,7 +330,11 @@ export function ReceivePaymentModal({
         details: `Received ${formatPKR(numericAmount)} (${paymentMethod.replace(
           /_/g,
           " "
-        )}) from ${custName}. Remaining Udhaar: ${formatPKR(remainingUdhaarAfter)}.`,
+        )}) from ${custName}. ${
+          balanceAfterPayment < 0
+            ? `Advance Credit: Adv ${formatPKR(Math.abs(balanceAfterPayment))}`
+            : `Remaining Udhaar: ${formatPKR(remainingUdhaarAfter)}`
+        }.`,
         snapshotAfter: paymentRecord,
         canUndo: true,
       }).catch(() => {});
@@ -376,18 +396,13 @@ export function ReceivePaymentModal({
             >
               <option value="">-- Select Customer --</option>
               {customers.map((c) => {
-                const custDebt = invoices
-                  .filter(
-                    (i) =>
-                      i.customerId === c.id &&
-                      (i as any).status !== "cancelled" &&
-                      (i.outstandingBalance || 0) > 0
-                  )
-                  .reduce((sum, i) => sum + (i.outstandingBalance || 0), 0);
-                const displayDebt = Math.max(custDebt, c.currentOutstandingBalance || 0);
+                const displayNet = getCustomerNetBalance(c);
                 return (
                   <option key={c.id} value={c.id}>
-                    {c.name} {c.city ? `(${c.city})` : ""} — Baqaya: {formatPKR(displayDebt)}
+                    {c.name} {c.city ? `(${c.city})` : ""} —{" "}
+                    {displayNet < 0
+                      ? `Advance: Adv ${formatPKR(Math.abs(displayNet))}`
+                      : `Baqaya: ${formatPKR(displayNet)}`}
                   </option>
                 );
               })}
@@ -422,14 +437,22 @@ export function ReceivePaymentModal({
             </div>
           )}
 
-          {/* Summary Bar: Current Udhaar vs Receiving vs Remaining */}
+          {/* Summary Bar: Current Udhaar vs Receiving vs Remaining / Advance */}
           <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 text-center">
             <div>
               <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                Total Baqaya Udhaar
+                {currentCustomerUdhaar < 0 ? "Current Advance" : "Total Baqaya Udhaar"}
               </span>
-              <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm">
-                {formatPKR(currentCustomerUdhaar)}
+              <span
+                className={`font-mono font-black text-xs sm:text-sm ${
+                  currentCustomerUdhaar < 0
+                    ? "text-sky-600 dark:text-sky-400"
+                    : "text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {currentCustomerUdhaar < 0
+                  ? `Adv ${formatPKR(Math.abs(currentCustomerUdhaar))}`
+                  : formatPKR(currentCustomerUdhaar)}
               </span>
             </div>
             <div className="border-x border-slate-200 dark:border-slate-700 px-1">
@@ -441,14 +464,37 @@ export function ReceivePaymentModal({
               </span>
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                Remaining Baqaya
+              <span
+                className={`text-[10px] font-bold uppercase block ${
+                  advanceAfterPayment > 0
+                    ? "text-sky-600 dark:text-sky-400"
+                    : "text-slate-400"
+                }`}
+              >
+                {advanceAfterPayment > 0 ? "Advance (ایڈوانس جمع)" : "Remaining Baqaya"}
               </span>
-              <span className="font-mono font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
-                {formatPKR(remainingUdhaarAfter)}
+              <span
+                className={`font-mono font-black text-xs sm:text-sm ${
+                  advanceAfterPayment > 0
+                    ? "text-sky-600 dark:text-sky-400"
+                    : "text-slate-900 dark:text-slate-100"
+                }`}
+              >
+                {advanceAfterPayment > 0
+                  ? `Adv ${formatPKR(advanceAfterPayment)}`
+                  : formatPKR(remainingUdhaarAfter)}
               </span>
             </div>
           </div>
+
+          {advanceAfterPayment > 0 && (
+            <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800/70 text-sky-800 dark:text-sky-200 text-xs font-semibold flex items-center justify-between gap-2">
+              <span>
+                ✨ Extra <strong className="font-mono">{formatPKR(advanceAfterPayment)}</strong>{" "}
+                customer ke Khata mein <strong>Advance (ایڈوانس جمع)</strong> ke tor par save ho jayega!
+              </span>
+            </div>
+          )}
 
           {/* 3. Amount & Quick Fill Buttons */}
           <div>
@@ -590,3 +636,4 @@ export function ReceivePaymentModal({
     </div>
   );
 }
+

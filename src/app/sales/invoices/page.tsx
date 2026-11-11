@@ -24,7 +24,7 @@ import {
   Pencil,
   Wallet,
 } from "lucide-react";
-import { formatPKR, formatNumber } from "@/lib/formatting";
+import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { getProductImageUrl } from "@/features/sales/OfflineInvoiceCreator";
 import type { Invoice, Product, BusinessSettings } from "@/types";
@@ -578,7 +578,8 @@ export default function SalesInvoicesListPage() {
                             {inv.provisionalReference || inv.id}
                           </span>
                           <span className="text-xs text-slate-400">
-                            {inv.invoiceDate || inv.createdAt.slice(0, 10)} &bull; {inv.lines?.length || 1} item(s)
+                            {formatKarachiDate(inv.invoiceDate || inv.createdAt)} &bull; {inv.lines?.length || 1} item(s)
+                            {inv.dueDate && inv.paymentStatus !== "paid" ? ` • Due: ${formatKarachiDate(inv.dueDate)}` : ""}
                           </span>
                         </div>
                       </div>
@@ -776,8 +777,12 @@ export default function SalesInvoicesListPage() {
                           <span className="text-xs text-slate-400">{inv.customerPhone}</span>
                         </td>
                         <td className="p-3 text-slate-600 dark:text-slate-400">
-                          <div>{inv.invoiceDate || inv.createdAt.slice(0, 10)}</div>
-                          <span className="text-xs text-slate-400">Due: {inv.dueDate || "30 Days"}</span>
+                          <div className="font-medium text-slate-800 dark:text-slate-200">
+                            {formatKarachiDate(inv.invoiceDate || inv.createdAt)}
+                          </div>
+                          <span className="text-xs text-slate-400">
+                            Due: {inv.dueDate ? formatKarachiDate(inv.dueDate) : "30 Days"}
+                          </span>
                         </td>
                         <td className="p-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                           {formatPKR(inv.netTotal)}
@@ -1025,9 +1030,11 @@ export default function SalesInvoicesListPage() {
           <OfficialPrintHeader
             title={selectedInvoice.paymentMethod === "cash" ? "Cash Invoice" : "Sale Invoice"}
             docRef={selectedInvoice.provisionalReference}
-            date={selectedInvoice.invoiceDate?.slice(0, 10)}
+            date={formatKarachiDate(selectedInvoice.invoiceDate || selectedInvoice.createdAt)}
             metaItems={[
-              ...(selectedInvoice.dueDate ? [{ label: "Due Date", value: selectedInvoice.dueDate.slice(0, 10) }] : []),
+              ...(selectedInvoice.dueDate
+                ? [{ label: "Due Date", value: formatKarachiDate(selectedInvoice.dueDate) }]
+                : []),
             ]}
             settings={businessSettings}
             className="pb-5"

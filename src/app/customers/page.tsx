@@ -584,9 +584,19 @@ export default function CustomersDirectoryPage() {
               {canViewFinance && (
                 <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs">
                   <div>
-                    <span className="text-slate-400 block font-medium">Baqaya (Udhaar):</span>
-                    <span className="font-extrabold text-sm sm:text-base text-rose-600 dark:text-rose-400">
-                      {formatPKR(c.currentOutstandingBalance)}
+                    <span className="text-slate-400 block font-medium">
+                      {c.currentOutstandingBalance < 0 ? "Advance (ایڈوانس):" : "Baqaya (Udhaar):"}
+                    </span>
+                    <span
+                      className={`font-extrabold text-sm sm:text-base ${
+                        c.currentOutstandingBalance < 0
+                          ? "text-sky-600 dark:text-sky-400"
+                          : "text-rose-600 dark:text-rose-400"
+                      }`}
+                    >
+                      {c.currentOutstandingBalance < 0
+                        ? `Adv ${formatPKR(Math.abs(c.currentOutstandingBalance))}`
+                        : formatPKR(c.currentOutstandingBalance)}
                     </span>
                   </div>
                   <div className="text-right">
@@ -726,8 +736,16 @@ export default function CustomersDirectoryPage() {
                       <td className="py-3.5 px-3 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
                         {formatPKR(c.creditLimit)}
                       </td>
-                      <td className="py-3.5 px-3 text-right font-mono font-extrabold text-rose-600 dark:text-rose-400">
-                        {formatPKR(c.currentOutstandingBalance)}
+                      <td
+                        className={`py-3.5 px-3 text-right font-mono font-extrabold ${
+                          c.currentOutstandingBalance < 0
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-rose-600 dark:text-rose-400"
+                        }`}
+                      >
+                        {c.currentOutstandingBalance < 0
+                          ? `Adv ${formatPKR(Math.abs(c.currentOutstandingBalance))}`
+                          : formatPKR(c.currentOutstandingBalance)}
                       </td>
                     </>
                   )}
