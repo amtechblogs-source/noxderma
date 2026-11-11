@@ -245,6 +245,18 @@ button:active:not(:disabled) {
   transform: translateY(0);
 }
 
+/* Keep status, role, and category pill badges inside desktop tables on a single intact pill line */
+table td span.rounded-full:not([class*="whitespace-normal"]),
+table td span[class*="rounded-md"][class*="px-"]:not([class*="whitespace-normal"]),
+table td span[class*="rounded-lg"][class*="px-"]:not([class*="whitespace-normal"]),
+table td span[class*="rounded"][class*="uppercase"][class*="px-"]:not([class*="whitespace-normal"]) {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: fit-content;
+}
+
 /* Prevent Tailwind space-y / space-x from adding top/left margin to fixed elements */
 [class*="space-y-"] > .fixed,
 [class*="space-x-"] > .fixed {

@@ -1523,9 +1523,9 @@ export function DashboardView() {
                         <td className="py-2.5 font-medium text-slate-900 dark:text-slate-100">
                           {m.productName}
                         </td>
-                        <td className="py-2.5">
+                        <td className="py-2.5 whitespace-nowrap">
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold ${
                               m.type === "sales_deduction" || m.type === "expiry_write_off"
                                 ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
                                 : m.type === "supplier_return"

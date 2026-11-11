@@ -611,8 +611,8 @@ export default function InventoryOverviewPage() {
                       Code: {item.product.sku} • {item.product.packSize}
                     </span>
                   </td>
-                  <td className="p-2.5">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  <td className="p-2.5 whitespace-nowrap">
+                    <span className="inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                       {item.product.categoryName}
                     </span>
                   </td>
@@ -623,7 +623,7 @@ export default function InventoryOverviewPage() {
                     <div>{formatNumber(item.available)}</div>
                     {item.totalRestoredFromBills > 0 && (
                       <span
-                        className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[10px] font-bold"
+                        className="inline-flex items-center whitespace-nowrap mt-0.5 px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[10px] font-bold"
                         title={item.latestRestoration?.reason || "Restored from deleted bill"}
                       >
                         +{item.totalRestoredFromBills} Restored (Bill Deleted)
@@ -636,17 +636,17 @@ export default function InventoryOverviewPage() {
                   <td className="p-2.5 text-right font-mono text-slate-500">
                     {item.product.reorderThreshold} packs
                   </td>
-                  <td className="p-2.5 text-center">
+                  <td className="p-2.5 text-center whitespace-nowrap">
                     {item.isLow ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300">
+                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300">
                         Low Stock
                       </span>
                     ) : item.available === 0 ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300">
+                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300">
                         Out of Stock (Khatam)
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
                         Plenty in Stock
                       </span>
                     )}

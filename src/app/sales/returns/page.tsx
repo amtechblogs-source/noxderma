@@ -765,9 +765,9 @@ export default function SalesReturnsPage() {
                       ? "Shop Overstock"
                       : ret.returnReason.replace("_", " ")}
                   </td>
-                  <td className="p-2.5">
+                  <td className="p-2.5 whitespace-nowrap">
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold ${
                         ret.disposition === "quarantine_batch"
                           ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                           : ret.disposition === "scrap_writeoff"
@@ -782,7 +782,7 @@ export default function SalesReturnsPage() {
                         : "ADDED BACK TO STOCK"}
                     </span>
                   </td>
-                  <td className="p-2.5 text-right font-mono font-bold">
+                  <td className="p-2.5 text-right font-mono font-bold whitespace-nowrap">
                     {ret.customerResolution === "replacement" ? (
                       <span className="text-teal-600 text-[11px]">
                         Replaced (#{ret.replacementBatchNumber || "FRESH"})
@@ -796,8 +796,8 @@ export default function SalesReturnsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-2.5 text-center">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  <td className="p-2.5 text-center whitespace-nowrap">
+                    <span className="inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                       APPROVED
                     </span>
                   </td>

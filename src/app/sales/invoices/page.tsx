@@ -853,9 +853,9 @@ export default function SalesInvoicesListPage() {
                         <td className="p-3 text-right font-mono font-bold text-rose-600">
                           {formatPKR(inv.outstandingBalance)}
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center whitespace-nowrap">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                            className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-bold ${
                               inv.paymentStatus === "paid"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                                 : inv.paymentStatus === "partially_paid"
@@ -870,9 +870,9 @@ export default function SalesInvoicesListPage() {
                               : "UNPAID"}
                           </span>
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center whitespace-nowrap">
                           <span
-                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
+                            className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
                               inv.syncStatus === "synced"
                                 ? "bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300"
                                 : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300"

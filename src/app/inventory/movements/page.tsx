@@ -285,15 +285,15 @@ export default function StockMovementsPage() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                <th className="py-2.5">Date & Time</th>
-                <th className="py-2.5">Medicine Name</th>
-                <th className="py-2.5">Batch #</th>
-                <th className="py-2.5">Type</th>
-                <th className="py-2.5 text-right">Quantity Changed</th>
-                <th className="py-2.5 text-right">Stock Left in Godown</th>
-                <th className="py-2.5">Bill / Ref #</th>
-                <th className="py-2.5">Reason / Details</th>
-                <th className="py-2.5">Done By (Staff)</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Date & Time</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Medicine Name</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Batch #</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Type</th>
+                <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Quantity Changed</th>
+                <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Stock Left in Godown</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Bill / Ref #</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Reason / Details</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Done By (Staff)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -302,35 +302,35 @@ export default function StockMovementsPage() {
                   const badge = getMovementTypeBadge(m);
                   return (
                     <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <td className="py-3 text-slate-500">{formatKarachiDate(m.timestamp, true)}</td>
-                      <td className="py-3 font-semibold text-slate-900 dark:text-slate-100">
+                      <td className="py-3 px-2.5 text-slate-500 whitespace-nowrap">{formatKarachiDate(m.timestamp, true)}</td>
+                      <td className="py-3 px-2.5 font-semibold text-slate-900 dark:text-slate-100">
                         {m.productName}
                       </td>
-                      <td className="py-3 font-mono text-teal-600 font-bold">{m.batchNumber || "—"}</td>
-                      <td className="py-3">
+                      <td className="py-3 px-2.5 font-mono text-teal-600 font-bold whitespace-nowrap">{m.batchNumber || "—"}</td>
+                      <td className="py-3 px-2.5 whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.badgeClass}`}
+                          className={`inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badge.badgeClass}`}
                         >
                           {badge.label}
                         </span>
                       </td>
                       <td
-                        className={`py-3 text-right font-extrabold ${
+                        className={`py-3 px-2.5 text-right font-extrabold whitespace-nowrap ${
                           m.quantityChange < 0 ? "text-rose-600" : "text-emerald-600"
                         }`}
                       >
                         {m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}
                       </td>
-                      <td className="py-3 text-right font-bold text-slate-900 dark:text-slate-100">
+                      <td className="py-3 px-2.5 text-right font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {formatNumber(m.balanceAfter)}
                       </td>
-                      <td className="py-3 font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                      <td className="py-3 px-2.5 font-mono text-[11px] font-bold text-teal-600 dark:text-teal-400 whitespace-nowrap">
                         {m.referenceId}
                       </td>
-                      <td className="py-3 text-slate-600 dark:text-slate-300 max-w-xs truncate" title={m.reason}>
+                      <td className="py-3 px-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate" title={m.reason}>
                         {m.reason || "—"}
                       </td>
-                      <td className="py-3 text-slate-500">{m.userName}</td>
+                      <td className="py-3 px-2.5 text-slate-500 whitespace-nowrap">{m.userName}</td>
                     </tr>
                   );
                 })

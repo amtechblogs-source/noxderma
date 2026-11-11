@@ -711,8 +711,8 @@ export default function CustomersDirectoryPage() {
                     <span className="block font-bold">{c.name}</span>
                     <span className="block text-xs text-slate-400 font-normal">{c.city || "Karachi"}</span>
                   </td>
-                  <td className="py-3.5 px-3">
-                    <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase">
+                  <td className="py-3.5 px-3 whitespace-nowrap">
+                    <span className="inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase">
                       {c.category === "pharmacy" ? "Medical Store" : c.category === "distributor" ? "Distributor" : c.category.replace("_", " ")}
                     </span>
                   </td>
