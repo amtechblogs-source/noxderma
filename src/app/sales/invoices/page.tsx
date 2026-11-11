@@ -669,6 +669,7 @@ export default function SalesInvoicesListPage() {
                             type="button"
                             onClick={() => setDeletingInvoice(inv)}
                             title="Delete Bill"
+                            aria-label="Delete Bill"
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors btn-interactive"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -749,17 +750,6 @@ export default function SalesInvoicesListPage() {
                         <Share2 className="w-4 h-4 text-emerald-600" />
                         <span>WhatsApp</span>
                       </button>
-
-                      {canDeleteInvoice && (
-                        <button
-                          type="button"
-                          onClick={() => setDeletingInvoice(inv)}
-                          title="Delete Bill"
-                          className="inline-flex items-center justify-center p-2 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 min-h-[40px] min-w-[40px] btn-interactive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
                   </div>
                 );

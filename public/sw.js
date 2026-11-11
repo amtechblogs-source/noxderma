@@ -1,4 +1,4 @@
-const CACHE_NAME = "noxderma-shell-v31";
+const CACHE_NAME = "noxderma-shell-v32";
 
 const PRECACHE_ASSETS = [
   "/",
