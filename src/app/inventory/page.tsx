@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Boxes,
@@ -22,11 +22,17 @@ import {
 import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { reconcileDeletedBillsStockMovements } from "@/lib/inventory/reconcileDeletedBills";
+import {
+  computeUnsettledExpirySummary,
+  resolveUnitPurchaseCost,
+} from "@/lib/inventory/expiryUtils";
+import { ExpiryResolutionModal } from "@/components/inventory/ExpiryResolutionModal";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type {
   Product,
+  ProductPricing,
   InventoryBatch,
   StockMovement,
   DamagedStockRecord,
@@ -38,11 +44,14 @@ export default function InventoryOverviewPage() {
   const { currentUser, hasPermission } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
+  const [productPricings, setProductPricings] = useState<ProductPricing[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [manufacturers, setManufacturers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [resolvingBatch, setResolvingBatch] = useState<InventoryBatch | null>(null);
 
   // Record Damage Modal
   const [isRecordingDamage, setIsRecordingDamage] = useState(false);
@@ -63,16 +72,24 @@ export default function InventoryOverviewPage() {
   const loadData = async () => {
     try {
       await reconcileDeletedBillsStockMovements();
-      const [prodList, batchList, custList, movList] = await Promise.all([
+      const [prodList, pricingList, batchList, custList, movList, mfrList] = await Promise.all([
         offlineDb.products.toArray(),
+        offlineDb.productPricing ? offlineDb.productPricing.toArray() : Promise.resolve([]),
         offlineDb.inventoryBatches.toArray(),
         offlineDb.customers.toArray(),
         offlineDb.stockMovements.toArray(),
+        offlineDb.manufacturers.toArray(),
       ]);
       setProducts(prodList);
+      setProductPricings(pricingList || []);
       setBatches(batchList);
       setCustomers(custList);
-      setMovements(movList);
+      setMovements(
+        (movList || []).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )
+      );
+      setManufacturers(mfrList || []);
     } finally {
       setLoading(false);
     }
@@ -103,13 +120,58 @@ export default function InventoryOverviewPage() {
       ? batches
       : batches.filter((b) => categoryProductIds.has(b.productId));
 
+  const pricingMap = useMemo(() => {
+    const map = new Map<string, ProductPricing>();
+    productPricings.forEach((p) => map.set(String(p.productId), p));
+    return map;
+  }, [productPricings]);
+
+  const productMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    products.forEach((p) => map.set(String(p.id), p));
+    return map;
+  }, [products]);
+
+  const batchMap = useMemo(() => {
+    const map = new Map<string, InventoryBatch>();
+    batches.forEach((b) => map.set(String(b.id), b));
+    return map;
+  }, [batches]);
+
+  const expirySummary = useMemo(
+    () =>
+      computeUnsettledExpirySummary(displayBatches, {
+        pricingMap,
+        productMap,
+        batchMap,
+      }),
+    [displayBatches, pricingMap, productMap, batchMap]
+  );
+
   // Compute aggregated inventory metrics per product
+  const nowTime = Date.now();
   const productStockMap = displayProducts.map((prod) => {
     const prodBatches = displayBatches.filter((b) => b.productId === prod.id);
-    const totalRemaining = prodBatches.reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
-    const totalBlocked = prodBatches.reduce((sum, b) => sum + (b.blockedQuantity || 0), 0);
-    const available = Math.max(0, totalRemaining - totalBlocked);
-    const isLow = totalRemaining <= prod.reorderThreshold;
+    const nonExpiredRemaining = prodBatches
+      .filter(
+        (b) =>
+          new Date(b.expiryDate).getTime() > nowTime &&
+          b.status !== "expired" &&
+          b.status !== "quarantine"
+      )
+      .reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
+    const expiredUnsettled = prodBatches
+      .filter(
+        (b) =>
+          (new Date(b.expiryDate).getTime() <= nowTime || b.status === "expired") &&
+          (b.remainingQuantity || 0) > 0
+      )
+      .reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
+    const quarantinedBlocked = prodBatches.reduce((sum, b) => sum + (b.blockedQuantity || 0), 0);
+    const totalBlocked = quarantinedBlocked + expiredUnsettled;
+    const available = nonExpiredRemaining;
+    const totalRemaining = nonExpiredRemaining + totalBlocked;
+    const isLow = available <= prod.reorderThreshold;
 
     const prodRestorations = movements.filter(
       (m) => m.productId === prod.id && m.type === "sales_return" && m.quantityChange > 0
@@ -136,8 +198,9 @@ export default function InventoryOverviewPage() {
     .filter((m) => m.type === "sales_return" && m.quantityChange > 0)
     .slice(0, 6);
 
-  const totalInventoryUnits = displayBatches.reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
-  const totalBlockedUnits = displayBatches.reduce((sum, b) => sum + (b.blockedQuantity || 0), 0);
+  const totalAvailableUnits = productStockMap.reduce((sum, p) => sum + p.available, 0);
+  const totalBlockedUnits = productStockMap.reduce((sum, p) => sum + p.totalBlocked, 0);
+  const totalInventoryUnits = totalAvailableUnits + totalBlockedUnits;
   const lowStockCount = productStockMap.filter((p) => p.isLow).length;
 
   // Handle Record Damaged Stock
@@ -344,9 +407,9 @@ export default function InventoryOverviewPage() {
             Available to Sell
           </span>
           <span className="text-2xl font-black text-emerald-600">
-            {formatNumber(Math.max(0, totalInventoryUnits - totalBlockedUnits))}
+            {formatNumber(totalAvailableUnits)}
           </span>
-          <span className="text-[10px] text-slate-500 block mt-0.5">Ready for Billing</span>
+          <span className="text-[10px] text-slate-500 block mt-0.5">Ready for Billing (Non-Expired)</span>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -369,6 +432,81 @@ export default function InventoryOverviewPage() {
           <span className="text-[10px] text-slate-500 block mt-0.5">Locked Stock</span>
         </div>
       </div>
+
+      {/* Expired & Quarantine Company Claims Action Alert */}
+      {(expirySummary.expiredUnsettledBatches.length > 0 ||
+        expirySummary.quarantinedBatches.length > 0) && (
+        <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/30 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+              <div>
+                <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                  Expired Stock &amp; Pending Manufacturer Claims (ایکسپائر اسٹاک / کمپنی کلیم)
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Expired:{" "}
+                  <strong className="text-rose-600">
+                    {formatNumber(expirySummary.expiredUnsettledPacks)} packs ({formatPKR(expirySummary.expiredUnsettledCost)})
+                  </strong>{" "}
+                  • Quarantined Claim:{" "}
+                  <strong className="text-amber-600">
+                    {formatNumber(expirySummary.quarantinedPacks)} packs ({formatPKR(expirySummary.quarantinedCost)})
+                  </strong>
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/inventory/batches?filter=expired"
+              className="text-xs font-bold text-rose-700 dark:text-rose-300 hover:underline inline-flex items-center gap-1"
+            >
+              <span>Manage All Expired Batches →</span>
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {[
+              ...expirySummary.expiredUnsettledBatches.slice(0, 3),
+              ...expirySummary.quarantinedBatches
+                .filter((qb) => !expirySummary.expiredUnsettledBatches.some((eb) => eb.id === qb.id))
+                .slice(0, 3),
+            ].map((b) => {
+              const isQuarantine = (b.blockedQuantity || 0) > 0 && (b.remainingQuantity || 0) === 0;
+              return (
+                <div
+                  key={b.id}
+                  className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200/70 dark:border-rose-800/60 flex items-center justify-between gap-2 text-xs shadow-sm"
+                >
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {b.productName}
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-500 truncate">
+                      Batch #{b.batchNumber} • Exp: {formatKarachiDate(b.expiryDate)}
+                    </div>
+                    <div className="text-[10px] font-bold text-rose-600 mt-0.5">
+                      {(b.remainingQuantity || 0) > 0 ? `${b.remainingQuantity} Expired` : ""}
+                      {(b.remainingQuantity || 0) > 0 && (b.blockedQuantity || 0) > 0 ? " • " : ""}
+                      {(b.blockedQuantity || 0) > 0 ? `${b.blockedQuantity} Quarantine` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setResolvingBatch(b)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold shrink-0 ${
+                      isQuarantine
+                        ? "bg-amber-600 hover:bg-amber-700 text-white"
+                        : "bg-rose-600 hover:bg-rose-700 text-white"
+                    }`}
+                  >
+                    {isQuarantine ? "Settle Claim" : "Resolve / Claim"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Search Bar */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
@@ -792,6 +930,31 @@ export default function InventoryOverviewPage() {
           </div>
         </div>
       )}
+
+      <ExpiryResolutionModal
+        isOpen={Boolean(resolvingBatch)}
+        batch={resolvingBatch}
+        defaultCostPerPack={
+          resolvingBatch
+            ? resolveUnitPurchaseCost({
+                productId: resolvingBatch.productId,
+                batchId: resolvingBatch.id,
+                pricingMap,
+                productMap,
+                batchMap,
+              })
+            : 0
+        }
+        manufacturers={manufacturers}
+        user={{
+          id: currentUser?.id,
+          name: currentUser?.displayName || "Owner",
+          role: currentUser?.role || "owner",
+          email: currentUser?.email,
+        }}
+        onClose={() => setResolvingBatch(null)}
+        onSuccess={loadData}
+      />
     </div>
   );
 }

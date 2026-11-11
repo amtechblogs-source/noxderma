@@ -24,9 +24,14 @@ import {
   Truck,
   Layers,
 } from "lucide-react";
-import { formatPKR, formatKarachiDate } from "@/lib/formatting";
+import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { scheduleCloudUpsert, scheduleCloudDelete } from "@/lib/offline/cloudSync";
+import {
+  computeStockLossMetrics,
+  computeSalesReturnAdjustments,
+  computeUnsettledExpirySummary,
+} from "@/lib/inventory/expiryUtils";
 import { useAuth } from "@/context/AuthContext";
 import DateRangeFilterBar from "@/components/common/DateRangeFilterBar";
 import { OfficialPrintHeader } from "@/components/common/OfficialPrintHeader";
@@ -52,6 +57,7 @@ import type {
   OperatingExpense,
   ExpenseCategory,
   StaffSalary,
+  SalesReturn,
 } from "@/types";
 
 const EXPENSE_CATEGORIES: { key: ExpenseCategory; label: string; icon: any }[] = [
@@ -72,6 +78,7 @@ export default function ProfitAndLossPage() {
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [expenses, setExpenses] = useState<OperatingExpense[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<StaffSalary[]>([]);
+  const [salesReturnRecords, setSalesReturnRecords] = useState<SalesReturn[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
   const [loading, setLoading] = useState(true);
 
@@ -96,7 +103,7 @@ export default function ProfitAndLossPage() {
 
   const loadFinanceData = async () => {
     try {
-      const [invs, movs, pricings, prods, bchs, exps, sals] = await Promise.all([
+      const [invs, movs, pricings, prods, bchs, exps, sals, rets] = await Promise.all([
         offlineDb.invoices.toArray(),
         offlineDb.stockMovements.toArray(),
         offlineDb.productPricing.toArray(),
@@ -104,6 +111,7 @@ export default function ProfitAndLossPage() {
         offlineDb.inventoryBatches.toArray(),
         offlineDb.operatingExpenses.toArray(),
         offlineDb.staffSalaries.toArray(),
+        (offlineDb as any).salesReturns ? (offlineDb as any).salesReturns.toArray() : Promise.resolve([]),
       ]);
       setInvoices(invs || []);
       setMovements(movs || []);
@@ -112,6 +120,23 @@ export default function ProfitAndLossPage() {
       setBatches(bchs || []);
       setExpenses(exps || []);
       setSalaryRecords(sals || []);
+
+      if (Array.isArray(rets) && rets.length > 0) {
+        setSalesReturnRecords(rets as SalesReturn[]);
+      } else {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_salesReturns") === "true";
+        const savedReturns = !isCloudInit ? localStorage.getItem("noxderma_sales_returns") : null;
+        if (savedReturns) {
+          try {
+            const parsed = JSON.parse(savedReturns);
+            setSalesReturnRecords(Array.isArray(parsed) ? parsed : []);
+          } catch {
+            setSalesReturnRecords([]);
+          }
+        } else {
+          setSalesReturnRecords([]);
+        }
+      }
     } catch (err) {
       console.error("Failed to load P&L finance records:", err);
     } finally {
@@ -167,9 +192,22 @@ export default function ProfitAndLossPage() {
       const targetDate = s.month ? `${s.month}-15` : (s.disbursedAt || s.createdAt);
       return isRecordInDateRange(targetDate, dateFilter);
     });
+    const periodReturns = salesReturnRecords.filter((r) =>
+      isRecordInDateRange(r.returnDate, dateFilter)
+    );
 
-    return { periodInvoices, periodExpenses, periodMovements, periodSalaries };
-  }, [invoices, expenses, movements, salaryRecords, dateFilter]);
+    return { periodInvoices, periodExpenses, periodMovements, periodSalaries, periodReturns };
+  }, [invoices, expenses, movements, salaryRecords, salesReturnRecords, dateFilter]);
+
+  const costLookupMaps = useMemo(
+    () => ({ pricingMap, productMap, batchMap }),
+    [pricingMap, productMap, batchMap]
+  );
+
+  const returnAdjustments = useMemo(
+    () => computeSalesReturnAdjustments(filteredData.periodReturns, costLookupMaps),
+    [filteredData.periodReturns, costLookupMaps]
+  );
 
   // 1. REVENUE CALCULATIONS
   const grossSales = useMemo(() => {
@@ -192,12 +230,12 @@ export default function ProfitAndLossPage() {
     }, 0);
   }, [filteredData.periodInvoices]);
 
-  const salesReturns = 0;
+  const salesReturns = returnAdjustments.salesReturnsTotal;
   const netSales = Math.max(0, grossSales - discountsGiven - salesReturns);
 
   // 2. COGS (PURCHASE COST OF MEDICINES SOLD)
   const costOfGoodsSold = useMemo(() => {
-    return filteredData.periodInvoices.reduce((sum, inv) => {
+    const rawCogs = filteredData.periodInvoices.reduce((sum, inv) => {
       let invCogs = 0;
       for (const l of inv.lines || []) {
         const pricing = pricingMap.get(String(l.productId));
@@ -222,7 +260,9 @@ export default function ProfitAndLossPage() {
       }
       return sum + invCogs;
     }, 0);
-  }, [filteredData.periodInvoices, pricingMap, productMap, batchMap]);
+
+    return Math.max(0, rawCogs - returnAdjustments.cogsReversal);
+  }, [filteredData.periodInvoices, pricingMap, productMap, batchMap, returnAdjustments.cogsReversal]);
 
   const grossProfit = netSales - costOfGoodsSold;
   const grossProfitMargin = netSales > 0 ? ((grossProfit / netSales) * 100).toFixed(1) : "0.0";
@@ -287,31 +327,20 @@ export default function ProfitAndLossPage() {
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }, [filteredData.periodExpenses]);
 
-  // Broken stock loss
-  const damagedMovements = useMemo(() => {
-    return filteredData.periodMovements.filter((m) => m.type === "damaged_stock");
-  }, [filteredData.periodMovements]);
+  // Broken stock, doctor sample, and net expired medicine losses
+  const stockLossMetrics = useMemo(
+    () => computeStockLossMetrics(filteredData.periodMovements, costLookupMaps),
+    [filteredData.periodMovements, costLookupMaps]
+  );
 
-  const damagedStockLoss = useMemo(() => {
-    return damagedMovements.reduce((sum, m) => {
-      const pricing = pricingMap.get(String(m.productId));
-      const unitCost = pricing?.purchaseCostPerPack || 350;
-      return sum + Math.abs(m.quantityChange || 0) * unitCost;
-    }, 0);
-  }, [damagedMovements, pricingMap]);
+  const damagedStockLoss = stockLossMetrics.damagedStockLoss;
+  const sampleExpense = stockLossMetrics.sampleExpense;
+  const expiryWriteOffLoss = stockLossMetrics.expiryWriteOffLoss;
 
-  // Doctor free samples
-  const sampleMovements = useMemo(() => {
-    return filteredData.periodMovements.filter((m) => m.type === "sample_issue");
-  }, [filteredData.periodMovements]);
-
-  const sampleExpense = useMemo(() => {
-    return sampleMovements.reduce((sum, m) => {
-      const pricing = pricingMap.get(String(m.productId));
-      const unitCost = pricing?.purchaseCostPerPack || 350;
-      return sum + Math.abs(m.quantityChange || 0) * unitCost;
-    }, 0);
-  }, [sampleMovements, pricingMap]);
+  const unsettledExpiry = useMemo(
+    () => computeUnsettledExpirySummary(batches, costLookupMaps),
+    [batches, costLookupMaps]
+  );
 
   const totalOperatingExpenses =
     travelingExpenses +
@@ -319,6 +348,7 @@ export default function ProfitAndLossPage() {
     officeUtilities +
     marketingExpenses +
     damagedStockLoss +
+    expiryWriteOffLoss +
     sampleExpense +
     courierAndLogistics +
     otherExpenses;
@@ -540,6 +570,36 @@ export default function ProfitAndLossPage() {
         />
       </div>
 
+      {/* Unsettled Expired Stock / Pending Company Claims Warning */}
+      {(unsettledExpiry.expiredUnsettledPacks > 0 || unsettledExpiry.quarantinedPacks > 0) && (
+        <div className="p-3.5 sm:p-4 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/80 text-xs space-y-2 no-print print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-extrabold text-rose-800 dark:text-rose-200">
+              <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Unsettled Expired &amp; Quarantined Stock Notice</span>
+            </div>
+            <Link
+              href="/inventory/batches?filter=expired"
+              className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px]"
+            >
+              Resolve / Claim in Batches &rarr;
+            </Link>
+          </div>
+          {unsettledExpiry.expiredUnsettledPacks > 0 && (
+            <p className="text-rose-700 dark:text-rose-300">
+              • <strong>{formatNumber(unsettledExpiry.expiredUnsettledPacks)} expired packs</strong> (Purchase Value:{" "}
+              <strong>{formatPKR(unsettledExpiry.expiredUnsettledCost)}</strong>) are still sitting in stock and not yet written off or claimed from manufacturer.
+            </p>
+          )}
+          {unsettledExpiry.quarantinedPacks > 0 && (
+            <p className="text-amber-700 dark:text-amber-300">
+              • <strong>{formatNumber(unsettledExpiry.quarantinedPacks)} packs</strong> (Purchase Cost:{" "}
+              <strong>{formatPKR(unsettledExpiry.quarantinedCost)}</strong>) are locked in Quarantine pending Manufacturer Claim (loss only hits P&amp;L if rejected or partial credit).
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Accounting Compliance Banner */}
       <div className="p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1 no-print print:hidden">
         <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
@@ -547,13 +607,13 @@ export default function ProfitAndLossPage() {
           <span>Accurate Real-Time Accounting Formula:</span>
         </div>
         <p className="text-slate-600 dark:text-slate-400">
-          • <strong>Net Sales:</strong> Total bills amount minus invoice discounts given to customers.
+          • <strong>Net Sales:</strong> Total bills amount minus invoice discounts and customer returns.
         </p>
         <p className="text-slate-600 dark:text-slate-400">
           • <strong>Cost of Goods Sold (COGS):</strong> Exact batch purchase cost of medicines sold to pharmacies.
         </p>
         <p className="text-slate-600 dark:text-slate-400">
-          • <strong>Operating Expenses:</strong> Traveling fuel/TA-DA, staff salaries, free samples, and damaged medicines deducted to compute 100% honest Net Profit.
+          • <strong>Operating Expenses:</strong> Traveling fuel/TA-DA, staff salaries, free samples, broken stock, and net expired medicine losses (after manufacturer credits/replacements) deducted to compute 100% honest Net Profit.
         </p>
       </div>
 
@@ -757,6 +817,38 @@ export default function ProfitAndLossPage() {
             </div>
             <span className="text-rose-600 font-medium font-mono shrink-0 text-right whitespace-nowrap">
               -{formatPKR(damagedStockLoss)}
+            </span>
+          </div>
+
+          {/* Expired Medicines Write-off & Unrecovered Claims */}
+          <div className="flex items-start justify-between gap-3 py-1 sm:py-1.5 pl-1 sm:pl-3 border-b border-slate-50 dark:border-slate-800/40">
+            <div className="min-w-0 pr-1">
+              <span className="text-slate-700 dark:text-slate-300 font-medium block">
+                Expired Medicines Loss (Write-off / Unrecovered Claims)
+              </span>
+              <div className="text-[10px] text-slate-400 print:text-slate-600 flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span>
+                  {stockLossMetrics.expiryRecoveredAmount > 0
+                    ? `Total Expired Cost: ${formatPKR(
+                        stockLossMetrics.expiryGrossCost
+                      )} • Company Credit/Replaced: -${formatPKR(
+                        stockLossMetrics.expiryRecoveredAmount
+                      )}`
+                    : `Net unrecovered expired stock write-off (${formatNumber(
+                        stockLossMetrics.expiryWrittenOffUnits
+                      )} packs)`}
+                </span>
+                <span className="no-print print:hidden">•</span>
+                <Link
+                  href="/inventory/batches?filter=expired"
+                  className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center no-print print:hidden"
+                >
+                  Manage Claims &rarr;
+                </Link>
+              </div>
+            </div>
+            <span className="text-rose-600 font-medium font-mono shrink-0 text-right whitespace-nowrap">
+              -{formatPKR(expiryWriteOffLoss)}
             </span>
           </div>
 

@@ -309,12 +309,18 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         }
       }
 
-      // Filter batches: batches with remainingQuantity > 0 OR allocated in the invoice being edited
+      // Filter batches: sellable non-expired batches with remainingQuantity > 0 OR allocated in the invoice being edited
+      const nowMs = Date.now();
       const validBatches = (allBatches || []).filter((b) => {
         const isAllocatedInEdit = invToEdit?.lines?.some((l) =>
           l.batchAllocations?.some((a) => a.batchId === b.id)
         );
-        return Number(b.remainingQuantity || 0) > 0 || !!isAllocatedInEdit;
+        const isSellable =
+          Number(b.remainingQuantity || 0) > 0 &&
+          b.status !== "expired" &&
+          b.status !== "quarantine" &&
+          (!b.expiryDate || new Date(b.expiryDate).getTime() > nowMs);
+        return isSellable || !!isAllocatedInEdit;
       });
       setBatches(validBatches);
 
@@ -344,8 +350,13 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
         if (settingsRecord) {
           setBusinessSettings((prev) => mergeBusinessSettings(prev, settingsRecord));
         }
+        const nowMs = Date.now();
         const validBatches = (allBatches || []).filter(
-          (b) => Number(b.remainingQuantity || 0) > 0
+          (b) =>
+            Number(b.remainingQuantity || 0) > 0 &&
+            b.status !== "expired" &&
+            b.status !== "quarantine" &&
+            (!b.expiryDate || new Date(b.expiryDate).getTime() > nowMs)
         );
         setBatches(validBatches);
       } catch {}

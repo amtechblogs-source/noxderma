@@ -13,11 +13,17 @@ import {
   ShieldAlert,
   CheckCircle2,
 } from "lucide-react";
-import { formatKarachiDate, formatNumber } from "@/lib/formatting";
+import { formatKarachiDate, formatNumber, formatPKR } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { reconcileDeletedBillsStockMovements } from "@/lib/inventory/reconcileDeletedBills";
+import {
+  computeUnsettledExpirySummary,
+  resolveUnitPurchaseCost,
+} from "@/lib/inventory/expiryUtils";
+import { ExpiryResolutionModal } from "@/components/inventory/ExpiryResolutionModal";
 import { useCategory } from "@/context/CategoryContext";
-import type { InventoryBatch, Product } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import type { InventoryBatch, Product, ProductPricing } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
 import {
   isRecordInDateRange,
@@ -27,25 +33,41 @@ import {
 } from "@/lib/dateFilter";
 
 export default function BatchInventoryPage() {
+  const { currentUser } = useAuth();
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productPricings, setProductPricings] = useState<ProductPricing[]>([]);
+  const [manufacturers, setManufacturers] = useState<any[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<DateFilterState>(createDefaultDateFilter("all"));
+  const [resolvingBatch, setResolvingBatch] = useState<InventoryBatch | null>(null);
+
+  const loadBatches = async () => {
+    await reconcileDeletedBillsStockMovements();
+    const [list, prodList, pricingList, mfrList] = await Promise.all([
+      offlineDb.inventoryBatches.toArray(),
+      offlineDb.products.toArray(),
+      offlineDb.productPricing ? offlineDb.productPricing.toArray() : Promise.resolve([]),
+      offlineDb.manufacturers.toArray(),
+    ]);
+    // Sort strictly by expiry date ascending (FEFO: First Expiry, First Out)
+    setBatches(
+      list.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())
+    );
+    setProducts(prodList);
+    setProductPricings(pricingList || []);
+    setManufacturers(mfrList || []);
+  };
 
   useEffect(() => {
-    async function loadBatches() {
-      await reconcileDeletedBillsStockMovements();
-      const [list, prodList] = await Promise.all([
-        offlineDb.inventoryBatches.toArray(),
-        offlineDb.products.toArray(),
-      ]);
-      // Sort strictly by expiry date ascending (FEFO: First Expiry, First Out)
-      setBatches(
-        list.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())
-      );
-      setProducts(prodList);
+    const urlFilter = new URLSearchParams(window.location.search).get("filter");
+    if (
+      urlFilter &&
+      ["all", "active", "near_expiry", "expired", "quarantine"].includes(urlFilter)
+    ) {
+      setFilterStatus(urlFilter);
     }
     loadBatches();
     const handleCloudSynced = () => {
@@ -72,17 +94,47 @@ export default function BatchInventoryPage() {
       ? batches
       : batches.filter((b) => categoryProductIds.has(b.productId));
 
+  const pricingMap = useMemo(() => {
+    const map = new Map<string, ProductPricing>();
+    productPricings.forEach((p) => map.set(String(p.productId), p));
+    return map;
+  }, [productPricings]);
+
+  const productMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    products.forEach((p) => map.set(String(p.id), p));
+    return map;
+  }, [products]);
+
+  const batchMap = useMemo(() => {
+    const map = new Map<string, InventoryBatch>();
+    batches.forEach((b) => map.set(String(b.id), b));
+    return map;
+  }, [batches]);
+
+  const expirySummary = useMemo(
+    () =>
+      computeUnsettledExpirySummary(categoryBatches, {
+        pricingMap,
+        productMap,
+        batchMap,
+      }),
+    [categoryBatches, pricingMap, productMap, batchMap]
+  );
+
   const filtered = categoryBatches.filter((b) => {
     if (!isRecordInDateRange(b.expiryDate || b.manufacturingDate || b.createdAt, dateFilter)) {
       return false;
     }
     const expTime = new Date(b.expiryDate).getTime();
     const isNear = expTime > now && expTime <= ninetyDaysFromNow;
-    const isExp = expTime <= now;
+    const isExp = expTime <= now || b.status === "expired";
+    const isQuarantine = (b.blockedQuantity || 0) > 0 || b.status === "quarantine";
 
     if (filterStatus === "near_expiry" && !isNear) return false;
     if (filterStatus === "expired" && !isExp) return false;
-    if (filterStatus === "active" && (isNear || isExp)) return false;
+    if (filterStatus === "quarantine" && !isQuarantine) return false;
+    if (filterStatus === "active" && (isNear || isExp || isQuarantine)) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -142,6 +194,76 @@ export default function BatchInventoryPage() {
         </div>
       )}
 
+      {/* Expired / Near-Expiry / Quarantine Action Summary Banner */}
+      {(expirySummary.expiredUnsettledPacks > 0 ||
+        expirySummary.quarantinedPacks > 0 ||
+        expirySummary.nearExpiryPacks > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {expirySummary.expiredUnsettledPacks > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterStatus("expired")}
+              className="text-left p-3.5 rounded-2xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/70 dark:bg-rose-950/30 hover:bg-rose-100/70 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-extrabold uppercase text-rose-700 dark:text-rose-300">
+                  Expired (Needs Action)
+                </span>
+                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+              </div>
+              <p className="text-lg font-black text-rose-700 dark:text-rose-300 mt-1">
+                {formatNumber(expirySummary.expiredUnsettledPacks)} Packs
+              </p>
+              <p className="text-[11px] text-rose-600/90 dark:text-rose-400">
+                Purchase Value: {formatPKR(expirySummary.expiredUnsettledCost)} • Click to resolve
+              </p>
+            </button>
+          )}
+
+          {expirySummary.quarantinedPacks > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterStatus("quarantine")}
+              className="text-left p-3.5 rounded-2xl border border-amber-200 dark:border-amber-800/80 bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/70 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-extrabold uppercase text-amber-700 dark:text-amber-300">
+                  Quarantined (Claim Pending)
+                </span>
+                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              </div>
+              <p className="text-lg font-black text-amber-700 dark:text-amber-300 mt-1">
+                {formatNumber(expirySummary.quarantinedPacks)} Packs
+              </p>
+              <p className="text-[11px] text-amber-700/80 dark:text-amber-400">
+                Cost Held: {formatPKR(expirySummary.quarantinedCost)} • Settle Company Claim
+              </p>
+            </button>
+          )}
+
+          {expirySummary.nearExpiryPacks > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterStatus("near_expiry")}
+              className="text-left p-3.5 rounded-2xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/30 hover:bg-sky-100/70 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-extrabold uppercase text-sky-700 dark:text-sky-300">
+                  Expiring Soon (&lt;90 Days)
+                </span>
+                <AlertTriangle className="w-4 h-4 text-sky-600 shrink-0" />
+              </div>
+              <p className="text-lg font-black text-sky-700 dark:text-sky-300 mt-1">
+                {formatNumber(expirySummary.nearExpiryPacks)} Packs
+              </p>
+              <p className="text-[11px] text-sky-700/80 dark:text-sky-400">
+                Purchase Value: {formatPKR(expirySummary.nearExpiryCost)} • Pre-return or sell FEFO
+              </p>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Universal Date Filter */}
       <DateRangeFilterBar
         filter={dateFilter}
@@ -166,7 +288,7 @@ export default function BatchInventoryPage() {
           <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0 text-xs">
             <Filter className="w-3.5 h-3.5" /> Filter:
           </span>
-          {(["all", "active", "near_expiry", "expired"] as const).map((st) => (
+          {(["all", "active", "near_expiry", "expired", "quarantine"] as const).map((st) => (
             <button
               key={st}
               onClick={() => setFilterStatus(st)}
@@ -182,7 +304,9 @@ export default function BatchInventoryPage() {
                 ? "Good Expiry"
                 : st === "near_expiry"
                 ? "Expiring Soon (<3M)"
-                : "Expired (Do Not Sell)"}
+                : st === "expired"
+                ? "Expired (Do Not Sell)"
+                : "Quarantined (Claim)"}
             </button>
           ))}
         </div>
@@ -198,7 +322,9 @@ export default function BatchInventoryPage() {
           filtered.map((b) => {
             const expTime = new Date(b.expiryDate).getTime();
             const isNear = expTime > now && expTime <= ninetyDaysFromNow;
-            const isExp = expTime <= now;
+            const isExp = expTime <= now || b.status === "expired";
+            const hasBlocked = (b.blockedQuantity || 0) > 0;
+            const hasActionable = (b.remainingQuantity || 0) > 0 || hasBlocked;
 
             return (
               <div
@@ -215,19 +341,26 @@ export default function BatchInventoryPage() {
                     </h3>
                   </div>
 
-                  {isExp ? (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 shrink-0">
-                      EXPIRED
-                    </span>
-                  ) : isNear ? (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 shrink-0">
-                      EXPIRING SOON
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 shrink-0">
-                      GOOD EXPIRY
-                    </span>
-                  )}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {isExp ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                        EXPIRED
+                      </span>
+                    ) : isNear ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                        EXPIRING SOON
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        GOOD EXPIRY
+                      </span>
+                    )}
+                    {hasBlocked && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        CLAIM PENDING ({b.blockedQuantity})
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
@@ -252,12 +385,37 @@ export default function BatchInventoryPage() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Blocked/Broken:</span>
+                    <span className="text-slate-400 block font-medium">Quarantine / Blocked:</span>
                     <span className="font-bold text-xs sm:text-sm text-rose-600">
                       {b.blockedQuantity || 0}
                     </span>
                   </div>
                 </div>
+
+                {hasActionable && (
+                  <button
+                    type="button"
+                    onClick={() => setResolvingBatch(b)}
+                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors ${
+                      hasBlocked
+                        ? "bg-amber-600 hover:bg-amber-700 text-white"
+                        : isExp || isNear
+                        ? "bg-rose-600 hover:bg-rose-700 text-white"
+                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                    }`}
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>
+                      {hasBlocked
+                        ? "Settle Company Claim"
+                        : isExp
+                        ? "Resolve Expired Stock / Claim"
+                        : isNear
+                        ? "Return Near-Expiry / Quarantine"
+                        : "Expiry Return / Write-off"}
+                    </span>
+                  </button>
+                )}
               </div>
             );
           })
@@ -276,7 +434,8 @@ export default function BatchInventoryPage() {
                 <th className="py-3 px-3">Expiry Status</th>
                 <th className="py-3 px-3 text-right">Total Bought</th>
                 <th className="py-3 px-3 text-right">In Stock Now</th>
-                <th className="py-3 px-3 text-right">Broken / Blocked</th>
+                <th className="py-3 px-3 text-right">Quarantine / Blocked</th>
+                <th className="py-3 px-3 text-right">Expiry / Company Claim</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -284,7 +443,9 @@ export default function BatchInventoryPage() {
                 filtered.map((b) => {
                   const expTime = new Date(b.expiryDate).getTime();
                   const isNear = expTime > now && expTime <= ninetyDaysFromNow;
-                  const isExp = expTime <= now;
+                  const isExp = expTime <= now || b.status === "expired";
+                  const hasBlocked = (b.blockedQuantity || 0) > 0;
+                  const hasActionable = (b.remainingQuantity || 0) > 0 || hasBlocked;
 
                   return (
                     <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
@@ -296,31 +457,71 @@ export default function BatchInventoryPage() {
                         {formatKarachiDate(b.expiryDate)}
                       </td>
                       <td className="py-3.5 px-3">
-                        {isExp ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
-                            EXPIRED (DO NOT SELL)
-                          </span>
-                        ) : isNear ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                            EXPIRING SOON (&lt;3 MONTHS)
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                            GOOD EXPIRY
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isExp ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                              EXPIRED (DO NOT SELL)
+                            </span>
+                          ) : isNear ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                              EXPIRING SOON (&lt;3 MONTHS)
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              GOOD EXPIRY
+                            </span>
+                          )}
+                          {hasBlocked && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                              QUARANTINE ({b.blockedQuantity})
+                            </span>
+                          )}
+                          {!hasBlocked && b.expiryClaimStatus && b.expiryClaimStatus !== "none" && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 uppercase">
+                              {b.expiryClaimStatus.replace(/_/g, " ")}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-3 text-right text-slate-500 font-mono">{formatNumber(b.receivedQuantity)}</td>
                       <td className="py-3.5 px-3 text-right font-bold text-slate-900 dark:text-slate-100 font-mono">
                         {formatNumber(b.remainingQuantity)}
                       </td>
-                      <td className="py-3.5 px-3 text-right text-rose-600 font-semibold font-mono">{b.blockedQuantity}</td>
+                      <td className="py-3.5 px-3 text-right text-rose-600 font-semibold font-mono">{b.blockedQuantity || 0}</td>
+                      <td className="py-3.5 px-3 text-right">
+                        {hasActionable ? (
+                          <button
+                            type="button"
+                            onClick={() => setResolvingBatch(b)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors ${
+                              hasBlocked
+                                ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                : isExp || isNear
+                                ? "bg-rose-600 hover:bg-rose-700 text-white"
+                                : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                            }`}
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>
+                              {hasBlocked
+                                ? "Settle Claim"
+                                : isExp
+                                ? "Resolve / Claim"
+                                : "Expiry / Claim"}
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            {b.expiryClaimStatus && b.expiryClaimStatus !== "none" ? "Resolved" : "Depleted"}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     No medicine batches found.
                   </td>
                 </tr>
@@ -329,6 +530,31 @@ export default function BatchInventoryPage() {
           </table>
         </div>
       </div>
+
+      <ExpiryResolutionModal
+        isOpen={Boolean(resolvingBatch)}
+        batch={resolvingBatch}
+        defaultCostPerPack={
+          resolvingBatch
+            ? resolveUnitPurchaseCost({
+                productId: resolvingBatch.productId,
+                batchId: resolvingBatch.id,
+                pricingMap,
+                productMap,
+                batchMap,
+              })
+            : 0
+        }
+        manufacturers={manufacturers}
+        user={{
+          id: currentUser?.id,
+          name: currentUser?.displayName || "Owner",
+          role: currentUser?.role || "owner",
+          email: currentUser?.email,
+        }}
+        onClose={() => setResolvingBatch(null)}
+        onSuccess={loadBatches}
+      />
     </div>
   );
 }

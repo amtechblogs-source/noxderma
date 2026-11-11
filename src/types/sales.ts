@@ -105,3 +105,40 @@ export interface Payment {
   syncStatus: InvoiceSyncStatus;
   createdAt: string;
 }
+
+export type SalesReturnReason =
+  | "expired"
+  | "near_expiry"
+  | "transit_damage"
+  | "pharmacy_overstock"
+  | "wrong_supply"
+  | "recall";
+
+export type SalesReturnDisposition = "quarantine_batch" | "scrap_writeoff" | "restocked";
+
+export type CustomerReturnResolution = "khata_credit" | "cash_refund" | "replacement";
+
+export interface SalesReturn {
+  id: string;
+  returnNoteNumber: string; // e.g. CN-2026-012
+  invoiceReference: string;
+  customerId: string;
+  customerName: string;
+  productId: string;
+  productName: string;
+  batchId?: string;
+  batchNumber: string;
+  replacementBatchId?: string;
+  replacementBatchNumber?: string;
+  returnQuantity: number;
+  unitCreditPrice: number;
+  unitCost?: number;
+  totalCreditAmount: number;
+  returnReason: SalesReturnReason;
+  disposition: SalesReturnDisposition;
+  customerResolution?: CustomerReturnResolution;
+  status: "approved" | "pending_inspection";
+  returnDate: string;
+  recordedByName: string;
+  notes?: string;
+}

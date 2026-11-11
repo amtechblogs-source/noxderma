@@ -952,6 +952,26 @@ async function executeRollbackForLog(
       await cloudDeleteWithFallback("salesReturns", log.entityId);
       if (log.snapshotAfter?.movementId) {
         await offlineDb.stockMovements.delete(log.snapshotAfter.movementId);
+        await cloudDeleteWithFallback("stockMovements", log.snapshotAfter.movementId);
+      }
+      if (log.snapshotAfter?.extraMovementId) {
+        await offlineDb.stockMovements.delete(log.snapshotAfter.extraMovementId);
+        await cloudDeleteWithFallback("stockMovements", log.snapshotAfter.extraMovementId);
+      }
+      if (log.snapshotBefore?.batch) {
+        await offlineDb.inventoryBatches.put(log.snapshotBefore.batch);
+        await cloudUpsertWithFallback("inventoryBatches", log.snapshotBefore.batch.id, log.snapshotBefore.batch);
+      } else if (log.snapshotAfter?.createdBatchId) {
+        await offlineDb.inventoryBatches.delete(log.snapshotAfter.createdBatchId);
+        await cloudDeleteWithFallback("inventoryBatches", log.snapshotAfter.createdBatchId);
+      }
+      if (log.snapshotBefore?.replacementBatch) {
+        await offlineDb.inventoryBatches.put(log.snapshotBefore.replacementBatch);
+        await cloudUpsertWithFallback(
+          "inventoryBatches",
+          log.snapshotBefore.replacementBatch.id,
+          log.snapshotBefore.replacementBatch
+        );
       }
       if (
         log.snapshotBefore?.customerId &&
@@ -1033,9 +1053,30 @@ async function executeRollbackForLog(
         ? batchToRestore
         : [batchToRestore];
       await offlineDb.inventoryBatches.bulkPut(items);
+      if (log.snapshotBefore?.manufacturer) {
+        await offlineDb.manufacturers.put(log.snapshotBefore.manufacturer);
+        await cloudUpsertWithFallback(
+          "manufacturers",
+          log.snapshotBefore.manufacturer.id,
+          log.snapshotBefore.manufacturer
+        );
+      }
       if (log.snapshotAfter?.movementId) {
         await offlineDb.stockMovements.delete(log.snapshotAfter.movementId);
         await cloudDeleteWithFallback("stockMovements", log.snapshotAfter.movementId);
+      }
+      if (log.snapshotAfter?.replacementMovementId) {
+        await offlineDb.stockMovements.delete(log.snapshotAfter.replacementMovementId);
+        await cloudDeleteWithFallback("stockMovements", log.snapshotAfter.replacementMovementId);
+      }
+      if (log.snapshotAfter?.replacementBatchId) {
+        await offlineDb.inventoryBatches.delete(log.snapshotAfter.replacementBatchId);
+        await cloudDeleteWithFallback("inventoryBatches", log.snapshotAfter.replacementBatchId);
+      }
+      if (log.snapshotAfter?.ledgerEntryId) {
+        await (offlineDb as any).manufacturerLedger?.delete(log.snapshotAfter.ledgerEntryId);
+        await cloudDeleteWithFallback("manufacturerLedger", log.snapshotAfter.ledgerEntryId);
+        await syncMirrorKeyFromTable("manufacturerLedger", "noxderma_mfr_ledger");
       }
     }
     return { rolledBack: true };

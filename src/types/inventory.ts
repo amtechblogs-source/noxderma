@@ -1,16 +1,32 @@
+export type ExpiryClaimStatus =
+  | "none"
+  | "quarantined_pending_claim"
+  | "full_credit"
+  | "partial_credit"
+  | "replaced"
+  | "rejected_write_off"
+  | "direct_write_off";
+
 export interface InventoryBatch {
   id: string;
   productId: string;
   productName: string;
   batchNumber: string;
   manufacturerId: string;
+  manufacturerName?: string;
   manufacturingDate?: string;
   expiryDate: string; // ISO date for FEFO sorting
   receivedQuantity: number;
   remainingQuantity: number;
   blockedQuantity: number; // for quarantine or expired stock
+  purchasePrice?: number;
+  unitCost?: number;
   goodsReceiptId?: string;
   status: "active" | "near_expiry" | "expired" | "quarantine" | "depleted";
+  expiryClaimStatus?: ExpiryClaimStatus;
+  expiryClaimReference?: string;
+  expiryClaimNotes?: string;
+  expiryClaimUpdatedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,11 +60,27 @@ export interface StockMovement {
   type: StockMovementType;
   quantityChange: number; // positive for addition, negative for reduction
   balanceAfter: number;
-  referenceId: string; // Invoice ID, GRN ID, Damage ID, Booking ID, Online Order ID
-  referenceType: "invoice" | "goods_receipt" | "sample" | "damage" | "adjustment" | "booking" | "online_order";
+  referenceId: string; // Invoice ID, GRN ID, Damage ID, Booking ID, Online Order ID, Expiry Claim ID
+  referenceType:
+    | "invoice"
+    | "goods_receipt"
+    | "sample"
+    | "damage"
+    | "adjustment"
+    | "booking"
+    | "online_order"
+    | "expiry_claim"
+    | "customer_return";
   userId: string;
   userName: string;
   reason?: string;
+  unitCost?: number;
+  totalCostValue?: number;
+  recoveredAmount?: number;
+  netLossAmount?: number;
+  claimOutcome?: ExpiryClaimStatus;
+  manufacturerId?: string;
+  manufacturerName?: string;
   deviceId?: string;
   timestamp: string;
 }

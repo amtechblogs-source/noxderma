@@ -36,6 +36,10 @@ import {
 import { formatPKR, formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
 import { syncManager } from "@/lib/offline/sync";
+import {
+  computeStockLossMetrics,
+  computeSalesReturnAdjustments,
+} from "@/lib/inventory/expiryUtils";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -50,6 +54,7 @@ import {
   type ProductPricing,
   type OperatingExpense,
   type StaffSalary,
+  type SalesReturn,
   type Permission,
   type PartnerTransaction,
   type PartnerConfig,
@@ -65,6 +70,7 @@ export function DashboardView() {
   const [productPricings, setProductPricings] = useState<ProductPricing[]>([]);
   const [operatingExpenses, setOperatingExpenses] = useState<OperatingExpense[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<StaffSalary[]>([]);
+  const [salesReturnsList, setSalesReturnsList] = useState<SalesReturn[]>([]);
   const [allMovements, setAllMovements] = useState<StockMovement[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [outbox, setOutbox] = useState<OutboxOperation[]>([]);
@@ -90,6 +96,7 @@ export function DashboardView() {
         pricingList,
         expList,
         salList,
+        retList,
       ] = await Promise.all([
         offlineDb.invoices.toArray(),
         offlineDb.inventoryBatches.toArray(),
@@ -102,6 +109,7 @@ export function DashboardView() {
         offlineDb.productPricing ? offlineDb.productPricing.toArray() : Promise.resolve([]),
         offlineDb.operatingExpenses ? offlineDb.operatingExpenses.toArray() : Promise.resolve([]),
         offlineDb.staffSalaries ? offlineDb.staffSalaries.toArray() : Promise.resolve([]),
+        (offlineDb as any).salesReturns ? (offlineDb as any).salesReturns.toArray() : Promise.resolve([]),
       ]);
 
       const sortedMovs = [...(movList || [])].sort((a, b) =>
@@ -120,6 +128,23 @@ export function DashboardView() {
       setProductPricings(pricingList || []);
       setOperatingExpenses(expList || []);
       setSalaryRecords(salList || []);
+
+      if (Array.isArray(retList) && retList.length > 0) {
+        setSalesReturnsList(retList as SalesReturn[]);
+      } else {
+        const isCloudInit = localStorage.getItem("noxderma_cloud_init_salesReturns") === "true";
+        const savedReturns = !isCloudInit ? localStorage.getItem("noxderma_sales_returns") : null;
+        if (savedReturns) {
+          try {
+            const parsed = JSON.parse(savedReturns);
+            setSalesReturnsList(Array.isArray(parsed) ? parsed : []);
+          } catch {
+            setSalesReturnsList([]);
+          }
+        } else {
+          setSalesReturnsList([]);
+        }
+      }
       setPartnerConfigRefreshTick((t) => t + 1);
     } catch (err) {
       console.warn("Failed to query IndexedDB dashboard metrics:", err);
@@ -176,6 +201,11 @@ export function DashboardView() {
     selectedCategoryId === "all"
       ? allMovements
       : allMovements.filter((m) => categoryProductIds.has(m.productId));
+
+  const displaySalesReturns =
+    selectedCategoryId === "all"
+      ? salesReturnsList
+      : salesReturnsList.filter((r) => categoryProductIds.has(r.productId));
 
   // Fast Lookup Maps for COGS & Profit Calculation (matches /finance/pnl 1-to-1)
   const pricingMap = useMemo(() => {
@@ -247,15 +277,17 @@ export function DashboardView() {
 
   // Profit Calculation Engine (Net Profit, Gross Profit, COGS, Expenses & Margin %)
   const computeProfitMetrics = useMemo(() => {
+    const costMaps = { pricingMap, productMap, batchMap };
     return (
       targetInvoices: Invoice[],
       targetExpenses: OperatingExpense[],
       targetSalaries: StaffSalary[],
-      targetMovements: StockMovement[]
+      targetMovements: StockMovement[],
+      targetReturns: SalesReturn[] = []
     ) => {
       let grossSales = 0;
       let discountsGiven = 0;
-      let cogs = 0;
+      let rawCogs = 0;
       let invoiceDeliveryCharges = 0;
 
       for (const inv of targetInvoices) {
@@ -276,7 +308,7 @@ export function DashboardView() {
           invoiceDeliveryCharges += inv.deliveryCharge || 0;
 
           for (const l of inv.lines || []) {
-            cogs += (l.quantity || 0) * resolveLineUnitCost(l);
+            rawCogs += (l.quantity || 0) * resolveLineUnitCost(l);
           }
         } else {
           // Category-scoped revenue & COGS
@@ -286,23 +318,22 @@ export function DashboardView() {
             const lineDisc = l.lineDiscountAmount || 0;
             grossSales += lineGross || l.lineTotal || 0;
             discountsGiven += lineDisc;
-            cogs += (l.quantity || 0) * resolveLineUnitCost(l);
+            rawCogs += (l.quantity || 0) * resolveLineUnitCost(l);
           }
         }
       }
 
-      const netSales = Math.max(0, grossSales - discountsGiven);
+      const retAdj = computeSalesReturnAdjustments(targetReturns, costMaps);
+      const netSales = Math.max(0, grossSales - discountsGiven - retAdj.salesReturnsTotal);
+      const cogs = Math.max(0, rawCogs - retAdj.cogsReversal);
       const grossProfit = netSales - cogs;
 
-      // Damaged & Sample stock losses
-      let damagedAndSampleLoss = 0;
-      for (const m of targetMovements) {
-        if (m.type === "damaged_stock" || m.type === "sample_issue") {
-          const pricing = pricingMap.get(String(m.productId));
-          const unitCost = pricing?.purchaseCostPerPack || 350;
-          damagedAndSampleLoss += Math.abs(m.quantityChange || 0) * unitCost;
-        }
-      }
+      // Damaged, Sample, and Net Expired stock losses (matches /finance/pnl 1-to-1)
+      const lossMetrics = computeStockLossMetrics(targetMovements, costMaps);
+      const stockLossTotal =
+        lossMetrics.damagedStockLoss +
+        lossMetrics.sampleExpense +
+        lossMetrics.expiryWriteOffLoss;
 
       let generalExpenses = 0;
       let paidPayrollCost = 0;
@@ -327,7 +358,7 @@ export function DashboardView() {
       }
 
       const totalOperatingExpenses =
-        generalExpenses + paidPayrollCost + invoiceDeliveryCharges + damagedAndSampleLoss;
+        generalExpenses + paidPayrollCost + invoiceDeliveryCharges + stockLossTotal;
       const netProfit = grossProfit - totalOperatingExpenses;
       const grossMarginPct =
         netSales > 0 ? ((grossProfit / netSales) * 100).toFixed(1) : "0.0";
@@ -358,13 +389,17 @@ export function DashboardView() {
     const mMovements = displayAllMovements.filter((m) =>
       String(m.timestamp || "").startsWith(currentMonthPrefix)
     );
-    return computeProfitMetrics(monthInvoices, mExpenses, mSalaries, mMovements);
+    const mReturns = displaySalesReturns.filter((r) =>
+      String(r.returnDate || "").startsWith(currentMonthPrefix)
+    );
+    return computeProfitMetrics(monthInvoices, mExpenses, mSalaries, mMovements, mReturns);
   }, [
     computeProfitMetrics,
     monthInvoices,
     operatingExpenses,
     salaryRecords,
     displayAllMovements,
+    displaySalesReturns,
     currentMonthPrefix,
   ]);
 
@@ -379,13 +414,17 @@ export function DashboardView() {
     const tMovements = displayAllMovements.filter((m) =>
       String(m.timestamp || "").startsWith(todayStr)
     );
-    return computeProfitMetrics(todayInvoices, tExpenses, tSalaries, tMovements);
+    const tReturns = displaySalesReturns.filter((r) =>
+      String(r.returnDate || "").startsWith(todayStr)
+    );
+    return computeProfitMetrics(todayInvoices, tExpenses, tSalaries, tMovements, tReturns);
   }, [
     computeProfitMetrics,
     todayInvoices,
     operatingExpenses,
     salaryRecords,
     displayAllMovements,
+    displaySalesReturns,
     todayStr,
   ]);
 
@@ -395,7 +434,8 @@ export function DashboardView() {
       displayInvoices,
       operatingExpenses,
       paidSalaries,
-      displayAllMovements
+      displayAllMovements,
+      displaySalesReturns
     );
   }, [
     computeProfitMetrics,
@@ -403,6 +443,7 @@ export function DashboardView() {
     operatingExpenses,
     salaryRecords,
     displayAllMovements,
+    displaySalesReturns,
   ]);
 
   const activeProfit = viewPeriod === "month" ? monthProfit : todayProfit;
@@ -1466,11 +1507,14 @@ export function DashboardView() {
                         : m.type === "sample_issue"
                         ? "Doctor Sample"
                         : m.type === "sales_return"
-                        ? "Customer Wapis Stock"
+                        ? "Bill Deleted / Returned"
                         : m.type === "supplier_return"
-                        ? "Company Wapis Stock"
+                        ? "Company Expiry Claim"
                         : m.type === "expiry_write_off"
-                        ? "Expired Stock"
+                        ? "Expired Loss Write-off"
+                        : m.type === "reconciliation_adjustment" &&
+                          (m.referenceType === "expiry_claim" || m.claimOutcome === "quarantined_pending_claim")
+                        ? "Quarantined (Claim Pending)"
                         : (m.type as string).replace(/_/g, " ");
 
                     return (
@@ -1482,9 +1526,11 @@ export function DashboardView() {
                         <td className="py-2.5">
                           <span
                             className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              m.type === "sales_deduction"
+                              m.type === "sales_deduction" || m.type === "expiry_write_off"
                                 ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
-                                : m.type === "sales_return"
+                                : m.type === "supplier_return"
+                                ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                                : m.type === "sales_return" || m.type === "purchase_receipt"
                                 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
                                 : "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
                             }`}

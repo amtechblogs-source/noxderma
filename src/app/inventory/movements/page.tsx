@@ -55,6 +55,30 @@ function getMovementTypeBadge(m: StockMovement): { label: string; badgeClass: st
       badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
     };
   }
+  if (m.type === "expiry_write_off") {
+    return {
+      label: "EXPIRED LOSS (-)",
+      badgeClass:
+        "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-800",
+    };
+  }
+  if (m.type === "supplier_return") {
+    return {
+      label: "COMPANY CLAIM (-)",
+      badgeClass:
+        "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800",
+    };
+  }
+  if (
+    m.type === "reconciliation_adjustment" &&
+    (m.referenceType === "expiry_claim" || m.claimOutcome === "quarantined_pending_claim")
+  ) {
+    return {
+      label: "QUARANTINE (LOCKED)",
+      badgeClass:
+        "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200 dark:border-amber-800",
+    };
+  }
   if (m.type === "sample_issue") {
     return {
       label: "DOCTOR SAMPLE (-)",
@@ -159,6 +183,8 @@ export default function StockMovementsPage() {
             { id: "sales_deduction", label: "Sold in Bills (-)" },
             { id: "sales_return", label: "Bill Deleted / Returned (+)" },
             { id: "purchase_receipt", label: "Bought (+)" },
+            { id: "expiry_write_off", label: "Expired Loss (-)" },
+            { id: "supplier_return", label: "Company Claim (-)" },
             { id: "damaged_stock", label: "Damaged (-)" },
             { id: "sample_issue", label: "Samples (-)" },
           ].map((t) => (
