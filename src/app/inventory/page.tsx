@@ -19,8 +19,9 @@ import {
   Eye,
   ShieldAlert,
 } from "lucide-react";
-import { formatPKR, formatNumber } from "@/lib/formatting";
+import { formatPKR, formatNumber, formatKarachiDate } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { reconcileDeletedBillsStockMovements } from "@/lib/inventory/reconcileDeletedBills";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
@@ -38,6 +39,7 @@ export default function InventoryOverviewPage() {
   const { selectedCategoryId, setSelectedCategoryId, categories } = useCategory();
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -60,14 +62,17 @@ export default function InventoryOverviewPage() {
 
   const loadData = async () => {
     try {
-      const [prodList, batchList, custList] = await Promise.all([
+      await reconcileDeletedBillsStockMovements();
+      const [prodList, batchList, custList, movList] = await Promise.all([
         offlineDb.products.toArray(),
         offlineDb.inventoryBatches.toArray(),
         offlineDb.customers.toArray(),
+        offlineDb.stockMovements.toArray(),
       ]);
       setProducts(prodList);
       setBatches(batchList);
       setCustomers(custList);
+      setMovements(movList);
     } finally {
       setLoading(false);
     }
@@ -106,6 +111,15 @@ export default function InventoryOverviewPage() {
     const available = Math.max(0, totalRemaining - totalBlocked);
     const isLow = totalRemaining <= prod.reorderThreshold;
 
+    const prodRestorations = movements.filter(
+      (m) => m.productId === prod.id && m.type === "sales_return" && m.quantityChange > 0
+    );
+    const totalRestoredFromBills = prodRestorations.reduce(
+      (sum, m) => sum + (Number(m.quantityChange) || 0),
+      0
+    );
+    const latestRestoration = prodRestorations[0] || null;
+
     return {
       product: prod,
       totalRemaining,
@@ -113,8 +127,14 @@ export default function InventoryOverviewPage() {
       available,
       isLow,
       batchCount: prodBatches.length,
+      totalRestoredFromBills,
+      latestRestoration,
     };
   });
+
+  const recentRestorations = movements
+    .filter((m) => m.type === "sales_return" && m.quantityChange > 0)
+    .slice(0, 6);
 
   const totalInventoryUnits = displayBatches.reduce((sum, b) => sum + (b.remainingQuantity || 0), 0);
   const totalBlockedUnits = displayBatches.reduce((sum, b) => sum + (b.blockedQuantity || 0), 0);
@@ -374,6 +394,55 @@ export default function InventoryOverviewPage() {
         </div>
       </div>
 
+      {/* Recent Restored Stock from Deleted Bills / Returns Banner */}
+      {recentRestorations.length > 0 && (
+        <div className="p-4 rounded-xl border border-teal-200 dark:border-teal-800/80 bg-teal-50/40 dark:bg-teal-950/30 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+              <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                Restored Stock from Deleted / Returned Bills (واپس شدہ اسٹاک ریکارڈ)
+              </h2>
+            </div>
+            <Link
+              href="/inventory/movements"
+              className="text-xs font-bold text-teal-700 dark:text-teal-300 hover:underline inline-flex items-center gap-1"
+            >
+              <span>View Full Stock In &amp; Out History →</span>
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {recentRestorations.map((m) => (
+              <div
+                key={m.id}
+                className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-teal-200/70 dark:border-teal-800/60 flex items-center justify-between gap-2 text-xs shadow-sm"
+              >
+                <div className="min-w-0">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                    {m.productName}
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate">
+                    {m.reason || `Bill #${m.referenceId}`}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                    {formatKarachiDate(m.timestamp, true)} • Batch: {m.batchNumber || "—"}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="inline-block px-2 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-mono font-black text-xs">
+                    +{m.quantityChange} Packs
+                  </span>
+                  <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                    Now: {formatNumber(m.balanceAfter)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stock Projections Table */}
       <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="overflow-x-auto">
@@ -413,7 +482,15 @@ export default function InventoryOverviewPage() {
                     {formatNumber(item.totalRemaining)}
                   </td>
                   <td className="p-2.5 text-right font-mono font-bold text-emerald-600">
-                    {formatNumber(item.available)}
+                    <div>{formatNumber(item.available)}</div>
+                    {item.totalRestoredFromBills > 0 && (
+                      <span
+                        className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[10px] font-bold"
+                        title={item.latestRestoration?.reason || "Restored from deleted bill"}
+                      >
+                        +{item.totalRestoredFromBills} Restored (Bill Deleted)
+                      </span>
+                    )}
                   </td>
                   <td className="p-2.5 text-right font-mono font-semibold text-rose-600">
                     {item.totalBlocked > 0 ? formatNumber(item.totalBlocked) : "—"}

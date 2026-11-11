@@ -908,32 +908,41 @@ export function OfflineInvoiceCreator({ editInvoiceId: propEditId }: OfflineInvo
 
           // 2. Deduct batches and record stock movements
           for (const line of lines) {
-            const batch = await offlineDb.inventoryBatches.get(line.batchId);
+            const totalUnits = Number(line.quantity || 0) + Number(line.bonusQuantity || 0);
+            let batch = await offlineDb.inventoryBatches.get(line.batchId);
+            if (!batch && line.productId) {
+              const prodBatches = await offlineDb.inventoryBatches
+                .where("productId")
+                .equals(line.productId)
+                .toArray();
+              batch = prodBatches[0];
+            }
+
+            let newRemaining = 0;
             if (batch) {
-              const totalUnits = Number(line.quantity || 0) + Number(line.bonusQuantity || 0);
-              const newRemaining = Math.max(0, Number(batch.remainingQuantity || 0) - totalUnits);
-              await offlineDb.inventoryBatches.update(line.batchId, {
+              newRemaining = Math.max(0, Number(batch.remainingQuantity || 0) - totalUnits);
+              await offlineDb.inventoryBatches.update(batch.id, {
                 remainingQuantity: newRemaining,
                 updatedAt: now.toISOString(),
               });
-
-              await offlineDb.stockMovements.add({
-                id: `mov_${Date.now()}_${line.batchId}`,
-                productId: line.productId,
-                productName: line.productName,
-                batchId: line.batchId,
-                batchNumber: line.batchNumber,
-                type: "sales_deduction",
-                quantityChange: -totalUnits,
-                balanceAfter: newRemaining,
-                referenceId: invoiceId,
-                referenceType: "invoice",
-                userId: currentUserId,
-                userName: currentUserName,
-                reason: `Sold via invoice ${provisionalRef} (${line.quantity} paid + ${line.bonusQuantity || 0} bonus units)`,
-                timestamp: now.toISOString(),
-              });
             }
+
+            await offlineDb.stockMovements.put({
+              id: `mov_${Date.now()}_${line.productId}_${line.batchId}`,
+              productId: line.productId,
+              productName: line.productName,
+              batchId: batch?.id || line.batchId,
+              batchNumber: batch?.batchNumber || line.batchNumber,
+              type: "sales_deduction",
+              quantityChange: -totalUnits,
+              balanceAfter: newRemaining,
+              referenceId: provisionalRef,
+              referenceType: "invoice",
+              userId: currentUserId,
+              userName: currentUserName,
+              reason: `Sold via Bill #${provisionalRef} to ${finalCustomerName} (${line.quantity} paid + ${line.bonusQuantity || 0} bonus units)`,
+              timestamp: now.toISOString(),
+            });
           }
 
           // 3. Update customer outstanding balance if selected existing customer (handles Udhaar & Advance credit)

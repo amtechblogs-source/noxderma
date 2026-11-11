@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { formatKarachiDate, formatNumber } from "@/lib/formatting";
 import { offlineDb } from "@/lib/offline/db";
+import { reconcileDeletedBillsStockMovements } from "@/lib/inventory/reconcileDeletedBills";
 import { useCategory } from "@/context/CategoryContext";
 import type { InventoryBatch, Product } from "@/types";
 import { DateRangeFilterBar } from "@/components/common/DateRangeFilterBar";
@@ -35,6 +36,7 @@ export default function BatchInventoryPage() {
 
   useEffect(() => {
     async function loadBatches() {
+      await reconcileDeletedBillsStockMovements();
       const [list, prodList] = await Promise.all([
         offlineDb.inventoryBatches.toArray(),
         offlineDb.products.toArray(),

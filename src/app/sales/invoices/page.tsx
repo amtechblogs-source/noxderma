@@ -154,37 +154,100 @@ export default function SalesInvoicesListPage() {
   // Revert stock, customer balance, and delete record
   const deleteInvoiceRecord = async (inv: Invoice) => {
     const now = new Date().toISOString();
+    const billRef = inv.officialReference || inv.provisionalReference || inv.id;
 
-    // 1. Return items to respective inventory batches and record positive adjustment
+    // 1. Return items to respective inventory batches and record positive stock restoration movement
     for (const line of inv.lines || []) {
-      for (const alloc of line.batchAllocations || []) {
-        if (alloc.batchId) {
-          const batch = await offlineDb.inventoryBatches.get(alloc.batchId);
-          if (batch) {
-            const restoredQty = (Number(batch.remainingQuantity) || 0) + (alloc.quantity || 0);
-            await offlineDb.inventoryBatches.update(alloc.batchId, {
-              remainingQuantity: restoredQty,
-              updatedAt: now,
-            });
+      const rawAllocs =
+        Array.isArray(line.batchAllocations) && line.batchAllocations.length > 0
+          ? line.batchAllocations
+          : [
+              {
+                batchId: (line as any).batchId || `bch_gen_${line.productId}`,
+                batchNumber: (line as any).batchNumber || "GEN-STOCK",
+                expiryDate:
+                  (line as any).expiryDate ||
+                  new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10),
+                quantity:
+                  Number(line.totalUnitsDelivered) ||
+                  Number(line.quantity || 0) + Number(line.bonusQuantity || 0) ||
+                  1,
+              },
+            ];
 
-            await offlineDb.stockMovements.add({
-              id: `mov_del_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-              productId: line.productId,
-              productName: line.productName,
-              batchId: alloc.batchId,
-              batchNumber: alloc.batchNumber || batch.batchNumber,
-              type: "sales_return",
-              quantityChange: alloc.quantity,
-              balanceAfter: restoredQty,
-              referenceId: inv.id,
-              referenceType: "invoice",
-              userId: currentUser?.id || "usr_admin",
-              userName: currentUser?.displayName || "Owner",
-              reason: `Invoice deleted: ${inv.provisionalReference || inv.id}`,
-              timestamp: now,
-            });
-          }
+      for (const alloc of rawAllocs) {
+        const restoreQty =
+          Number(alloc.quantity) ||
+          Number(line.totalUnitsDelivered) ||
+          Number(line.quantity || 0) + Number(line.bonusQuantity || 0) ||
+          0;
+        if (restoreQty <= 0) continue;
+
+        let batch = alloc.batchId
+          ? await offlineDb.inventoryBatches.get(alloc.batchId)
+          : undefined;
+
+        if (!batch && line.productId) {
+          const prodBatches = await offlineDb.inventoryBatches
+            .where("productId")
+            .equals(line.productId)
+            .toArray();
+          batch =
+            prodBatches.find(
+              (b) =>
+                alloc.batchNumber &&
+                b.batchNumber?.toLowerCase() === alloc.batchNumber.toLowerCase()
+            ) || prodBatches[0];
         }
+
+        let targetBatchId = batch?.id || alloc.batchId || `bch_rest_${line.productId}`;
+        let targetBatchNumber = batch?.batchNumber || alloc.batchNumber || "RESTORED";
+        let restoredQty = restoreQty;
+
+        if (batch) {
+          restoredQty = (Number(batch.remainingQuantity) || 0) + restoreQty;
+          await offlineDb.inventoryBatches.update(batch.id, {
+            remainingQuantity: restoredQty,
+            status: "active",
+            updatedAt: now,
+          });
+        } else if (line.productId) {
+          // Ensure a batch record exists so Stock Alerts & Batches reflect the restored stock
+          await offlineDb.inventoryBatches.put({
+            id: targetBatchId,
+            productId: line.productId,
+            productName: line.productName,
+            batchNumber: targetBatchNumber,
+            manufacturerId: "mfr_primary",
+            manufacturingDate: now.slice(0, 10),
+            expiryDate:
+              alloc.expiryDate ||
+              new Date(Date.now() + 2 * 365 * 86400000).toISOString().slice(0, 10),
+            receivedQuantity: restoreQty,
+            remainingQuantity: restoreQty,
+            blockedQuantity: 0,
+            status: "active",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await offlineDb.stockMovements.put({
+          id: `mov_del_${inv.id}_${line.productId}_${targetBatchId}`,
+          productId: line.productId,
+          productName: line.productName,
+          batchId: targetBatchId,
+          batchNumber: targetBatchNumber,
+          type: "sales_return",
+          quantityChange: restoreQty,
+          balanceAfter: restoredQty,
+          referenceId: billRef,
+          referenceType: "invoice",
+          userId: currentUser?.id || "usr_admin",
+          userName: currentUser?.displayName || "Owner",
+          reason: `Bill Deleted — Stock Restored (${billRef} • ${inv.customerName || "Customer"})`,
+          timestamp: now,
+        });
       }
     }
 
@@ -192,7 +255,7 @@ export default function SalesInvoicesListPage() {
     if (inv.customerId && inv.outstandingBalance > 0) {
       const cust = await offlineDb.customers.get(inv.customerId);
       if (cust) {
-        const newBal = Math.max(0, (cust.currentOutstandingBalance || 0) - inv.outstandingBalance);
+        const newBal = (cust.currentOutstandingBalance || 0) - inv.outstandingBalance;
         await offlineDb.customers.update(inv.customerId, {
           currentOutstandingBalance: newBal,
           updatedAt: now,
