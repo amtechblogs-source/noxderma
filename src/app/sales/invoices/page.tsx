@@ -553,47 +553,50 @@ export default function SalesInvoicesListPage() {
         </div>
       )}
 
-      {/* Bulk Selection Actions Floating Toolbar */}
+      {/* Sleek Floating Bulk Selection Bar (Raised cleanly above mobile bottom nav; centered on desktop) */}
       {canDeleteInvoice && selectedInvoiceIds.length > 0 && (
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-teal-900 text-white shadow-xl border border-teal-700 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-teal-800 text-teal-200 flex items-center justify-center font-bold text-sm shrink-0">
-              {selectedInvoiceIds.length}
-            </div>
-            <div className="min-w-0">
-              <span className="font-extrabold text-sm block leading-tight">
-                {selectedInvoiceIds.length} {selectedInvoiceIds.length === 1 ? "Bill Selected" : "Bills Selected"}
+        <div className="fixed bottom-[92px] lg:bottom-5 left-2.5 right-2.5 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 z-30 pointer-events-none no-print print:hidden animate-in fade-in slide-in-from-bottom-3">
+          <div className="pointer-events-auto w-full lg:min-w-[440px] max-w-lg mx-auto px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white shadow-2xl border border-slate-700/80 flex items-center justify-between gap-2.5 sm:gap-4">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-7 h-7 rounded-xl bg-teal-500 text-white font-mono font-extrabold text-xs flex items-center justify-center shrink-0 shadow-sm">
+                {selectedInvoiceIds.length}
               </span>
-              <span className="text-xs text-teal-200 block">
-                Total Value: <strong className="font-mono text-white">{formatPKR(selectedInvoicesTotal)}</strong>
-              </span>
+              <div className="min-w-0 leading-tight">
+                <span className="font-bold text-xs sm:text-sm text-white block truncate">
+                  {selectedInvoiceIds.length} {selectedInvoiceIds.length === 1 ? "Bill" : "Bills"} Selected
+                </span>
+                <span className="text-[11px] text-slate-300 font-mono block truncate">
+                  {formatPKR(selectedInvoicesTotal)}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setSelectedInvoiceIds([])}
-              className="px-3.5 py-2 min-h-[40px] rounded-xl bg-teal-800 hover:bg-teal-700 active:bg-teal-800 text-teal-100 font-bold text-xs sm:text-sm flex items-center justify-center whitespace-nowrap btn-interactive"
-            >
-              Deselect All
-            </button>
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedInvoiceIds([])}
+                className="px-2.5 sm:px-3 py-1.5 min-h-[34px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs whitespace-nowrap transition-colors btn-interactive"
+              >
+                <span className="hidden sm:inline">Deselect All</span>
+                <span className="sm:hidden">Clear</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setIsBulkDeleting(true)}
-              className="px-3.5 sm:px-4 py-2 min-h-[40px] rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap btn-interactive"
-            >
-              <Trash2 className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">Delete Selected ({selectedInvoiceIds.length})</span>
-              <span className="sm:hidden">Delete ({selectedInvoiceIds.length})</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setIsBulkDeleting(true)}
+                className="px-3 sm:px-3.5 py-1.5 min-h-[34px] rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm shadow-rose-600/30 whitespace-nowrap transition-colors btn-interactive"
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">Delete Selected ({selectedInvoiceIds.length})</span>
+                <span className="sm:hidden">Delete ({selectedInvoiceIds.length})</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Invoices Master Container */}
-      <div className="space-y-4">
+      <div className={`space-y-4 ${canDeleteInvoice && selectedInvoiceIds.length > 0 ? "pb-20 lg:pb-16" : ""}`}>
         {filtered.length === 0 ? (
           <div className="p-12 text-center text-slate-400 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <Receipt className="w-12 h-12 mx-auto mb-2 opacity-50 text-teal-600" />
