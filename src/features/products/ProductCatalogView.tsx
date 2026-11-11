@@ -32,6 +32,7 @@ import { offlineDb } from "@/lib/offline/db";
 import { recordActivity } from "@/lib/audit/auditTracker";
 import { imageStorageService } from "@/lib/image-storage/service";
 import { ImageCropModal } from "@/components/common/ImageCropModal";
+import { FloatingBulkActionBar } from "@/components/common/FloatingBulkActionBar";
 import { useCategory } from "@/context/CategoryContext";
 import { useAuth } from "@/context/AuthContext";
 import type { Product, ProductPricing, DynamicCategory, ProductImage } from "@/types";
@@ -1450,9 +1451,9 @@ export function ProductCatalogView() {
         </div>
       </div>
 
-      {/* Selection Control Bar & Bulk Action Toolbar (Restricted to products:edit) */}
+      {/* Selection Control Bar (Restricted to products:edit; actions float in bottom bar) */}
       {canEditProducts && (
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-soft">
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-soft">
           <label className="inline-flex items-center gap-2.5 cursor-pointer select-none text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
@@ -1465,38 +1466,22 @@ export function ProductCatalogView() {
               ({filtered.length} visible)
             </span>
           </label>
-
-          {selectedProductIds.length > 0 && (
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end animate-in fade-in">
-              <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-3 py-1.5 rounded-xl border border-teal-200 dark:border-teal-800">
-                {selectedProductIds.length} item{selectedProductIds.length > 1 ? "s" : ""} selected
-              </span>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedProductIds([])}
-                  className="min-h-[36px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold btn-interactive"
-                >
-                  Clear
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsBulkDeleting(true)}
-                  className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-rose-600/30 btn-interactive"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Selected ({selectedProductIds.length})</span>
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
+      {/* Sleek Floating Bulk Selection Bar */}
+      {canEditProducts && (
+        <FloatingBulkActionBar
+          count={selectedProductIds.length}
+          singularLabel="Medicine Selected"
+          pluralLabel="Medicines Selected"
+          onClear={() => setSelectedProductIds([])}
+          onDelete={() => setIsBulkDeleting(true)}
+        />
+      )}
+
       {/* Catalog Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 ${canEditProducts && selectedProductIds.length > 0 ? "pb-20 lg:pb-16" : ""}`}>
         {filtered.length === 0 ? (
           <div className="col-span-full p-12 text-center text-slate-400 border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-soft">
             <Boxes className="w-12 h-12 mx-auto mb-2 opacity-40 text-teal-600" />
