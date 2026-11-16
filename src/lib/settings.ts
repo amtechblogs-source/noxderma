@@ -324,25 +324,45 @@ export async function loadAuthoritativeBusinessSettings(): Promise<BusinessSetti
     bestLocal.invoiceFooter === DEFAULT_BUSINESS_SETTINGS.invoiceFooter;
 
   if (needsRemoteCheck) {
+    let remoteSettings: BusinessSettings | null = null;
     try {
       const res = await fetch("/api/settings");
       if (res.ok) {
         const data = await res.json();
         if (data?.settings && !data.isDefaultFallback) {
-          const mergedWithRemote = mergeBusinessSettings(bestLocal, data.settings);
-          if (mergedWithRemote) {
-            const { settings: compactedRemote } = await compactBusinessSettingsLogos(mergedWithRemote);
-            bestLocal = compactedRemote;
-            await offlineDb.settings.put(compactedRemote).catch(() => {});
-            if (typeof window !== "undefined") {
-              try {
-                localStorage.setItem(SETTINGS_MIRROR_KEY, JSON.stringify([compactedRemote]));
-              } catch {}
-            }
-          }
+          remoteSettings = data.settings;
         }
       }
     } catch {}
+
+    // Direct Client Firestore fallback (works on Cloudflare Pages / static edge without Node API)
+    if (!remoteSettings && typeof window !== "undefined") {
+      try {
+        const { db } = await import("@/lib/firebase/config");
+        const { doc, getDoc } = await import("firebase/firestore");
+        const [snap1, snap2] = await Promise.all([
+          getDoc(doc(db, "settings", "primary")),
+          getDoc(doc(db, "organizationSettings", "primary")),
+        ]);
+        const d1 = snap1.exists() ? (snap1.data() as BusinessSettings) : null;
+        const d2 = snap2.exists() ? (snap2.data() as BusinessSettings) : null;
+        remoteSettings = mergeBusinessSettings(d1, d2);
+      } catch {}
+    }
+
+    if (remoteSettings) {
+      const mergedWithRemote = mergeBusinessSettings(bestLocal, remoteSettings);
+      if (mergedWithRemote) {
+        const { settings: compactedRemote } = await compactBusinessSettingsLogos(mergedWithRemote);
+        bestLocal = compactedRemote;
+        await offlineDb.settings.put(compactedRemote).catch(() => {});
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(SETTINGS_MIRROR_KEY, JSON.stringify([compactedRemote]));
+          } catch {}
+        }
+      }
+    }
   }
 
   return bestLocal || DEFAULT_BUSINESS_SETTINGS;

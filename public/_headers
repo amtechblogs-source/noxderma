@@ -1,0 +1,8 @@
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/health.json
+  Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0
+  Pragma: no-cache
+  Expires: 0
+  X-Noxderma-Health: ok
