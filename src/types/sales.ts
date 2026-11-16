@@ -118,9 +118,13 @@ export type SalesReturnDisposition = "quarantine_batch" | "scrap_writeoff" | "re
 
 export type CustomerReturnResolution = "khata_credit" | "cash_refund" | "replacement";
 
+export type SalesReturnMode = "invoice_return" | "open_return";
+
 export interface SalesReturn {
   id: string;
   returnNoteNumber: string; // e.g. CN-2026-012
+  returnMode?: SalesReturnMode; // "invoice_return" (against bill) or "open_return" (without bill)
+  invoiceId?: string;
   invoiceReference: string;
   customerId: string;
   customerName: string;
@@ -130,8 +134,12 @@ export interface SalesReturn {
   batchNumber: string;
   replacementBatchId?: string;
   replacementBatchNumber?: string;
+  soldQuantity?: number; // Original sold quantity on invoice (when linked to bill)
   returnQuantity: number;
-  unitCreditPrice: number;
+  grossUnitPrice?: number; // Sale rate before discount (PKR)
+  discountPercentage?: number; // Discount % applied on bill or open return
+  discountAmountPerUnit?: number; // Discount PKR per pack
+  unitCreditPrice: number; // Net effective rate credited per pack after discount
   unitCost?: number;
   totalCreditAmount: number;
   returnReason: SalesReturnReason;
