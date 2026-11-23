@@ -17,14 +17,46 @@ export const viewport: Viewport = {
   themeColor: "#0d9488",
 };
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://noxderma.pages.dev";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Noxderma — Medicine Distribution, Billing & Khata Software",
   description:
     "Medicine sales billing, godown stock, customer khata and offline order booking system.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/brand/icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    shortcut: "/favicon.ico",
     apple: "/brand/icon-192.png",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Noxderma Pharma",
+    url: `${SITE_URL}/`,
+    title: "Noxderma — Medicine Distribution, Billing & Khata Software",
+    description:
+      "Medicine sales billing, godown stock, customer khata and offline order booking system.",
+    images: [
+      {
+        url: `${SITE_URL}/brand/og-logo.jpg`,
+        secureUrl: `${SITE_URL}/brand/og-logo.jpg`,
+        width: 512,
+        height: 512,
+        alt: "Noxderma Pharma Logo",
+        type: "image/jpeg",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Noxderma — Medicine Distribution, Billing & Khata Software",
+    description:
+      "Medicine sales billing, godown stock, customer khata and offline order booking system.",
+    images: [`${SITE_URL}/brand/og-logo.jpg`],
   },
   appleWebApp: {
     capable: true,
