@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   themeColor: "#0d9488",
 };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://noxderma.pages.dev";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://noxderma.web.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
