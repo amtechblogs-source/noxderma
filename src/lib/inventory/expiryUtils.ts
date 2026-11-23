@@ -192,6 +192,10 @@ export function computeSalesReturnAdjustments(
 
   for (const r of returns) {
     if (!r || r.customerResolution === "replacement") continue;
+    // Exclude supplier/manufacturer buying-bill or manufacturer-payment returns from Customer Net Sales
+    if (r.sourceBillType === "purchase_bill" || r.sourceBillType === "manufacturer_payment") {
+      continue;
+    }
     const credit = Number(r.totalCreditAmount) || 0;
     const qty = Number(r.returnQuantity) || 0;
     const unitCost = resolveUnitPurchaseCost({

@@ -120,10 +120,19 @@ export type CustomerReturnResolution = "khata_credit" | "cash_refund" | "replace
 
 export type SalesReturnMode = "invoice_return" | "open_return";
 
+export type ReturnSourceBillType =
+  | "sale_invoice"
+  | "purchase_bill"
+  | "online_order"
+  | "manufacturer_payment"
+  | "customer_payment"
+  | "open_return";
+
 export interface SalesReturn {
   id: string;
   returnNoteNumber: string; // e.g. CN-2026-012
   returnMode?: SalesReturnMode; // "invoice_return" (against bill) or "open_return" (without bill)
+  sourceBillType?: ReturnSourceBillType; // sale_invoice, purchase_bill, online_order, manufacturer_payment, etc.
   invoiceId?: string;
   invoiceReference: string;
   customerId: string;
@@ -134,9 +143,9 @@ export interface SalesReturn {
   batchNumber: string;
   replacementBatchId?: string;
   replacementBatchNumber?: string;
-  soldQuantity?: number; // Original sold quantity on invoice (when linked to bill)
+  soldQuantity?: number; // Original sold/bought quantity on bill (when linked to bill)
   returnQuantity: number;
-  grossUnitPrice?: number; // Sale rate before discount (PKR)
+  grossUnitPrice?: number; // Sale/buying rate before discount (PKR)
   discountPercentage?: number; // Discount % applied on bill or open return
   discountAmountPerUnit?: number; // Discount PKR per pack
   unitCreditPrice: number; // Net effective rate credited per pack after discount
@@ -145,6 +154,9 @@ export interface SalesReturn {
   returnReason: SalesReturnReason;
   disposition: SalesReturnDisposition;
   customerResolution?: CustomerReturnResolution;
+  movementId?: string; // Primary StockMovement ID created by this return
+  extraMovementId?: string; // Replacement deduction StockMovement ID (if replacement)
+  manufacturerLedgerEntryId?: string; // Debit note / adjustment ID in manufacturerLedger (if purchase/manufacturer return)
   status: "approved" | "pending_inspection";
   returnDate: string;
   recordedByName: string;

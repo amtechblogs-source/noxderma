@@ -54,9 +54,12 @@ export default function ManufacturerLedgersPage() {
   const [amount, setAmount] = useState(0);
   const [paymentRef, setPaymentRef] = useState("");
   const [notes, setNotes] = useState("");
+  const [linkedPoSearch, setLinkedPoSearch] = useState("");
+  const [linkedPoId, setLinkedPoId] = useState("");
 
   const [entries, setEntries] = useState<ManufacturerPayableEntry[]>([]);
   const [manufacturers, setManufacturers] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
 
   const loadData = async () => {
     try {
@@ -67,6 +70,7 @@ export default function ManufacturerLedgersPage() {
       ]);
 
       setManufacturers(mfrList || []);
+      setPurchaseOrders(Array.isArray(poList) ? poList : []);
       if (mfrList && mfrList.length > 0) {
         setMfrName((prev) => (prev && mfrList.some((m: any) => m.name === prev) ? prev : mfrList[0].name));
       }
@@ -183,8 +187,29 @@ export default function ManufacturerLedgersPage() {
     setAmount(0);
     setPaymentRef("");
     setNotes("");
+    setLinkedPoSearch("");
+    setLinkedPoId("");
     setIsRecordingPayment(false);
     await loadData();
+  };
+
+  const applyPurchaseOrderAutoFill = (po: any | null) => {
+    if (!po) {
+      setLinkedPoId("");
+      return;
+    }
+    setLinkedPoId(po.id);
+    if (po.manufacturerName) {
+      setMfrName(po.manufacturerName);
+    }
+    const poTotal = Number(po.totalAmount) || 0;
+    if (poTotal > 0) {
+      setAmount(poTotal);
+    }
+    setPaymentRef(`PAY-${po.poNumber || po.grnReference || po.id}`);
+    setNotes(
+      `Payment against Stock Buying Bill ${po.poNumber}${po.grnReference ? ` (${po.grnReference})` : ""} — ${(po.items || []).map((i: any) => `${i.productName} x${i.quantity}`).join(", ")}`
+    );
   };
 
   // Filter
@@ -489,6 +514,55 @@ export default function ManufacturerLedgersPage() {
             </div>
 
             <form onSubmit={handleRecordPayment} className="space-y-3 text-xs">
+              {purchaseOrders.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 space-y-2">
+                  <label className="font-bold text-teal-800 dark:text-teal-200 block">
+                    Auto-Fill from Stock Buying Bill / PO # (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Type PO # or GRN # (e.g. PO-2026-001) to auto-fill..."
+                    value={linkedPoSearch}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLinkedPoSearch(val);
+                      const exact = purchaseOrders.find(
+                        (po) =>
+                          (po.poNumber || "").toLowerCase() === val.trim().toLowerCase() ||
+                          (po.grnReference || "").toLowerCase() === val.trim().toLowerCase()
+                      );
+                      if (exact) applyPurchaseOrderAutoFill(exact);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-teal-200 dark:border-teal-700 bg-white dark:bg-slate-800 font-mono text-xs"
+                  />
+                  <select
+                    value={linkedPoId}
+                    onChange={(e) => {
+                      const found = purchaseOrders.find((po) => po.id === e.target.value) || null;
+                      applyPurchaseOrderAutoFill(found);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-teal-200 dark:border-teal-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs"
+                  >
+                    <option value="">-- Pick Buying Bill / PO to Auto-Fill --</option>
+                    {purchaseOrders
+                      .filter((po) => {
+                        const q = linkedPoSearch.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          (po.poNumber || "").toLowerCase().includes(q) ||
+                          (po.grnReference || "").toLowerCase().includes(q) ||
+                          (po.manufacturerName || "").toLowerCase().includes(q)
+                        );
+                      })
+                      .map((po) => (
+                        <option key={po.id} value={po.id}>
+                          {po.poNumber} — {po.manufacturerName} ({formatPKR(po.totalAmount)})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                   Medicine Company *
