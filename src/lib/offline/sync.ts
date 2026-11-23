@@ -151,16 +151,16 @@ class SynchronizationManager {
         }
       }, AUTO_PROBE_INTERVAL_MS);
 
-      // 4. Initial startup reachability verification + pending outbox flush (no duplicate 30-table re-download)
+      // 4. Initial startup reachability verification + pending outbox flush (delayed 8s so initial chunks/Firestore settle first)
       setTimeout(async () => {
-        const actuallyOnline = await this.checkConnectivity(true);
-        if (actuallyOnline && !this.isSyncing) {
-          const count = await getPendingOutboxCount().catch(() => 0);
-          if (count > 0) {
+        const count = await getPendingOutboxCount().catch(() => 0);
+        if (count > 0 || !navigator.onLine) {
+          const actuallyOnline = await this.checkConnectivity(true);
+          if (actuallyOnline && !this.isSyncing && count > 0) {
             this.syncNow();
           }
         }
-      }, 900);
+      }, 8_000);
     }
   }
 

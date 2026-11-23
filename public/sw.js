@@ -1,4 +1,4 @@
-const CACHE_NAME = "noxderma-shell-v40";
+const CACHE_NAME = "noxderma-shell-v41";
 
 const PRECACHE_ASSETS = [
   "/",
@@ -109,30 +109,32 @@ self.addEventListener("fetch", (event) => {
     url.pathname.match(/\.(png|jpg|jpeg|svg|webp|ico|woff2)$/)
   ) {
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
+        if (cachedResponse && cachedResponse.headers.get("x-noxderma-offline") !== "1") {
           return cachedResponse;
         }
-        return fetchWithRetry(event.request, 8000, 2)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-            }
-            return networkResponse;
-          })
-          .catch(() =>
-            caches.match(event.request).then((fallback) => fallback || Response.error())
-          );
+        try {
+          const networkResponse = await fetchWithRetry(event.request, 8000, 2);
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch {
+          const fallback = await cache.match(event.request);
+          if (fallback && fallback.headers.get("x-noxderma-offline") !== "1") {
+            return fallback;
+          }
+          return Response.error();
+        }
       })
     );
     return;
   }
 
   // 4. Next.js RSC Flight Payloads (.txt or ?_rsc=): Network-First with Retry, Exact Cache Fallback
-  // IMPORTANT: Never return an empty 200 response on failure (let Next.js fall back cleanly to full page navigation)
+  // IMPORTANT: Return HTTP 503 (non-text/plain) on uncached failure so Next.js fetchServerResponse
+  // cleanly takes the `!r.ok` branch (`urlToUrlWithoutFlightMarker`) without logging console errors!
   const isRscRequest =
     url.searchParams.has("_rsc") ||
     event.request.headers.get("RSC") === "1" ||
@@ -140,19 +142,24 @@ self.addEventListener("fetch", (event) => {
 
   if (isRscRequest) {
     event.respondWith(
-      fetchWithRetry(event.request, 6000, 1)
-        .then((networkResponse) => {
+      caches.open(CACHE_NAME).then(async (cache) => {
+        try {
+          const networkResponse = await fetchWithRetry(event.request, 6000, 1);
           if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-            });
+            cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
-        })
-        .catch(() =>
-          caches.match(event.request).then((cached) => cached || Response.error())
-        )
+        } catch {
+          const cached = await cache.match(event.request);
+          if (cached && cached.headers.get("x-noxderma-offline") !== "1") {
+            return cached;
+          }
+          return new Response("offline", {
+            status: 503,
+            headers: { "Content-Type": "application/octet-stream" },
+          });
+        }
+      })
     );
     return;
   }

@@ -771,6 +771,7 @@ export function DashboardView() {
           {hasPermission("invoices:create") && (
             <Link
               href="/sales/invoices/new"
+              prefetch={false}
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-xl bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white text-xs font-bold shadow-sm shadow-teal-600/20 transition-all btn-interactive shrink-0"
             >
               <PlusCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
@@ -782,6 +783,7 @@ export function DashboardView() {
           {isOwnerOrAccountant && (
             <Link
               href="/finance/partners"
+              prefetch={false}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-teal-500/40 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-xs font-bold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-all btn-interactive shrink-0"
             >
               <Users2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
@@ -793,6 +795,7 @@ export function DashboardView() {
           {hasPermission("staff:monitoring") && (
             <Link
               href="/employees/monitoring"
+              prefetch={false}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive shrink-0"
             >
               <Compass className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
@@ -804,6 +807,7 @@ export function DashboardView() {
           {hasPermission("crm:visits") && (
             <Link
               href="/crm/visits"
+              prefetch={false}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-interactive shrink-0"
             >
               <span>Add Doctor Visit</span>
@@ -837,6 +841,7 @@ export function DashboardView() {
           {canViewSalesSummary && (
             <Link
               href="/sales/invoices"
+              prefetch={false}
               className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-teal-500/60 block cursor-pointer"
             >
               <div className="flex items-center justify-between">
@@ -889,6 +894,7 @@ export function DashboardView() {
           {(canViewFinanceSummary || canViewSalesSummary) && (
             <Link
               href="/finance/pnl"
+              prefetch={false}
               className="p-3.5 sm:p-5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-white via-white to-emerald-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 shadow-soft card-interactive relative overflow-hidden group hover:border-emerald-500/60 block cursor-pointer"
             >
               <div className="flex items-center justify-between gap-2">
@@ -966,6 +972,7 @@ export function DashboardView() {
           {canViewFinanceSummary && (
             <Link
               href="/finance/ledgers/customers"
+              prefetch={false}
               className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-sky-500/60 block cursor-pointer"
             >
               <div className="flex items-center justify-between">
@@ -1001,6 +1008,7 @@ export function DashboardView() {
           {canViewFinanceSummary && (
             <Link
               href="/finance/ledgers/manufacturers"
+              prefetch={false}
               className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-indigo-500/60 block cursor-pointer"
             >
               <div className="flex items-center justify-between">
@@ -1031,6 +1039,7 @@ export function DashboardView() {
           {canViewInventory && (
             <Link
               href="/inventory/batches"
+              prefetch={false}
               className="p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-soft card-interactive relative overflow-hidden group hover:border-amber-500/60 block cursor-pointer"
             >
               <div className="flex items-center justify-between">
@@ -1126,6 +1135,7 @@ export function DashboardView() {
 
               <Link
                 href="/products"
+                prefetch={false}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shrink-0 shadow-sm"
               >
                 <span>All Medicines</span> <ArrowUpRight className="w-3.5 h-3.5" />
@@ -1157,6 +1167,7 @@ export function DashboardView() {
                 return (
                   <Link
                     key={item.productId || `${item.productName}_${idx}`}
+                    prefetch={false}
                     href={
                       item.productId
                         ? `/products/detail?id=${encodeURIComponent(item.productId)}`
@@ -1414,6 +1425,7 @@ export function DashboardView() {
             </div>
             <Link
               href="/inventory/batches"
+              prefetch={false}
               className="text-xs font-semibold text-teal-600 hover:underline shrink-0"
             >
               View Stock &rarr;
@@ -1447,6 +1459,7 @@ export function DashboardView() {
                         {hasPermission("marketing:manage") && (
                           <Link
                             href="/marketing"
+                            prefetch={false}
                             className="px-2 py-1 rounded bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-semibold hover:bg-teal-100 text-[10px]"
                           >
                             Make Offer
@@ -1479,6 +1492,7 @@ export function DashboardView() {
             </div>
             <Link
               href="/inventory/movements"
+              prefetch={false}
               className="text-xs font-semibold text-teal-600 hover:underline"
             >
               Full History &rarr;

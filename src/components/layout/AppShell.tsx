@@ -879,6 +879,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("error", handleGlobalError);
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
 
+    // Immediately purge any legacy Service Worker caches (e.g. v39/v40) from the window thread
+    if ("caches" in window) {
+      caches
+        .keys()
+        .then((keys) =>
+          Promise.all(
+            keys
+              .filter((k) => k !== "noxderma-shell-v41")
+              .map((k) => caches.delete(k))
+          )
+        )
+        .catch(() => { });
+    }
+
     if ("serviceWorker" in navigator) {
       const isLocalhost =
         window.location.hostname === "localhost" ||
@@ -892,6 +906,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           }
         });
       } else {
+        const hadController = Boolean(navigator.serviceWorker.controller);
+        let isReloadingOnControllerChange = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!hadController || isReloadingOnControllerChange) return;
+          try {
+            const lastSwReload = Number(sessionStorage.getItem("noxderma_sw_reload_ts") || 0);
+            if (Date.now() - lastSwReload < 15_000) return;
+            sessionStorage.setItem("noxderma_sw_reload_ts", String(Date.now()));
+          } catch { }
+          isReloadingOnControllerChange = true;
+          window.location.reload();
+        });
+
         navigator.serviceWorker
           .register("/sw.js", { updateViaCache: "none" })
           .then((reg) => {
