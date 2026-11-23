@@ -36,7 +36,9 @@ import { normalizeUserDisplayName, type StaffMonitoringProfile } from "@/types";
 const TELEMETRY_AUTO_SYNC_DELAY_MS = 30_000; // 30-second throttle for GPS & battery updates
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname =
+    rawPathname && rawPathname !== "/" ? rawPathname.replace(/\/+$/, "") : rawPathname || "/";
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -677,7 +679,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {/* 1. Home / Dashboard */}
           <Link
             href="/"
-            prefetch={true}
+            prefetch={false}
             className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isExactActive("/")
                 ? "text-teal-600 dark:text-teal-400 font-bold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -696,7 +698,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {secondaryLeftTab && SecondaryLeftIcon && (
             <Link
               href={secondaryLeftTab.href}
-              prefetch={true}
+              prefetch={false}
               className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${secondaryLeftTab.isActive
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -718,7 +720,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {hasPermission("invoices:view") ? (
             <Link
               href="/sales/invoices"
-              prefetch={true}
+              prefetch={false}
               className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isExactActive("/sales/invoices")
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -737,7 +739,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             centerCircleAction?.href !== "/sales/invoices/new" && (
               <Link
                 href="/sales/invoices/new"
-                prefetch={true}
+                prefetch={false}
                 className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isExactActive("/sales/invoices/new")
                     ? "text-teal-600 dark:text-teal-400 font-bold"
                     : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -760,7 +762,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {centerCircleAction && CenterIcon && (
             <Link
               href={centerCircleAction.href}
-              prefetch={true}
+              prefetch={false}
               aria-label={centerCircleAction.ariaLabel}
               className="flex flex-col items-center justify-end flex-1 py-0.5 group btn-interactive"
             >
@@ -782,7 +784,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {hasPermission("inventory:view") && centerCircleAction?.href !== "/inventory" && (
             <Link
               href="/inventory/batches"
-              prefetch={true}
+              prefetch={false}
               className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${isPrefixActive("/inventory")
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -802,7 +804,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
           {financeTab && (
             <Link
               href={financeTab.href}
-              prefetch={true}
+              prefetch={false}
               className={`flex flex-col items-center justify-end flex-1 py-0.5 rounded-xl text-center transition-all btn-interactive ${financeTab.isActive
                   ? "text-teal-600 dark:text-teal-400 font-bold"
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
@@ -840,7 +842,44 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+    if (typeof window === "undefined") return;
+
+    // Auto-recover from ChunkLoadError after a new deployment replaces content-hashed chunks
+    const recoverFromStaleChunk = async (msg: string) => {
+      if (
+        !msg.includes("ChunkLoadError") &&
+        !msg.includes("Loading chunk") &&
+        !msg.includes("Failed to fetch dynamically imported module")
+      ) {
+        return;
+      }
+      try {
+        const lastReload = Number(sessionStorage.getItem("noxderma_chunk_reload_ts") || 0);
+        if (Date.now() - lastReload < 15_000) return;
+        sessionStorage.setItem("noxderma_chunk_reload_ts", String(Date.now()));
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch { }
+      window.location.reload();
+    };
+
+    const handleGlobalError = (e: ErrorEvent) => {
+      const text = `${e.message || ""} ${e.error?.name || ""} ${e.error?.message || ""}`;
+      recoverFromStaleChunk(text);
+    };
+
+    const handleUnhandledRejection = (e: PromiseRejectionEvent) => {
+      const reason = e.reason;
+      const text = `${reason?.name || ""} ${reason?.message || ""} ${String(reason || "")}`;
+      recoverFromStaleChunk(text);
+    };
+
+    window.addEventListener("error", handleGlobalError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+    if ("serviceWorker" in navigator) {
       const isLocalhost =
         window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1" ||
@@ -875,6 +914,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           });
       }
     }
+
+    return () => {
+      window.removeEventListener("error", handleGlobalError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
   }, []);
 
   return (

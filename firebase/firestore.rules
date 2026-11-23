@@ -103,6 +103,12 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    match /manufacturerLedger/{docId} {
+      allow read: if true;
+      allow create, update: if isValidErpWrite();
+      allow delete: if true;
+    }
+
     match /purchaseOrders/{docId} {
       allow read: if true;
       allow create, update: if isValidErpWrite();

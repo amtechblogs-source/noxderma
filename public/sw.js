@@ -1,20 +1,35 @@
-const CACHE_NAME = "noxderma-shell-v39";
+const CACHE_NAME = "noxderma-shell-v40";
 
 const PRECACHE_ASSETS = [
   "/",
   "/manifest.json",
   "/favicon.ico",
   "/brand/logo.svg",
+  "/brand/og-logo.jpg",
 ];
 
-// Helper: Fetch with a fast timeout so dead mobile data packages (0 MB on 4.5G) don't hang
-function fetchWithTimeout(request, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timer));
+// Helper: Fetch with timeout + automatic retry for transient ERR_CONNECTION_RESET on edge CDNs
+async function fetchWithRetry(request, timeoutMs, retries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(request, { signal: controller.signal });
+      clearTimeout(timer);
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
 }
 
-// Install Event: Precache latest application shell and activate immediately
+// Install Event: Precache core assets and activate immediately
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -34,7 +49,7 @@ self.addEventListener("install", (event) => {
   );
 });
 
-// Activate Event: Purge ALL older caches so stale layouts or old SW rules never linger
+// Activate Event: Purge ALL older caches so stale chunk hashes never linger across deploys
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -58,7 +73,6 @@ self.addEventListener("message", (event) => {
   }
 });
 
-// Fetch Event: Instant Stale-While-Revalidate for RSC client navigation, Cache-First for immutable bundles
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" && event.request.method !== "HEAD") {
     return;
@@ -66,7 +80,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // 1. Never intercept cross-origin requests, health probes (/health.json), SW script, or API endpoints
+  // 1. Never intercept cross-origin requests, health probes, SW script, or API endpoints
   if (
     url.origin !== self.location.origin ||
     url.pathname === "/health.json" ||
@@ -88,7 +102,8 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
-  // 3. Content-hashed Next.js Static Chunks & Brand Media -> Instant Cache-First
+  // 3. Content-hashed Next.js Static Chunks & Brand Media -> Cache-First with Retry
+  // IMPORTANT: Never return an empty 200 response for JS/CSS chunks (that causes Webpack ChunkLoadError!)
   if (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.match(/\.(png|jpg|jpeg|svg|webp|ico|woff2)$/)
@@ -98,7 +113,7 @@ self.addEventListener("fetch", (event) => {
         if (cachedResponse) {
           return cachedResponse;
         }
-        return fetchWithTimeout(event.request, 8000)
+        return fetchWithRetry(event.request, 8000, 2)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
               const responseToCache = networkResponse.clone();
@@ -109,67 +124,43 @@ self.addEventListener("fetch", (event) => {
             return networkResponse;
           })
           .catch(() =>
-            caches.match(event.request).then(
-              (fallback) =>
-                fallback ||
-                new Response("", {
-                  status: 200,
-                  headers: { "x-noxderma-offline": "1" },
-                })
-            )
+            caches.match(event.request).then((fallback) => fallback || Response.error())
           );
       })
     );
     return;
   }
 
-  // 4. Next.js RSC Flight Payloads (Client-Side Link Clicks & Prefetches) -> Instant Stale-While-Revalidate!
-  // All Noxderma pages are client-rendered from IndexedDB, so serving cached RSC immediately makes clicks 0ms!
+  // 4. Next.js RSC Flight Payloads (.txt or ?_rsc=): Network-First with Retry, Exact Cache Fallback
+  // IMPORTANT: Never return an empty 200 response on failure (let Next.js fall back cleanly to full page navigation)
   const isRscRequest =
-    url.searchParams.has("_rsc") || event.request.headers.get("RSC") === "1";
+    url.searchParams.has("_rsc") ||
+    event.request.headers.get("RSC") === "1" ||
+    url.pathname.endsWith(".txt");
 
   if (isRscRequest) {
-    const normalizedRscKey = `${url.origin}${url.pathname}?_rsc=cached`;
     event.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        const cachedExact = await cache.match(event.request);
-        const cachedNormalized = cachedExact || (await cache.match(normalizedRscKey));
-
-        const networkFetchPromise = fetchWithTimeout(event.request, 5000)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              cache.put(event.request, networkResponse.clone());
-              cache.put(normalizedRscKey, networkResponse.clone());
-            }
-            return networkResponse;
-          })
-          .catch(() => null);
-
-        // If already in cache, return IMMEDIATELY (<2ms) and revalidate silently in background!
-        if (cachedNormalized) {
-          event.waitUntil(networkFetchPromise);
-          return cachedNormalized;
-        }
-
-        const liveRes = await networkFetchPromise;
-        if (liveRes) return liveRes;
-
-        return new Response("", {
-          status: 200,
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "x-noxderma-offline": "1",
-          },
-        });
-      })
+      fetchWithRetry(event.request, 6000, 1)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, clone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() =>
+          caches.match(event.request).then((cached) => cached || Response.error())
+        )
     );
     return;
   }
 
-  // 5. Full Page Navigation Requests (Browser Reload / Direct URL): Fast Network-First (4.5s) + Cache Fallback
+  // 5. Full Page Navigation Requests: Network-First with Retry + Cache Fallback
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetchWithTimeout(event.request, 4500)
+      fetchWithRetry(event.request, 6000, 1)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const cloneForRoute = networkResponse.clone();
@@ -190,7 +181,7 @@ self.addEventListener("fetch", (event) => {
               (rootCached) =>
                 rootCached ||
                 new Response(
-                  "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Noxderma Offline</title></head><body style='font-family:sans-serif;padding:2rem;text-align:center;background:#0f172a;color:#f8fafc'><h2>No Internet Connection</h2><p>Please connect to the internet once to cache the latest Noxderma version.</p></body></html>",
+                  "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Noxderma Offline</title></head><body style='font-family:sans-serif;padding:2rem;text-align:center;background:#0f172a;color:#f8fafc'><h2>Connection Interrupted</h2><p>Please tap Reload to reconnect to Noxderma.</p><button onclick='location.reload()' style='margin-top:1rem;padding:0.6rem 1.2rem;border-radius:0.5rem;background:#0d9488;color:white;border:none;font-weight:bold;cursor:pointer'>Reload Now</button></body></html>",
                   { status: 200, headers: { "Content-Type": "text/html" } }
                 )
             );
@@ -199,32 +190,4 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
-
-  // 6. Other same-origin GET requests (manifest.json, etc.): Stale-While-Revalidate
-  event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(event.request);
-      const fetchPromise = fetchWithTimeout(event.request, 5000)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        })
-        .catch(() => null);
-
-      if (cached) {
-        event.waitUntil(fetchPromise);
-        return cached;
-      }
-
-      return (
-        (await fetchPromise) ||
-        new Response("", {
-          status: 200,
-          headers: { "x-noxderma-offline": "1" },
-        })
-      );
-    })
-  );
 });

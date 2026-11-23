@@ -381,13 +381,15 @@ export function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse
               <div className="space-y-1 pt-1">
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href;
+                  const cleanPath =
+                    pathname && pathname !== "/" ? pathname.replace(/\/+$/, "") : pathname || "/";
+                  const isActive = cleanPath === item.href;
 
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
-                      prefetch={true}
+                      prefetch={false}
                       onClick={onClose}
                       title={item.name}
                       onMouseEnter={(e) => {

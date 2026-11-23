@@ -23,8 +23,8 @@ export interface SyncResult {
 }
 
 const OUTBOX_DEBOUNCE_MS = 4_000;
-const AUTO_PROBE_INTERVAL_MS = 30_000; // Lightweight 30s Edge CDN probe (never hits serverless Lambda)
-const MIN_PROBE_COOLDOWN_MS = 6_000;
+const AUTO_PROBE_INTERVAL_MS = 60_000; // Lightweight 60s Edge CDN probe
+const MIN_PROBE_COOLDOWN_MS = 20_000;
 const HEALTH_TIMEOUT_MS = 5_500;
 const SYNC_API_TIMEOUT_MS = 6_500;
 const CLOUD_RECONCILE_MAX_WAIT_MS = 8_000;
@@ -263,7 +263,7 @@ class SynchronizationManager {
 
       // Probe returned non-healthy while navigator.onLine is true -> apply 2-strike hysteresis
       this.consecutiveFailures++;
-      if (this.consecutiveFailures >= 2) {
+      if (this.consecutiveFailures >= 3) {
         this.setReachableOnline(false);
         return false;
       }
@@ -272,28 +272,28 @@ class SynchronizationManager {
         this.retryVerifyTimer = setTimeout(() => {
           this.retryVerifyTimer = null;
           this.checkConnectivity(true);
-        }, 1_800);
+        }, 12_000);
       }
       return this.reachableOnline;
     } catch {
       if (!navigator.onLine) {
-        this.consecutiveFailures = 2;
+        this.consecutiveFailures = 3;
         this.setReachableOnline(false);
         return false;
       }
 
       this.consecutiveFailures++;
-      if (this.consecutiveFailures >= 2) {
+      if (this.consecutiveFailures >= 3) {
         this.setReachableOnline(false);
         return false;
       }
 
-      // Single transient glitch on active link: verify once more before declaring offline
+      // Single transient glitch on active link: verify after 12s cooldown (no rapid retry storm)
       if (!this.retryVerifyTimer) {
         this.retryVerifyTimer = setTimeout(() => {
           this.retryVerifyTimer = null;
           this.checkConnectivity(true);
-        }, 1_800);
+        }, 12_000);
       }
       return this.reachableOnline;
     } finally {
